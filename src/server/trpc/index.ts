@@ -1,0 +1,42 @@
+import { initTRPC, TRPCError } from "@trpc/server";
+import superjson from "superjson";
+
+export const createTRPCContext = async () => {
+  // Dynamically import Clerk auth only when keys are configured
+  let userId: string | null = null;
+  if (process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
+    try {
+      const { auth } = await import("@clerk/nextjs/server");
+      const session = await auth();
+      userId = session.userId;
+    } catch {
+      // Clerk not configured, userId stays null
+    }
+  }
+  return { userId };
+};
+
+type Context = Awaited<ReturnType<typeof createTRPCContext>>;
+
+const t = initTRPC.context<Context>().create({
+  transformer: superjson,
+});
+
+export const createTRPCRouter = t.router;
+export const createCallerFactory = t.createCallerFactory;
+export const publicProcedure = t.procedure;
+
+export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
+  if (!ctx.userId) {
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "You must be logged in to perform this action",
+    });
+  }
+  return next({
+    ctx: {
+      ...ctx,
+      userId: ctx.userId,
+    },
+  });
+});

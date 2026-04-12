@@ -1,0 +1,297 @@
+// Influenceuse IA — Prisma Schema
+// https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ──────────────────────────────────────────────
+// ENUMS
+// ──────────────────────────────────────────────
+
+enum Plan {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum Niche {
+  FASHION
+  FITNESS
+  LIFESTYLE
+  TRAVEL
+  TECH
+  GAMING
+  ADULT
+  FOOD
+}
+
+enum Platform {
+  TIKTOK
+  INSTAGRAM
+  ONLYFANS
+}
+
+enum InfluencerStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum ContentType {
+  PHOTO
+  CAROUSEL
+  REEL
+  STORY
+}
+
+enum ContentMode {
+  SFW
+  NSFW
+}
+
+enum ContentStatus {
+  DRAFT
+  GENERATING
+  READY
+  SCHEDULED
+  PUBLISHED
+  FAILED
+}
+
+enum PublishStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum GenerationType {
+  BASE_IMAGE
+  IMAGE
+  VIDEO
+  CAPTION
+  HASHTAGS
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// ──────────────────────────────────────────────
+// MODELS
+// ──────────────────────────────────────────────
+
+/// Utilisateur de l'app (synchronisé avec Clerk)
+model User {
+  id                     String    @id @default(cuid())
+  clerkId                String    @unique
+  email                  String    @unique
+  name                   String?
+  imageUrl               String?
+  plan                   Plan      @default(FREE)
+  stripeCustomerId       String?   @unique
+  stripeSubscriptionId   String?
+  stripePriceId          String?
+  stripeCurrentPeriodEnd DateTime?
+  creditsUsed            Float     @default(0)
+  creditsLimit           Float     @default(50)
+  locale                 String    @default("fr")
+
+  influencers    Influencer[]
+  generationJobs GenerationJob[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clerkId])
+  @@index([email])
+  @@index([stripeCustomerId])
+}
+
+/// Une influenceuse IA virtuelle
+model Influencer {
+  id          String           @id @default(cuid())
+  userId      String
+  name        String
+  slug        String           @unique
+  bio         String           @db.Text
+  personality String           @db.Text
+  niche       Niche
+  age         Int
+  /// Stocke : { ethnicity, hairColor, hairStyle, bodyType, fashionStyle }
+  style       Json
+  /// Image de référence du visage pour la consistance
+  baseImageUrl String?
+  avatarUrl   String?
+  isNsfw      Boolean          @default(false)
+  status      InfluencerStatus @default(ACTIVE)
+
+  user           User                  @relation(fields: [userId], references: [id])
+  socialAccounts SocialAccount[]
+  contents       Content[]
+  contentBatches ContentBatch[]
+  analytics      InfluencerAnalytics?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([niche])
+  @@index([slug])
+  @@index([userId, status])
+}
+
+/// Compte social connecté à une influenceuse
+model SocialAccount {
+  id               String    @id @default(cuid())
+  influencerId     String
+  platform         Platform
+  username         String
+  /// ID utilisateur côté plateforme (ig_user_id, tiktok open_id, etc.)
+  platformUserId   String?
+  /// Sera encrypté côté app
+  accessToken      String?
+  refreshToken     String?
+  tokenExpiresAt   DateTime?
+  isConnected      Boolean   @default(false)
+  followers        Int      @default(0)
+
+  influencer Influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([influencerId, platform])
+}
+
+/// Un contenu généré (photo, carousel, reel)
+model Content {
+  id               String        @id @default(cuid())
+  influencerId     String
+  batchId          String?
+  type             ContentType
+  contentMode      ContentMode   @default(SFW)
+  status           ContentStatus @default(DRAFT)
+  caption          String?       @db.Text
+  hashtags         String[]
+  /// Plusieurs URLs pour carousel
+  mediaUrls        String[]
+  thumbnailUrl     String?
+  promptUsed       String?       @db.Text
+  negativePrompt   String?       @db.Text
+  generationParams Json?
+  platforms        Platform[]
+  scheduledAt      DateTime?
+  publishedAt      DateTime?
+
+  influencer       Influencer        @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+  batch            ContentBatch?     @relation(fields: [batchId], references: [id])
+  publishResults   PublishResult[]
+  contentAnalytics ContentAnalytics[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([influencerId])
+  @@index([status])
+  @@index([type])
+  @@index([scheduledAt])
+  @@index([influencerId, status])
+  @@index([status, scheduledAt])
+}
+
+/// Lot de contenus générés ensemble
+model ContentBatch {
+  id           String @id @default(cuid())
+  influencerId String
+  name         String
+
+  influencer Influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+  contents   Content[]
+
+  createdAt DateTime @default(now())
+}
+
+/// Résultat de publication par plateforme
+model PublishResult {
+  id             String        @id @default(cuid())
+  contentId      String
+  platform       Platform
+  externalPostId String?
+  status         PublishStatus @default(PENDING)
+  error          String?
+  publishedAt    DateTime?
+  /// Données additionnelles (ex: onlyfans_download_url, tiktok_publish_id)
+  metadata       Json?
+
+  content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+}
+
+/// Métriques par contenu par plateforme
+model ContentAnalytics {
+  id             String   @id @default(cuid())
+  contentId      String
+  platform       Platform
+  views          Int      @default(0)
+  likes          Int      @default(0)
+  comments       Int      @default(0)
+  shares         Int      @default(0)
+  saves          Int      @default(0)
+  engagementRate Float    @default(0)
+  fetchedAt      DateTime @default(now())
+
+  content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@unique([contentId, platform, fetchedAt])
+}
+
+/// Stats agrégées par influenceuse (1-to-1)
+model InfluencerAnalytics {
+  id               String @id @default(cuid())
+  influencerId     String @unique
+  totalContents    Int    @default(0)
+  totalViews       Int    @default(0)
+  totalLikes       Int    @default(0)
+  avgEngagement    Float  @default(0)
+  estimatedRevenue Float  @default(0)
+
+  influencer Influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+
+  updatedAt DateTime @updatedAt
+}
+
+/// Jobs de génération IA en attente/en cours
+model GenerationJob {
+  id            String         @id @default(cuid())
+  userId        String
+  influencerId  String
+  contentId     String?
+  type          GenerationType
+  status        JobStatus      @default(PENDING)
+  prompt        String         @db.Text
+  parameters    Json?
+  resultUrl     String?
+  error         String?
+  creditsUsed   Float          @default(1)
+  startedAt     DateTime?
+  completedAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([status])
+  @@index([type])
+}
