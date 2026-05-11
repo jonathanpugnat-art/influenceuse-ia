@@ -30,6 +30,7 @@ import { trpc } from "@/lib/trpc";
 import { CREDIT_COSTS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useUpgradeOnLimitError } from "@/hooks/use-upgrade-on-limit-error";
 
 const generationSteps = [
   { key: "analyze", icon: Brain, label: "Analyse du scénario...", pct: 5 },
@@ -159,6 +160,7 @@ export function ReelPreview() {
   } = useReelCreator();
 
   const simulationRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const handleUpgrade = useUpgradeOnLimitError();
 
   const generateMutation = trpc.content.generateReel.useMutation({
     onSuccess: (data) => {
@@ -166,7 +168,9 @@ export function ReelPreview() {
       startProgressSimulation();
     },
     onError: (err) => {
-      toast.error(err.message);
+      if (!handleUpgrade(err.message)) {
+        toast.error(err.message);
+      }
       setIsGenerating(false);
       setGenerationStep("");
     },
@@ -233,6 +237,7 @@ export function ReelPreview() {
       textOverlay: params.textOverlay || undefined,
       contentMode: params.contentMode,
       nsfwLevel: params.contentMode === "NSFW" ? params.nsfwLevel : undefined,
+      reelStylePreset: params.reelStylePreset,
     });
   }, [params, setIsGenerating, setVideoUrl, setGenerationProgress, setGenerationStep, generateMutation]);
 

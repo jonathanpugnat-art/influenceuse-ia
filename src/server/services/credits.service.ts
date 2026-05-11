@@ -101,7 +101,8 @@ export async function deductCredits(
     if (credits.remaining < cost) {
       throw new TRPCError({
         code: "FORBIDDEN",
-        message: `Crédits insuffisants. Nécessaire : ${cost}, Restant : ${credits.remaining}. Passez à un plan supérieur.`,
+        // Tagged message for the client-side useUpgradeOnLimitError hook.
+        message: `UPGRADE_REQUIRED:credits_exhausted:${cost}:${credits.remaining}`,
       });
     }
 
@@ -116,6 +117,29 @@ export async function deductCredits(
       code: "INTERNAL_SERVER_ERROR",
       message: "Failed to deduct credits",
     });
+  }
+}
+
+/**
+ * Sprint 12 — Refund credits for a user. Used when a downstream step
+ * (storage upload, DB write…) fails AFTER `deductCredits` already ran. We
+ * never want to charge the user for a result they didn't receive. Best-effort:
+ * never throws so the original error keeps bubbling up to the client.
+ */
+export async function refundCredits(
+  userId: string,
+  cost: number
+): Promise<void> {
+  if (cost <= 0) return;
+  try {
+    await db.user.update({
+      where: { id: userId },
+      data: { creditsUsed: { decrement: cost } },
+    });
+    console.log(`[credits.service] refunded ${cost} credit(s) to user ${userId}`);
+  } catch (error) {
+    // Best-effort: log and swallow. We don't want to mask the original error.
+    console.error("[credits.service] refundCredits error:", error);
   }
 }
 

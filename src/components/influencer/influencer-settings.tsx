@@ -150,20 +150,7 @@ export function InfluencerSettings({
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-end space-x-3">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="nsfw"
-                  checked={isNsfw}
-                  onChange={(e) => setIsNsfw(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-700 bg-slate-800 text-violet-500"
-                />
-                <Label htmlFor="nsfw" className="text-slate-300">
-                  Contenu NSFW
-                </Label>
-              </div>
-            </div>
+            {/* NSFW checkbox — hidden for now, will be re-enabled later */}
           </div>
 
           <div className="mt-4 space-y-2">

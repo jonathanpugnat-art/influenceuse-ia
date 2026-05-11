@@ -200,11 +200,7 @@ export function InfluencerCard({
               >
                 {statusLabel}
               </Badge>
-              {influencer.isNsfw && (
-                <Badge className="border-red-500/20 bg-red-500/10 px-2 py-0 text-xs text-red-400">
-                  NSFW
-                </Badge>
-              )}
+              {/* NSFW badge — hidden for now */}
             </div>
           </div>
         </div>

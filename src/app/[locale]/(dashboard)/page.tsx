@@ -7,6 +7,7 @@ import { StatsCards } from "@/components/dashboard/stats-cards";
 import { InfluencerGrid } from "@/components/dashboard/influencer-grid";
 import { RecentActivity } from "@/components/dashboard/recent-activity";
 import { UpcomingContent } from "@/components/dashboard/upcoming-content";
+import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
 
 const sectionVariants: Variants = {
   hidden: { opacity: 0, y: 20 },
@@ -58,6 +59,11 @@ export default function DashboardPage() {
             {t("subtitle")}
           </p>
         </div>
+      </motion.div>
+
+      {/* Phase 6 — Activation checklist (auto-hidden when complete) */}
+      <motion.div variants={sectionVariants}>
+        <OnboardingChecklist />
       </motion.div>
 
       {/* Section 1 — Stats */}

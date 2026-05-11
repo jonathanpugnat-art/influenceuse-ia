@@ -14,8 +14,14 @@ function isApiRoute(pathname: string): boolean {
 function isPublicPath(pathname: string): boolean {
   if (pathname === "/" || pathname === "/fr" || pathname === "/en") return true;
   if (/^\/(fr|en)\/sign-(in|up)/.test(pathname)) return true;
+  if (/^\/(fr|en)\/changelog\b/.test(pathname)) return true;
+  if (/^\/(fr|en)\/pricing\b/.test(pathname)) return true;
   if (pathname.startsWith("/api/webhooks")) return true;
   if (pathname.startsWith("/api/cron")) return true;
+  // Sprint 9 — public REST API (uses its own Bearer token auth).
+  if (pathname.startsWith("/api/public/")) return true;
+  // Health check for monitoring.
+  if (pathname === "/api/health") return true;
   return false;
 }
 

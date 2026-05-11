@@ -29,6 +29,7 @@ function getDateRange(period: Period): { start: Date; end: Date } | null {
 }
 
 import { getDbUser } from "@/server/helpers/get-db-user";
+import { suggestSlots as smartSuggestSlots } from "@/server/services/smart-scheduler.service";
 
 export const analyticsRouter = createTRPCRouter({
   getDashboardStats: protectedProcedure.query(async ({ ctx }) => {
@@ -523,5 +524,287 @@ export const analyticsRouter = createTRPCRouter({
       const pageRows = rows.slice(start, start + input.limit);
 
       return { rows: pageRows, total };
+    }),
+
+  // ──────────────────────────────────────────────
+  // Sprint 8 — Advanced analytics
+  // ──────────────────────────────────────────────
+
+  /**
+   * getCreditROI — Crédits dépensés vs vues/engagement obtenus.
+   * Permet à l'utilisateur de juger la rentabilité de chaque influenceur·se.
+   */
+  getCreditROI: protectedProcedure
+    .input(z.object({ period: periodSchema }))
+    .query(async ({ ctx, input }) => {
+      const user = await getDbUser(ctx.userId);
+      const range = getDateRange(input.period);
+
+      const contentWhere = {
+        influencer: { userId: user.id },
+        status: "PUBLISHED" as const,
+        ...(range ? { publishedAt: { gte: range.start, lte: range.end } } : {}),
+      };
+
+      const influencers = await db.influencer.findMany({
+        where: { userId: user.id },
+        select: {
+          id: true,
+          name: true,
+          contents: {
+            where: contentWhere,
+            select: {
+              id: true,
+              type: true,
+              contentAnalytics: { select: { views: true, likes: true } },
+            },
+          },
+        },
+      });
+
+      // Cost model mirrors CREDIT_COSTS in src/lib/constants.ts.
+      const COST_PER_TYPE: Record<string, number> = { PHOTO: 1, REEL: 5 };
+
+      return influencers
+        .map((inf) => {
+          const credits = inf.contents.reduce(
+            (acc, c) => acc + (COST_PER_TYPE[c.type] ?? 1),
+            0
+          );
+          const views = inf.contents.reduce(
+            (acc, c) => acc + c.contentAnalytics.reduce((v, a) => v + a.views, 0),
+            0
+          );
+          const likes = inf.contents.reduce(
+            (acc, c) => acc + c.contentAnalytics.reduce((v, a) => v + a.likes, 0),
+            0
+          );
+          return {
+            influencerId: inf.id,
+            influencerName: inf.name,
+            postsCount: inf.contents.length,
+            creditsSpent: credits,
+            views,
+            likes,
+            viewsPerCredit: credits > 0 ? Math.round(views / credits) : 0,
+            likesPerCredit: credits > 0 ? Math.round(likes / credits) : 0,
+          };
+        })
+        .filter((row) => row.postsCount > 0)
+        .sort((a, b) => b.viewsPerCredit - a.viewsPerCredit);
+    }),
+
+  /**
+   * getBestPostingHours — Heatmap engagement (jour × heure).
+   * Aide au choix des slots dans le planner.
+   */
+  getBestPostingHours: protectedProcedure
+    .input(
+      z.object({
+        influencerId: z.string().optional(),
+        period: periodSchema,
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const user = await getDbUser(ctx.userId);
+      const range = getDateRange(input.period);
+
+      const contentWhere = {
+        influencer: { userId: user.id },
+        status: "PUBLISHED" as const,
+        ...(input.influencerId ? { influencerId: input.influencerId } : {}),
+        ...(range ? { publishedAt: { gte: range.start, lte: range.end } } : {}),
+      };
+
+      const contents = await db.content.findMany({
+        where: contentWhere,
+        select: {
+          publishedAt: true,
+          contentAnalytics: { select: { engagementRate: true } },
+        },
+      });
+
+      // grid[day=0..6 (Mon..Sun)][hour=0..23] = { sum, count }
+      const grid: { sum: number; count: number }[][] = Array.from(
+        { length: 7 },
+        () => Array.from({ length: 24 }, () => ({ sum: 0, count: 0 }))
+      );
+
+      for (const c of contents) {
+        if (!c.publishedAt) continue;
+        const day = (c.publishedAt.getDay() + 6) % 7; // make Monday=0
+        const hour = c.publishedAt.getHours();
+        const er = c.contentAnalytics.length
+          ? c.contentAnalytics.reduce((a, x) => a + x.engagementRate, 0) /
+            c.contentAnalytics.length
+          : 0;
+        grid[day][hour].sum += er;
+        grid[day][hour].count += 1;
+      }
+
+      const cells: { day: number; hour: number; engagement: number; count: number }[] =
+        [];
+      for (let d = 0; d < 7; d++) {
+        for (let h = 0; h < 24; h++) {
+          const cell = grid[d][h];
+          cells.push({
+            day: d,
+            hour: h,
+            engagement: cell.count > 0 ? cell.sum / cell.count : 0,
+            count: cell.count,
+          });
+        }
+      }
+
+      const top = [...cells]
+        .filter((c) => c.count > 0)
+        .sort((a, b) => b.engagement - a.engagement)
+        .slice(0, 5);
+
+      return { cells, top };
+    }),
+
+  /**
+   * getEngagementTimeline — Série temporelle quotidienne views/likes/engagement
+   * agrégée tous influenceurs / plateformes confondus (avec breakdown par
+   * plateforme pour le graphique stacked).
+   */
+  getEngagementTimeline: protectedProcedure
+    .input(
+      z.object({
+        influencerId: z.string().optional(),
+        period: periodSchema,
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const user = await getDbUser(ctx.userId);
+      const range = getDateRange(input.period);
+      if (!range) return [];
+
+      const contentWhere = {
+        influencer: { userId: user.id },
+        status: "PUBLISHED" as const,
+        ...(input.influencerId ? { influencerId: input.influencerId } : {}),
+        publishedAt: { gte: range.start, lte: range.end },
+      };
+
+      const analytics = await db.contentAnalytics.findMany({
+        where: { content: contentWhere },
+        select: {
+          views: true,
+          likes: true,
+          comments: true,
+          engagementRate: true,
+          fetchedAt: true,
+          platform: true,
+        },
+      });
+
+      const days: string[] = [];
+      const byDate: Record<
+        string,
+        { views: number; likes: number; comments: number; engagement: number; count: number }
+      > = {};
+
+      for (let d = new Date(range.start); d <= range.end; d.setDate(d.getDate() + 1)) {
+        const key = d.toISOString().slice(0, 10);
+        days.push(key);
+        byDate[key] = { views: 0, likes: 0, comments: 0, engagement: 0, count: 0 };
+      }
+
+      for (const a of analytics) {
+        const key = a.fetchedAt.toISOString().slice(0, 10);
+        if (!byDate[key]) {
+          byDate[key] = { views: 0, likes: 0, comments: 0, engagement: 0, count: 0 };
+        }
+        byDate[key].views += a.views;
+        byDate[key].likes += a.likes;
+        byDate[key].comments += a.comments;
+        byDate[key].engagement += a.engagementRate;
+        byDate[key].count += 1;
+      }
+
+      return days.map((date) => {
+        const day = byDate[date];
+        return {
+          date,
+          views: day.views,
+          likes: day.likes,
+          comments: day.comments,
+          engagement: day.count > 0 ? day.engagement / day.count : 0,
+        };
+      });
+    }),
+
+  /**
+   * suggestSlots — Sprint 10: data-driven scheduler.
+   * Reuses the same heatmap query as `getBestPostingHours` and runs the pure
+   * `suggestSlots` helper on top of it. Used by the calendar UI to pre-fill
+   * upcoming scheduled timestamps when generating a content plan or batch.
+   */
+  suggestSlots: protectedProcedure
+    .input(
+      z.object({
+        influencerId: z.string().optional(),
+        period: periodSchema.default("90d"),
+        count: z.number().int().min(1).max(30).default(7),
+        startsFrom: z.date().optional(),
+        alreadyScheduledAt: z.array(z.date()).optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const user = await getDbUser(ctx.userId);
+      const range = getDateRange(input.period);
+
+      const contentWhere = {
+        influencer: { userId: user.id },
+        status: "PUBLISHED" as const,
+        ...(input.influencerId ? { influencerId: input.influencerId } : {}),
+        ...(range ? { publishedAt: { gte: range.start, lte: range.end } } : {}),
+      };
+
+      const contents = await db.content.findMany({
+        where: contentWhere,
+        select: {
+          publishedAt: true,
+          contentAnalytics: { select: { engagementRate: true } },
+        },
+      });
+
+      // Build the same 7×24 grid used by getBestPostingHours.
+      const grid: { sum: number; count: number }[][] = Array.from(
+        { length: 7 },
+        () => Array.from({ length: 24 }, () => ({ sum: 0, count: 0 }))
+      );
+      for (const c of contents) {
+        if (!c.publishedAt) continue;
+        const day = (c.publishedAt.getDay() + 6) % 7;
+        const hour = c.publishedAt.getHours();
+        const er = c.contentAnalytics.length
+          ? c.contentAnalytics.reduce((a, x) => a + x.engagementRate, 0) /
+            c.contentAnalytics.length
+          : 0;
+        grid[day][hour].sum += er;
+        grid[day][hour].count += 1;
+      }
+      const cells: { day: number; hour: number; engagement: number; count: number }[] = [];
+      for (let d = 0; d < 7; d++) {
+        for (let h = 0; h < 24; h++) {
+          const cell = grid[d][h];
+          cells.push({
+            day: d,
+            hour: h,
+            engagement: cell.count > 0 ? cell.sum / cell.count : 0,
+            count: cell.count,
+          });
+        }
+      }
+
+      return smartSuggestSlots({
+        cells,
+        count: input.count,
+        startsFrom: input.startsFrom ?? new Date(),
+        alreadyScheduledAt: input.alreadyScheduledAt,
+      });
     }),
 });

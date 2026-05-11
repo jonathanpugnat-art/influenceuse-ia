@@ -200,6 +200,35 @@ export function ReelParams() {
           </div>
         </div>
 
+        {/* Reel style preset — Phase 2: face consistency vs motion */}
+        <div className="space-y-2">
+          <Label className="text-xs text-slate-400">{t("reelStylePreset")}</Label>
+          <div className="flex flex-col gap-2">
+            {(
+              [
+                { key: "stable_face" as const, title: t("reelStyleStable"), desc: t("reelStyleStableDesc") },
+                { key: "natural_motion" as const, title: t("reelStyleNatural"), desc: t("reelStyleNaturalDesc") },
+                { key: "creative" as const, title: t("reelStyleCreative"), desc: t("reelStyleCreativeDesc") },
+              ] as const
+            ).map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => updateParams({ reelStylePreset: opt.key })}
+                className={cn(
+                  "rounded-xl border px-3 py-2 text-left transition-all",
+                  params.reelStylePreset === opt.key
+                    ? "border-violet-500 bg-violet-500/15"
+                    : "border-slate-700 bg-slate-800/30 hover:border-slate-600"
+                )}
+              >
+                <div className="text-xs font-medium text-white">{opt.title}</div>
+                <div className="text-xs text-slate-500">{opt.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Video type */}
         <div className="space-y-2">
           <Label className="text-xs text-slate-400">Type de vidéo</Label>
@@ -288,8 +317,8 @@ export function ReelParams() {
           />
         </div>
 
-        {/* NSFW */}
-        {selectedInfluencer?.isNsfw && (
+        {/* NSFW — hidden for now, will be re-enabled later */}
+        {false && selectedInfluencer?.isNsfw && (
           <div className="space-y-3 rounded-xl border border-slate-800/50 bg-slate-800/20 p-3">
             <div className="flex items-center justify-between">
               <Label className="text-xs text-slate-400">Mode contenu</Label>

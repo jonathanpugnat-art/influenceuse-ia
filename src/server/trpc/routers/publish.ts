@@ -147,6 +147,7 @@ export const publishRouter = createTRPCRouter({
                   accessToken: true,
                   refreshToken: true,
                   platformUserId: true,
+                  tokenExpiresAt: true,
                   isConnected: true,
                 },
               },
@@ -306,6 +307,10 @@ export const publishRouter = createTRPCRouter({
         where: {
           influencer: { userId: user.id },
           OR: [
+            {
+              status: "DRAFT",
+              scheduledAt: { gte: input.startDate, lte: input.endDate },
+            },
             {
               status: "SCHEDULED",
               scheduledAt: { gte: input.startDate, lte: input.endDate },

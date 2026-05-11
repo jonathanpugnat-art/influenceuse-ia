@@ -1,10 +1,109 @@
 {
+  "library": {
+    "title": "Media library",
+    "subtitle": "All your reusable assets — images, videos, audio and presets.",
+    "searchPlaceholder": "Search by name or tag…",
+    "empty": "No assets yet",
+    "emptyHint": "Add your first image or video to reuse it across your content.",
+    "emptyFiltered": "No results",
+    "emptyFilteredHint": "Try another search or filter.",
+    "deleted": "Asset deleted",
+    "confirmDelete": "Delete this asset? This action cannot be undone.",
+    "filters": {
+      "all": "All"
+    },
+    "kinds": {
+      "IMAGE": "Images",
+      "VIDEO": "Videos",
+      "AUDIO": "Audio",
+      "PRESET": "Presets"
+    },
+    "upload": {
+      "cta": "Add",
+      "title": "Add an asset",
+      "description": "Enter the URL of a file already hosted (R2, S3, CDN…).",
+      "name": "Name",
+      "url": "URL",
+      "kind": "Kind",
+      "tags": "Tags",
+      "tagsHint": "(comma-separated)",
+      "cancel": "Cancel",
+      "submit": "Add",
+      "success": "Asset added to library",
+      "missingFields": "Name and URL are required"
+    }
+  },
+  "changelog": {
+    "badge": "Release notes",
+    "title": "What's new?",
+    "subtitle": "Every new feature and improvement, sprint by sprint.",
+    "back": "Back to home",
+    "footer": "Full technical details in CHANGELOG.md on git.",
+    "releases": {
+      "sprint9": "Sprint 9 — Scale & B2B",
+      "sprint8": "Sprint 8 — Differentiation",
+      "sprint7": "Sprint 7 — Activation",
+      "phase6": "Phase 6 — Monetization & onboarding",
+      "phase5": "Phase 5 — Distribution & consistency",
+      "phase4": "Phase 4 — Batch generation",
+      "phase3": "Phase 3 — Content agent",
+      "phase2": "Phase 2 — Credible video (image-to-video)",
+      "phase1": "Phase 1 — Character coherence (images)"
+    },
+    "v09": {
+      "api": "Public REST API + hashed API keys (60 req/min rate limit)",
+      "workspaces": "Agency mode — multi-member workspaces with ADMIN/MEMBER/VIEWER roles",
+      "media": "Media Library: reusable asset catalog with tags",
+      "referral": "Referral program (+50 credits per converted referral)"
+    },
+    "v08": {
+      "analytics": "Credit ROI, best-hours heatmap, engagement timeline",
+      "memory": "Personality Memory: the AI learns your voice from past posts",
+      "recycler": "Content Recycler: re-publish your top performers in 1 click",
+      "ab": "Caption A/B testing: 2 variants generated in parallel"
+    },
+    "v07": {
+      "templates": "22 pre-baked templates to spin up an influencer in 1 click",
+      "video": "Multi-model video router: Kling 2.0, Runway Gen-4, Wan 2.5",
+      "packs": "Stripe credit packs: one-time top-ups of extra credits",
+      "rename": "Plan rename: Free / Creator / Pro / Agency"
+    },
+    "v06": {
+      "starter": "Creator plan (9€/mo) between Free and Pro",
+      "checklist": "Onboarding checklist on the dashboard",
+      "upgradeModal": "Contextual upgrade modal (limits reached, credits empty…)"
+    },
+    "v05": {
+      "webhooks": "Outbound webhooks signed with HMAC + automatic retry",
+      "idempotent": "Idempotent publish pipeline (no more duplicate posts)",
+      "tokenRefresh": "Proactive Instagram token refresh before publishing"
+    },
+    "v04": {
+      "batches": "Batch generation of 10-30 posts with queue",
+      "cron": "Processing cron every 10 minutes",
+      "panel": "Batch progress panel on the calendar"
+    },
+    "v03": {
+      "plans": "Multi-day editorial plans (hooks, captions, hashtags, slots)",
+      "claude": "Anthropic Claude provider alongside DeepSeek",
+      "ideas": "1-click idea brainstorm (5-15 short ideas)"
+    },
+    "v02": {
+      "i2v": "Image-to-video pipeline with subject reference",
+      "presets": "Reel presets: stable_face | natural_motion | creative"
+    },
+    "v01": {
+      "face": "Locked facial coherence via IP-Adapter / character reference",
+      "wizard": "Decoupled photo wizard: pose, scene, accessories, outfit"
+    }
+  },
   "common": {
     "appName": "Influenceuse IA",
     "dashboard": "Dashboard",
     "influencers": "My Influencers",
     "content": "Content",
     "calendar": "Calendar",
+    "library": "Library",
     "analytics": "Analytics",
     "billing": "Billing",
     "settings": "Settings",
@@ -50,13 +149,34 @@
     "billing": "Billing",
     "settings": "Settings",
     "planFree": "Free",
+    "planStarter": "Creator",
     "planPro": "Pro",
-    "planEnterprise": "Enterprise",
-    "upgrade": "Upgrade"
+    "planEnterprise": "Agency",
+    "upgrade": "Upgrade",
+    "lowBalance": {
+      "creditsLow": "Only {remaining} credits left — consider upgrading before next session.",
+      "creditsExhausted": "Credits exhausted. Upgrade to keep creating.",
+      "upgradeCta": "View plans",
+      "dismiss": "Dismiss"
+    }
   },
   "dashboard": {
     "title": "Dashboard",
     "subtitle": "Manage your virtual influencers, create content and track performance in real time.",
+    "onboarding": {
+      "badge": "Get started",
+      "title": "Launch your first influencer in 5 minutes",
+      "subtitle": "Follow this checklist to activate your account. Each step unlocks the next.",
+      "doIt": "Go",
+      "dismiss": "Later",
+      "steps": {
+        "createInfluencer": "Create your first AI influencer",
+        "generateFirstContent": "Generate your first content (photo)",
+        "connectSocial": "Connect an Instagram or TikTok account",
+        "scheduleFirst": "Schedule or publish your first post",
+        "upgradePlan": "Upgrade to go further"
+      }
+    },
     "activeInfluencers": "Active influencers",
     "publishedContent": "Published content",
     "avgEngagement": "Average engagement",
@@ -230,7 +350,22 @@
     "deleteAction": "Delete",
     "placeholderHint": "Configure parameters and click Generate",
     "generateBtn": "Generate",
-    "selectInfluencerFirst": "Select an influencer first"
+    "selectInfluencerFirst": "Select an influencer first",
+    "templatesTitle": "Ready-to-use templates",
+    "templatesDescription": "Pick a recipe, we'll handle the rest",
+    "location": "Specific location (optional)",
+    "locationPlaceholder": "E.g.: Eiffel Tower, Times Square, Santorini...",
+    "faceReferenceLabel": "Face reference lock",
+    "faceReferenceHint": "Uses base image or avatar so the same face appears. SFW mode only.",
+    "faceReferenceNoRef": "Add a base image or avatar on the influencer profile to enable this.",
+    "faceReferenceNsfwNote": "Not available in NSFW mode: that model does not accept a reference image.",
+    "reelStylePreset": "Video style",
+    "reelStyleStable": "Stable face",
+    "reelStyleStableDesc": "Prioritize identity, subtle motion (recommended).",
+    "reelStyleNatural": "Natural motion",
+    "reelStyleNaturalDesc": "Balance TikTok energy and same person.",
+    "reelStyleCreative": "Creative",
+    "reelStyleCreativeDesc": "More freedom; prompt optimizer enabled."
   },
   "wizard": {
     "identity": "Identity",
@@ -242,6 +377,10 @@
     "create": "Create influencer",
     "step": "Step",
     "influencerName": "Influencer name",
+    "gender": "Gender",
+    "genderFemale": "Woman",
+    "genderMale": "Man",
+    "genderNonbinary": "Non-binary",
     "personality": "Personality",
     "age": "Age",
     "years": "years",
@@ -288,7 +427,63 @@
     "namePlaceholder": "Luna Fit",
     "bioPlaceholder": "Fitness and lifestyle enthusiast...",
     "variantsGenerated": "4 variants generated. Choose your favorite.",
-    "personalityPlaceholder": "Confident, fun, close to her community..."
+    "personalityPlaceholder": "Confident, fun, close to her community...",
+    "posts": "posts",
+    "followers": "followers",
+    "following": "following",
+    "follow": "Follow",
+    "message": "Message",
+    "bioComingSoon": "Bio to be completed…",
+    "nextPostsHint": "Your next photos will fill this wall ✨",
+    "templates": {
+      "title": "Start with a template",
+      "subtitle": "1 click = persona pre-filled",
+      "applied": "Applied",
+      "fitness_girl": { "label": "Fitness Girl" },
+      "fitness_girl_desc": "Energetic coach, routines & nutrition.",
+      "fitness_man": { "label": "Strength Coach" },
+      "fitness_man_desc": "Discipline, bulking, mindset.",
+      "luxe_minimaliste": { "label": "Quiet Luxury" },
+      "luxe_minimaliste_desc": "Capsule, neutral palette, refined.",
+      "streetwear_girl": { "label": "Streetwear Girl" },
+      "streetwear_girl_desc": "Sneakers, drops, urban vibe.",
+      "haute_couture": { "label": "Haute Couture" },
+      "haute_couture_desc": "Fashion week front row, house references.",
+      "beauty_clean": { "label": "Clean Beauty" },
+      "beauty_clean_desc": "Skincare, INCI, ethical brands.",
+      "makeup_artist": { "label": "Makeup Artist" },
+      "makeup_artist_desc": "Pro tutorials, transformations, trends.",
+      "luxury_traveler": { "label": "Luxury Traveler" },
+      "luxury_traveler_desc": "5★ hotels, secret beaches, storytelling.",
+      "backpacker": { "label": "Backpacker" },
+      "backpacker_desc": "Light travel, budget, off the beaten path.",
+      "healthy_chef": { "label": "Healthy Chef" },
+      "healthy_chef_desc": "Balanced recipes, batch cooking, nutrition.",
+      "street_food": { "label": "Street Food" },
+      "street_food_desc": "World tour, street tasting, indulgent.",
+      "finance_woman": { "label": "Finance Woman" },
+      "finance_woman_desc": "Investing, ETFs, financial independence.",
+      "entrepreneur": { "label": "SaaS Entrepreneur" },
+      "entrepreneur_desc": "Founder, KPIs, bootstrap behind-the-scenes.",
+      "tech_reviewer": { "label": "Tech Reviewer" },
+      "tech_reviewer_desc": "Honest reviews, gadgets, AI.",
+      "gaming_streamer": { "label": "Gaming Streamer" },
+      "gaming_streamer_desc": "Twitch & YouTube, FPS, RPG, indie.",
+      "yoga_zen": { "label": "Yoga Zen" },
+      "yoga_zen_desc": "Yoga, meditation, ayurveda, calm.",
+      "mom_lifestyle": { "label": "Mom Lifestyle" },
+      "mom_lifestyle_desc": "Organization, parenting, real struggles.",
+      "artist_creative": { "label": "Creative Artist" },
+      "artist_creative_desc": "Illustration, tattooing, creative process.",
+      "musician": { "label": "Musician" },
+      "musician_desc": "Producer, snippets, studio behind-the-scenes.",
+      "adult_glamour": { "label": "Adult Glamour" },
+      "adult_glamour_desc": "Premium 18+ content, tease, lifestyle.",
+      "pet_owner": { "label": "Pet Lover" },
+      "pet_owner_desc": "Daily life with pets, tips.",
+      "booktok": { "label": "BookTok" },
+      "booktok_desc": "Romantasy, dark academia, reviews."
+    }
   },
   "billing": {
     "title": "Billing",
@@ -300,7 +495,84 @@
     "creditsLimit": "Credits limit",
     "renewal": "Renewal",
     "manageSubscription": "Manage subscription",
-    "noInvoices": "No invoices"
+    "noInvoices": "No invoices",
+    "creditPacks": {
+      "title": "Top up credits",
+      "subtitle": "One-time purchase. Credits added instantly, don't reset each month.",
+      "creditsLabel": "Credits",
+      "oneTime": "One-time payment",
+      "buy": "Buy",
+      "redirecting": "Redirecting…",
+      "small": { "name": "Boost Pack" },
+      "medium": { "name": "Pro Pack" },
+      "large": { "name": "Studio Pack" }
+    },
+    "upgradeModal": {
+      "recommended": "Recommended plan",
+      "later": "Later",
+      "upgradeCta": "Upgrade now",
+      "loading": "Redirecting…",
+      "noPriceConfigured": "Plan not configured. Contact support.",
+      "planNames": {
+        "STARTER": "Creator plan",
+        "PRO": "Pro plan",
+        "ENTERPRISE": "Agency plan"
+      },
+      "reasons": {
+        "maxInfluencers": {
+          "title": "Need more influencers? Upgrade.",
+          "description": "Your current plan reached its limit. Upgrade to create more."
+        },
+        "creditsExhausted": {
+          "title": "Credits exhausted",
+          "description": "You don't have enough credits for this action. Upgrade or wait for renewal."
+        },
+        "videoRequired": {
+          "title": "Video generation requires Pro+",
+          "description": "Create TikTok and Instagram reels with the Pro plan."
+        },
+        "autoPublishRequired": {
+          "title": "Auto-publishing",
+          "description": "Schedule and publish automatically to Instagram and TikTok from the Starter plan."
+        },
+        "advancedAnalyticsRequired": {
+          "title": "Advanced analytics",
+          "description": "Deep-dive into your performance with the Enterprise plan."
+        },
+        "contentPlanRequired": {
+          "title": "AI editorial plan",
+          "description": "Generate 7 to 30 days of content in one click from the Starter plan."
+        },
+        "batchRequired": {
+          "title": "Batch generation",
+          "description": "Generate 10–30 photos in parallel with the Pro plan."
+        },
+        "webhooksRequired": {
+          "title": "Outbound webhooks",
+          "description": "Connect Zapier, n8n or your own backend with the Pro plan."
+        }
+      },
+      "benefits": {
+        "STARTER": [
+          "2 simultaneous influencers",
+          "150 credits / month",
+          "AI editorial plan (up to 30 days)",
+          "Auto-publish IG / TikTok"
+        ],
+        "PRO": [
+          "5 simultaneous influencers",
+          "500 credits / month",
+          "Video generation (reels)",
+          "Batch generation + outbound webhooks"
+        ],
+        "ENTERPRISE": [
+          "Unlimited influencers",
+          "Unlimited credits",
+          "Advanced analytics",
+          "Priority dedicated support"
+        ]
+      }
+    }
   },
   "calendar": {
     "title": "Calendar",
@@ -308,7 +580,47 @@
     "week": "Week",
     "list": "List",
     "noEvents": "No events",
-    "scheduleContent": "Schedule content"
+    "scheduleContent": "Schedule content",
+    "generatePlan": "Generate AI plan",
+    "planTitle": "Generate an editorial plan",
+    "planSubtitle": "AI creates a full posting plan (hooks, captions, hashtags). You then turn each post into an image.",
+    "planInfluencer": "Influencer",
+    "planInfluencerPlaceholder": "Pick an influencer",
+    "planDays": "Days",
+    "planPostsPerDay": "Posts per day",
+    "planPlatforms": "Platforms",
+    "planLanguage": "Language",
+    "planGoals": "Goals (optional)",
+    "planGoalsPlaceholder": "e.g. growth, engagement, product launch…",
+    "planEstimate": "{count} posts • estimated cost: {cost} credits",
+    "planSubmit": "Generate plan",
+    "planSubmitting": "Generating…",
+    "planCancel": "Cancel",
+    "planSuccess": "{count} posts added to the calendar",
+    "planError": "Plan generation failed",
+    "batch": {
+      "title": "Plans being generated",
+      "subtitle": "Auto-refresh",
+      "loading": "Loading…",
+      "posts": "posts",
+      "runNow": "Run now",
+      "retry": "Retry ({count})",
+      "sliceDone": "{generated} generated, {failed} failed ({remaining} pending)",
+      "retryDone": "{count} items requeued",
+      "statuses": {
+        "draft": "pending",
+        "generating": "in progress",
+        "ready": "ready",
+        "failed": "failed"
+      }
+    },
+    "recycle": {
+      "title": "Recycle top posts",
+      "subtitle": "Your best past content. Regenerate a fresh caption, keep the media.",
+      "recycle": "Recycle",
+      "recycling": "Recycling…",
+      "created": "Draft created. Schedule it whenever you want."
+    }
   },
   "analytics": {
     "title": "Analytics",
@@ -336,7 +648,22 @@
     "views": "Views",
     "likes": "Likes",
     "noData": "No data",
-    "noContentForPeriod": "No content for this period."
+    "noContentForPeriod": "No content for this period.",
+    "roi": {
+      "title": "ROI per credit",
+      "subtitle": "Views and likes earned per credit spent. Spot the most profitable profiles.",
+      "viewsPerCredit": "views/credit",
+      "likesPerCredit": "likes/credit",
+      "posts": "posts",
+      "credits": "credits"
+    },
+    "bestHours": {
+      "title": "Best posting hours",
+      "subtitle": "Average engagement by day × hour. Schedule your next posts in the violet zones.",
+      "topSlots": "Top slots",
+      "noData": "No data",
+      "posts": "posts"
+    }
   },
   "settings": {
     "title": "Settings",
@@ -360,7 +687,75 @@
     "updateKeys": "Update keys",
     "deleteAccount": "Delete my account",
     "deleteAccountConfirm": "Are you sure? This action cannot be undone.",
-    "deleteAccountConfirm2": "Type \"DELETE\" to confirm."
+    "deleteAccountConfirm2": "Type \"DELETE\" to confirm.",
+    "apiKeysSection": {
+      "title": "API keys",
+      "description": "Create keys to query the public API from your scripts or Zapier.",
+      "createTitle": "Create a new key",
+      "namePlaceholder": "e.g. Zapier bot",
+      "create": "Create",
+      "creating": "Creating…",
+      "loading": "Loading…",
+      "empty": "No keys yet.",
+      "newKeyTitle": "Here is your key. Copy it now — it won't be shown again.",
+      "newKeyWarning": "Store it in a vault (1Password, .env). If you lose it, revoke it and create a new one.",
+      "close": "Close",
+      "revoke": "Disable",
+      "delete": "Delete",
+      "revoked": "Key disabled",
+      "deleted": "Key deleted",
+      "revokedLabel": "Disabled",
+      "lastUsed": "Last used",
+      "docsHint": "Quick docs:"
+    },
+    "referral": {
+      "title": "Referral program",
+      "description": "Share your unique code. Each signup = +{credits} credits for both of you.",
+      "loading": "Loading…",
+      "yourCode": "Your code",
+      "shareUrl": "Share URL",
+      "invited": "Invited",
+      "converted": "Converted",
+      "credits": "Credits earned"
+    },
+    "webhooks": {
+      "title": "Outbound webhooks",
+      "subtitle": "Receive events (publish, failure, batch completed) on your HTTPS endpoints — Zapier, n8n, custom backend…",
+      "loading": "Loading…",
+      "empty": "No webhooks configured yet.",
+      "addWebhook": "Add webhook",
+      "nameLabel": "Name",
+      "namePlaceholder": "My Zapier",
+      "urlLabel": "URL",
+      "eventsLabel": "Events",
+      "save": "Create",
+      "saving": "Creating…",
+      "cancel": "Cancel",
+      "active": "Active",
+      "paused": "Paused",
+      "ping": "Test",
+      "rotateSecret": "Rotate secret",
+      "delete": "Delete",
+      "rotated": "New secret generated",
+      "deleted": "Webhook deleted",
+      "created": "Webhook created",
+      "secretRevealed": "Here is your secret — copy it now, it won't be shown again.",
+      "secretWarning": "Use it to verify the HMAC-SHA256 signature in the x-webhook-signature header.",
+      "dismiss": "OK",
+      "copied": "Copied",
+      "missingFields": "Please fill all fields.",
+      "pingOk": "Ping successful (HTTP {code})",
+      "pingFailed": "Ping failed (HTTP {code})",
+      "failures": "{count} consecutive failure(s)",
+      "recentDeliveries": "Recent deliveries",
+      "noDeliveries": "No deliveries yet.",
+      "events": {
+        "CONTENT_PUBLISHED": "Content published",
+        "CONTENT_FAILED": "Publish failed",
+        "BATCH_COMPLETED": "Batch completed",
+        "CONTENT_SCHEDULED": "Content scheduled"
+      }
+    }
   },
   "auth": {
     "signIn": "Sign in",
@@ -376,5 +771,82 @@
     "title": "An error occurred",
     "subtitle": "We couldn't load this page.",
     "retry": "Retry"
+  },
+  "landing": {
+    "navFeatures": "Features",
+    "navHowItWorks": "How it works",
+    "navPricing": "Pricing",
+    "navChangelog": "Changelog",
+    "signIn": "Sign in",
+    "tryFree": "Try for free",
+    "heroBadge": "New: multi-model video generation",
+    "heroTitlePart1": "Build virtual influencers that",
+    "heroTitleHighlight": "convert",
+    "heroTitlePart2": ", in just a few clicks.",
+    "heroSubtitle": "Consistent AI photo/video generation, smart scheduling, advanced analytics. The all-in-one platform for creators and agencies.",
+    "ctaPrimary": "Start for free",
+    "ctaWatchDemo": "Watch the 1-min demo",
+    "socialProofTitle": "Already used by 1,200+ creators and 45 agencies",
+    "featuresTitle": "Generate. Schedule. Scale.",
+    "featuresSubtitle": "Everything you need to manage believable virtual personas across every social network.",
+    "feature1Title": "AI face consistency",
+    "feature1Desc": "Photos and videos featuring the same character thanks to Flux Kontext Pro and our character reference pipeline.",
+    "feature2Title": "Batch generation",
+    "feature2Desc": "Produce 10 to 30 posts in one go with editorial plan, hooks and A/B captions to maximize engagement.",
+    "feature3Title": "Pro reels & videos",
+    "feature3Desc": "Powerful multi-model image-to-video pipeline (Kling, Runway, Wan) with smooth motion presets.",
+    "feature4Title": "Analytics & ROI",
+    "feature4Desc": "Heatmap of best posting hours, ROI per credit, and Content Recycler to repost your top performers.",
+    "howItWorksTitle": "How does it work?",
+    "howItWorksSubtitle": "A workflow tailored for demanding content creators.",
+    "step1Title": "Create your influencer",
+    "step1Desc": "4-step wizard: identity, physical appearance, social accounts and final summary. 22 ready-to-use templates.",
+    "step2Title": "Generate content at scale",
+    "step2Desc": "Generate your photos and videos on the fly or prep full batches of 30 posts with optimized captions.",
+    "step3Title": "Publish and analyze",
+    "step3Desc": "Schedule your content. Our system handles automatic publishing with an idempotent pipeline — no duplicates.",
+    "step4Title": "Recycle your best posts",
+    "step4Desc": "Identify top-performing content and use the Content Recycler to repost it at the right time.",
+    "pricingTitle": "Simple, transparent pricing",
+    "pricingSubtitle": "Scale at your own pace. Adjust your credits to match your needs.",
+    "pricingMostPopular": "Most popular",
+    "pricingStart": "Get started",
+    "pricingSeeAll": "See all pricing in detail",
+    "ctaFinalTitle": "Ready to launch your first AI influencer?",
+    "ctaFinalSubtitle": "Join thousands of creators who automate their content while keeping premium quality.",
+    "ctaFinalButton": "Get started — credits included",
+    "footerTerms": "Terms",
+    "footerPrivacy": "Privacy",
+    "footerSupport": "Support",
+    "footerRights": "All rights reserved."
+  },
+  "pricing": {
+    "title": "Pricing",
+    "subtitle": "Pick the plan that matches your volume. Switch any time.",
+    "perMonth": "/mo",
+    "free": "Free",
+    "freeDesc": "To discover the platform with no commitment",
+    "creatorDesc": "For creators getting started",
+    "proDesc": "For pros scaling their production",
+    "agencyDesc": "For agencies managing multiple clients",
+    "mostPopular": "Most popular",
+    "ctaStart": "Start free",
+    "ctaSubscribe": "Subscribe",
+    "ctaContact": "Contact us",
+    "featInfluencers": "{count, plural, =1 {1 influencer} other {# influencers}}",
+    "featInfluencersUnlimited": "Unlimited influencers",
+    "featCredits": "{count} credits / month",
+    "featCreditsUnlimited": "Unlimited credits",
+    "featPhotos": "Unlimited photo generation",
+    "featVideos": "Video generation (Kling, Runway, Wan)",
+    "featAutoPublish": "Scheduled auto-publishing",
+    "featBatch": "Batch generation (up to 30 posts)",
+    "featContentPlan": "Multi-day AI editorial plan",
+    "featAnalytics": "Advanced analytics (heatmap, ROI)",
+    "featWebhooks": "Outbound webhooks & public API",
+    "featTemplates": "22 persona templates",
+    "featSupport": "Priority 24/7 support",
+    "ctaCreditPacks": "Need a one-off boost? Buy credit packs à la carte.",
+    "creditPacksLink": "See credit packs"
   }
 }

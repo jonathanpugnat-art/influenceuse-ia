@@ -3,6 +3,18 @@
     {
       "path": "/api/cron/publish",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/process-batches",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/retry-webhooks",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/fetch-analytics",
+      "schedule": "0 * * * *"
     }
   ]
 }

@@ -6,6 +6,7 @@ import { CurrentPlan } from "@/components/billing/current-plan";
 import { PricingCards } from "@/components/billing/pricing-cards";
 import { InvoiceHistory } from "@/components/billing/invoice-history";
 import { UsageChart } from "@/components/billing/usage-chart";
+import { CreditPacks } from "@/components/billing/credit-packs";
 
 const sectionVariants: Variants = {
   hidden: { opacity: 0, y: 20 },
@@ -51,6 +52,11 @@ export default function BillingPage() {
           Choisir un plan
         </h2>
         <PricingCards />
+      </motion.div>
+
+      {/* Section 2b — Credit packs (Sprint 7) */}
+      <motion.div variants={sectionVariants}>
+        <CreditPacks />
       </motion.div>
 
       {/* Section 3 — Usage Chart */}

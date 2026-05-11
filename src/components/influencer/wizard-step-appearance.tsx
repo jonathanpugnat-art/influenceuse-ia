@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Sparkles, User, RefreshCw, Coins, AlertCircle } from "lucide-react";
@@ -103,13 +103,14 @@ export function WizardStepAppearance({
     },
   });
 
-  const handleGenerate = useCallback(() => {
+  const handleGenerate = () => {
     if (!hasEnoughCredits) return;
     setIsGenerating(true);
     const hairStyle = [data.hairLength, data.hairTexture].filter(Boolean).join(", ") || undefined;
     const fashionStyle = data.fashionStyles?.length ? data.fashionStyles.join(", ") : undefined;
     generateMutation.mutate({
       age: data.age || 24,
+      gender: data.gender ?? "female",
       style: {
         ethnicity: data.ethnicity || undefined,
         hairColor: data.hairColor || undefined,
@@ -118,21 +119,7 @@ export function WizardStepAppearance({
         fashionStyle,
       },
     });
-  }, [
-    hasEnoughCredits,
-    data.age,
-    data.ethnicity,
-    data.hairColor,
-    data.hairLength,
-    data.hairTexture,
-    data.bodyType,
-    data.fashionStyles,
-    generateMutation,
-    setIsGenerating,
-    setGeneratedImages,
-    setSelectedImageIndex,
-    updateData,
-  ]);
+  };
 
   const handleSelectImage = (index: number) => {
     setSelectedImageIndex(index);
@@ -165,7 +152,14 @@ export function WizardStepAppearance({
     updateData({ fashionStyles: next });
   };
 
-  const canGenerate = ethnicity && hairColor && bodyType;
+  // Sprint 12 — let users generate from the very first click. The AI service
+  // already substitutes sensible defaults (caucasian / brown / average / casual)
+  // so blocking the button on three selects was creating dead clicks. Anyone
+  // who wants more control can fill the fields, but it's no longer a blocker.
+  const hasAnyChoice = Boolean(
+    ethnicity || hairColor || hairLength || hairTexture || bodyType || fashionStyles.length > 0
+  );
+  const canGenerate = true;
 
   return (
     <div className="space-y-6">
@@ -312,7 +306,7 @@ export function WizardStepAppearance({
             </div>
           </div>
 
-          {/* Generate button */}
+          {/* Generate button (Sprint 12 — never blocked) */}
           <button
             type="button"
             onClick={() => handleGenerate()}
@@ -324,13 +318,23 @@ export function WizardStepAppearance({
                 <RefreshCw className="h-4 w-4 animate-spin" />
                 Génération en cours...
               </>
-            ) : (
+            ) : hasAnyChoice ? (
               <>
                 <Sparkles className="h-4 w-4" />
                 Générer l&apos;apparence
               </>
+            ) : (
+              <>
+                <Sparkles className="h-4 w-4" />
+                Surprends-moi ✨
+              </>
             )}
           </button>
+          {!hasAnyChoice && (
+            <p className="text-center text-xs text-slate-500">
+              Sans choix, on génère 4 visages variés à partir d&apos;un style par défaut
+            </p>
+          )}
         </div>
 
         {/* Right column — Preview */}

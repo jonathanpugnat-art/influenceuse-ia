@@ -1,10 +1,12 @@
 "use client";
 
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 
 export interface WizardData {
   // Step 1 — Identity
   name: string;
+  gender: "female" | "male" | "nonbinary";
   bio: string;
   personality: string;
   niche: string;
@@ -46,6 +48,7 @@ interface WizardState {
 
 const initialData: WizardData = {
   name: "",
+  gender: "female",
   bio: "",
   personality: "",
   niche: "",
@@ -66,27 +69,54 @@ const initialData: WizardData = {
   onlyfansUsername: "",
 };
 
-export const useInfluencerWizard = create<WizardState>()((set) => ({
-  step: 1,
-  data: { ...initialData },
-  generatedImages: [],
-  selectedImageIndex: 0,
-  isGenerating: false,
-  setStep: (step) => set({ step }),
-  nextStep: () => set((s) => ({ step: Math.min(s.step + 1, 4) })),
-  prevStep: () => set((s) => ({ step: Math.max(s.step - 1, 1) })),
-  updateData: (partial) =>
-    set((s) => ({ data: { ...s.data, ...partial } })),
-  setGeneratedImages: (images) => set({ generatedImages: images }),
-  setSelectedImageIndex: (index) => set({ selectedImageIndex: index }),
-  setIsGenerating: (val) => set({ isGenerating: val }),
-  reset: () =>
-    set({
+/**
+ * Sprint 12 — Persist wizard state to localStorage.
+ *
+ * Why: image generation costs real money (credits), so if a user closes the
+ * tab between step 2 (images generated) and step 4 (final create), they lose
+ * everything. Persisting the wizard state means a refresh / accidental close
+ * is now recoverable — they reopen the wizard and pick up where they left off.
+ *
+ * `isGenerating` is intentionally NOT persisted (it would lock the UI on a
+ * spinner forever if the request failed mid-flight then the page was reloaded).
+ */
+export const useInfluencerWizard = create<WizardState>()(
+  persist(
+    (set) => ({
       step: 1,
       data: { ...initialData },
       generatedImages: [],
       selectedImageIndex: 0,
       isGenerating: false,
+      setStep: (step) => set({ step }),
+      nextStep: () => set((s) => ({ step: Math.min(s.step + 1, 4) })),
+      prevStep: () => set((s) => ({ step: Math.max(s.step - 1, 1) })),
+      updateData: (partial) =>
+        set((s) => ({ data: { ...s.data, ...partial } })),
+      setGeneratedImages: (images) => set({ generatedImages: images }),
+      setSelectedImageIndex: (index) => set({ selectedImageIndex: index }),
+      setIsGenerating: (val) => set({ isGenerating: val }),
+      reset: () =>
+        set({
+          step: 1,
+          data: { ...initialData },
+          generatedImages: [],
+          selectedImageIndex: 0,
+          isGenerating: false,
+        }),
     }),
-}));
+    {
+      name: "influencer-wizard-draft",
+      storage: createJSONStorage(() => localStorage),
+      // Only persist the data that costs money or effort to recreate.
+      partialize: (s) => ({
+        step: s.step,
+        data: s.data,
+        generatedImages: s.generatedImages,
+        selectedImageIndex: s.selectedImageIndex,
+      }),
+      version: 1,
+    }
+  )
+);
 

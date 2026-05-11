@@ -155,16 +155,7 @@ export default function InfluencerDetailPage({
                 >
                   {status.label}
                 </Badge>
-                <Badge
-                  className={cn(
-                    "border px-2.5 py-0.5 text-xs",
-                    influencer.isNsfw
-                      ? "border-red-500/20 bg-red-500/10 text-red-400"
-                      : "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-                  )}
-                >
-                  {influencer.isNsfw ? "NSFW" : "SFW"}
-                </Badge>
+                {/* NSFW/SFW badge — hidden for now */}
               </div>
 
               {/* Inline stats */}

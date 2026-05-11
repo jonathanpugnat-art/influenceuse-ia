@@ -50,8 +50,12 @@ export function PhotoPublish() {
   const [scheduleMode, setScheduleMode] = useState<"now" | "schedule">("now");
   const [isGenCaption, setIsGenCaption] = useState(false);
   const [isGenHashtags, setIsGenHashtags] = useState(false);
+  // Sprint 8 — A/B variants of the caption.
+  const [variants, setVariants] = useState<string[] | null>(null);
+  const [isGenVariants, setIsGenVariants] = useState(false);
 
   const captionMutation = trpc.content.generateCaption.useMutation();
+  const variantsMutation = trpc.content.generateCaptionVariants.useMutation();
   const hashtagMutation = trpc.content.generateHashtags.useMutation();
   const updateMutation = trpc.content.updateContent.useMutation();
   const bundleMutation = trpc.content.prepareOnlyFansBundle.useMutation();
@@ -85,6 +89,31 @@ export function PhotoPublish() {
       setIsGenCaption(false);
     }
   }, [params, captionPlatform, language, captionMutation, setCaption]);
+
+  // Sprint 8 — Generate 2 A/B caption variants the user can pick from.
+  const handleGenVariants = useCallback(async () => {
+    if (!params.influencerId) return;
+    setIsGenVariants(true);
+    setVariants(null);
+    try {
+      const result = await variantsMutation.mutateAsync({
+        influencerId: params.influencerId,
+        contentDescription: `Photo: ${params.scene}, ${params.pose}, ${params.outfit || "casual"}`,
+        platform: captionPlatform as "INSTAGRAM",
+        language,
+      });
+      setVariants(result.variants);
+    } catch {
+      toast.error("Erreur lors de la génération des variantes");
+    } finally {
+      setIsGenVariants(false);
+    }
+  }, [params, captionPlatform, language, variantsMutation]);
+
+  const pickVariant = (text: string) => {
+    setCaption(text);
+    setVariants(null);
+  };
 
   // Generate hashtags
   const handleGenHashtags = useCallback(async () => {
@@ -180,16 +209,47 @@ export function PhotoPublish() {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label className="text-xs text-slate-400">Caption</Label>
-            <button
-              type="button"
-              onClick={handleGenCaption}
-              disabled={isGenCaption || !params.influencerId}
-              className="flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300 disabled:opacity-40"
-            >
-              <Sparkles className="h-3 w-3" />
-              {isGenCaption ? "Génération..." : "Générer"}
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleGenCaption}
+                disabled={isGenCaption || isGenVariants || !params.influencerId}
+                className="flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300 disabled:opacity-40"
+              >
+                <Sparkles className="h-3 w-3" />
+                {isGenCaption ? "Génération..." : "Générer"}
+              </button>
+              <button
+                type="button"
+                onClick={handleGenVariants}
+                disabled={isGenVariants || isGenCaption || !params.influencerId}
+                className="flex items-center gap-1 rounded-md border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-xs text-violet-300 hover:bg-violet-500/20 disabled:opacity-40"
+                title="Génère 2 variantes A/B et choisis la meilleure"
+              >
+                {isGenVariants ? "A/B…" : "A/B"}
+              </button>
+            </div>
           </div>
+          {variants && variants.length > 0 && (
+            <div className="space-y-2 rounded-lg border border-violet-500/30 bg-violet-500/5 p-3">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-violet-300">
+                2 variantes — choisis la meilleure
+              </p>
+              {variants.map((v, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => pickVariant(v)}
+                  className="block w-full rounded-md border border-slate-700/60 bg-slate-900/60 p-2.5 text-left text-xs text-slate-200 transition-colors hover:border-violet-500/60 hover:bg-slate-900"
+                >
+                  <span className="mb-1 block text-[10px] font-bold text-violet-400">
+                    Variante {i === 0 ? "A" : "B"}
+                  </span>
+                  {v}
+                </button>
+              ))}
+            </div>
+          )}
           <Textarea
             value={caption}
             onChange={(e) => setCaption(e.target.value)}

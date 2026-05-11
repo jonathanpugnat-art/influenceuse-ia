@@ -24,6 +24,7 @@ import {
   LayoutGrid,
   Columns,
   List,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTranslations } from "next-intl";
@@ -33,6 +34,9 @@ import { MonthView } from "@/components/calendar/month-view";
 import { WeekView } from "@/components/calendar/week-view";
 import { ListView } from "@/components/calendar/list-view";
 import { ContentDetailModal } from "@/components/calendar/content-detail-modal";
+import { ContentPlanDialog } from "@/components/calendar/content-plan-dialog";
+import { BatchProgressPanel } from "@/components/calendar/batch-progress-panel";
+import { RecyclePanel } from "@/components/calendar/recycle-panel";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -57,6 +61,7 @@ export default function CalendarPage() {
   const [view, setView] = useState<CalendarView>("month");
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [planOpen, setPlanOpen] = useState(false);
 
   const hasSetMobileView = useRef(false);
   useEffect(() => {
@@ -161,13 +166,23 @@ export default function CalendarPage() {
           <CalendarIcon className="h-6 w-6 text-violet-400" />
           <h1 className="text-2xl font-bold text-white">{t("title")}</h1>
         </div>
-        <Link
-          href="/content"
-          className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-4 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
-        >
-          <Plus className="h-4 w-4" />
-          {tDashboard("createContent")}
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setPlanOpen(true)}
+            className="flex items-center gap-2 rounded-xl border border-violet-500/40 bg-violet-500/10 px-4 py-2.5 text-sm font-medium text-violet-200 transition-colors hover:bg-violet-500/20"
+          >
+            <Sparkles className="h-4 w-4" />
+            {t("generatePlan")}
+          </button>
+          <Link
+            href="/content"
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-4 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
+          >
+            <Plus className="h-4 w-4" />
+            {tDashboard("createContent")}
+          </Link>
+        </div>
       </motion.div>
 
       {/* Controls */}
@@ -229,6 +244,16 @@ export default function CalendarPage() {
         </div>
       </motion.div>
 
+      {/* Batch progress (Phase 4) */}
+      <motion.div variants={sectionVariants}>
+        <BatchProgressPanel />
+      </motion.div>
+
+      {/* Sprint 8 — recycle top performers */}
+      <motion.div variants={sectionVariants}>
+        <RecyclePanel />
+      </motion.div>
+
       {/* Calendar content */}
       <motion.div variants={sectionVariants}>
         {isLoading ? (
@@ -282,6 +307,9 @@ export default function CalendarPage() {
           setSelectedEvent(null);
         }}
       />
+
+      {/* Content plan dialog (Phase 3 — agent contenu) */}
+      <ContentPlanDialog open={planOpen} onClose={() => setPlanOpen(false)} />
     </motion.div>
   );
 }

@@ -3,6 +3,12 @@ import { nanoid } from "nanoid";
 import { uploadFromUrl } from "@/server/services/storage.service";
 import { checkCredits, deductCredits } from "@/server/services/credits.service";
 import { CREDIT_COSTS } from "@/lib/constants";
+import {
+  buildVideoPrompt,
+  resolveReplicateVideoModel,
+  resolveLipSyncModel,
+  type ReelStylePreset,
+} from "@/lib/prompts/video-prompts";
 
 // ──────────────────────────────────────────────
 // Types
@@ -10,12 +16,26 @@ import { CREDIT_COSTS } from "@/lib/constants";
 
 export interface VideoGenerationInput {
   influencerId: string;
+  /** First frame of the video (scene start); required. */
   baseImageUrl: string;
+  /**
+   * Optional second reference for MiniMax `subject_reference` (S2V identity path).
+   * When omitted, `baseImageUrl` is duplicated so the model always gets a character lock.
+   */
+  subjectReferenceUrl?: string;
   duration: 5 | 10;
   script: string;
   videoType: string;
+  /** Comma-separated effect keys (see video-prompts). */
   effects?: string;
+  reelStylePreset?: ReelStylePreset;
   isNsfw: boolean;
+  /**
+   * Sprint 10 — when `reelStylePreset === "lip_sync"`, this audio URL is
+   * applied as a post-process to align the speaker's lips with the audio.
+   * The base video is still generated normally first.
+   */
+  audioUrl?: string;
 }
 
 export interface VideoGenerationOutput {
@@ -27,8 +47,6 @@ export interface VideoGenerationOutput {
 // ──────────────────────────────────────────────
 // Replicate SDK
 // ──────────────────────────────────────────────
-
-const MODEL_VIDEO = "minimax/video-01" as const;
 
 let _replicate: Replicate | null = null;
 
@@ -89,80 +107,12 @@ function extractOutputUrls(output: unknown): string[] {
 }
 
 // ──────────────────────────────────────────────
-// Video type prompt builders — TikTok/Instagram style
-// ──────────────────────────────────────────────
-
-const VIDEO_TYPE_PROMPTS: Record<string, string> = {
-  talking_head:
-    "talking to camera like a TikTok, natural hand gestures, casual tone, phone propped up on desk, ring light reflection in eyes, genuine expressions",
-  transition:
-    "TikTok outfit transition, hand covers camera then reveals new outfit, snap transition effect, fun and creative, trending transition style",
-  dance:
-    "TikTok dance trend, fun casual choreography in bedroom or living room, phone propped against wall, natural rhythm, viral dance challenge",
-  workout:
-    "gym workout clip, phone propped on bench filming, exercise form demo, sweat on skin, gym mirror visible, motivational fitness content",
-  unboxing:
-    "unboxing haul on bed or table, excited genuine reaction, showing items close to camera, tissue paper and packaging visible, ASMR style",
-  travel:
-    "travel vlog clip, walking through streets or landmark, looking around in awe, phone held low angle, golden hour, wanderlust vibes",
-  cooking:
-    "cooking video overhead angle, hands chopping and stirring, steam rising, kitchen counter visible, quick recipe style, satisfying food prep",
-  tutorial:
-    "get ready with me style, bathroom mirror, applying makeup or doing hair, talking to camera casually, beauty products visible on counter",
-  grwm:
-    "get ready with me, sitting at vanity mirror, doing makeup step by step, products on table, chatting casually, morning routine",
-  ootd:
-    "outfit of the day reveal, spinning in mirror, showing outfit from angles, bedroom background, closet visible, fashion try-on",
-};
-
-const VIDEO_EFFECT_PROMPTS: Record<string, string> = {
-  "slow-mo":
-    "slow motion hair flip or movement, dramatic but casual, iPhone slow-mo mode",
-  zoom: "quick zoom in on face or outfit detail, TikTok zoom trend",
-  pan: "smooth phone pan around the person, revealing environment",
-  timelapse: "getting ready timelapse, fast forward routine, sped up",
-  bokeh:
-    "portrait mode video, blurred background, face in sharp focus",
-  none: "no special effects, natural phone recording",
-};
-
-function buildVideoPrompt(input: VideoGenerationInput): string {
-  const parts: string[] = [];
-
-  parts.push(
-    "realistic phone video, filmed on iPhone, vertical video, social media reel"
-  );
-
-  const typePrompt =
-    VIDEO_TYPE_PROMPTS[input.videoType] ?? input.videoType;
-  parts.push(typePrompt);
-
-  if (input.script) {
-    parts.push(input.script);
-  }
-
-  if (input.effects) {
-    const effect =
-      VIDEO_EFFECT_PROMPTS[input.effects] ?? input.effects;
-    parts.push(effect);
-  }
-
-  parts.push(
-    "natural handheld camera movement, slight camera shake, " +
-      "realistic skin and hair movement, natural lighting, " +
-      "TikTok style video, Instagram reel quality, " +
-      "real person natural movement, casual and authentic"
-  );
-
-  return parts.join(", ");
-}
-
-// ──────────────────────────────────────────────
 // Public API
 // ──────────────────────────────────────────────
 
 /**
- * Generate a short video (4-10s) from a reference image.
+ * Generate a short video from a reference image (MiniMax image-to-video).
+ * Uses `subject_reference` when possible for stronger identity (Replicate MiniMax schema).
  */
 export async function generateVideo(
   userId: string,
@@ -176,38 +126,96 @@ export async function generateVideo(
     );
   }
 
-  if (!input.baseImageUrl) {
+  const firstFrame = input.baseImageUrl?.trim();
+  if (!firstFrame) {
     throw new Error(
       "Une image de référence est obligatoire pour la génération vidéo."
     );
   }
 
-  const prompt = buildVideoPrompt(input);
+  const preset: ReelStylePreset = input.reelStylePreset ?? "stable_face";
+  const prompt = buildVideoPrompt({
+    videoType: input.videoType,
+    script: input.script,
+    effects: input.effects,
+    reelStylePreset: preset,
+  });
 
-  const params: Record<string, unknown> = {
-    prompt,
-    first_frame_image: input.baseImageUrl,
-    prompt_optimizer: true,
-  };
+  const subjectRef = (input.subjectReferenceUrl?.trim() || firstFrame).trim();
+  const hasReferenceImage = Boolean(subjectRef);
+
+  // Sprint 7 — pick the best model for this preset, given whether we have a
+  // reference image (some models like Runway Gen-4 don't accept one).
+  const modelDesc = resolveReplicateVideoModel({ preset, hasReferenceImage });
+  const model = modelDesc.id;
+  const usePromptOptimizer = preset === "creative" && modelDesc.internalPromptOptimizer;
+
+  const params: Record<string, unknown> = { prompt };
+  if (modelDesc.supportsImageRef && firstFrame) {
+    params.first_frame_image = firstFrame;
+    if (subjectRef) params.subject_reference = subjectRef;
+  }
+  if (modelDesc.internalPromptOptimizer) {
+    params.prompt_optimizer = usePromptOptimizer;
+  }
 
   try {
     console.log("[ai-video] Generating video...");
-    console.log("[ai-video] Model:", MODEL_VIDEO);
+    console.log("[ai-video] Model:", model, "(", modelDesc.label, ")");
+    console.log("[ai-video] Preset:", preset, "prompt_optimizer:", usePromptOptimizer);
 
-    const outputUrls = await runReplicatePrediction(MODEL_VIDEO, params);
+    const outputUrls = await runReplicatePrediction(model, params);
 
     if (outputUrls.length === 0) {
       throw new Error("No video generated");
     }
 
+    let finalVideoUrl: string = outputUrls[0];
+    let lipSyncApplied = false;
+    let lipSyncModel: string | null = null;
+
+    // Sprint 10 — Lip-sync post-process. When the user picked `lip_sync` AND
+    // provided an audioUrl, we run the base video through a dedicated lip-sync
+    // model so the speaker's mouth matches the audio. We only consume credits
+    // once for the whole pipeline (base + post-process).
+    if (preset === "lip_sync" && input.audioUrl?.trim()) {
+      const lipSync = resolveLipSyncModel();
+      if (lipSync) {
+        try {
+          console.log("[ai-video] Lip-sync post-process:", lipSync.label);
+          const syncOutput = await runReplicatePrediction(lipSync.id, {
+            video: finalVideoUrl,
+            audio: input.audioUrl.trim(),
+          });
+          if (syncOutput.length > 0) {
+            finalVideoUrl = syncOutput[0];
+            lipSyncApplied = true;
+            lipSyncModel = lipSync.id;
+          }
+        } catch (syncErr) {
+          // Soft-fail: keep the base video so the user still gets something.
+          console.warn(
+            "[ai-video] lip-sync post-process failed, keeping base video:",
+            syncErr instanceof Error ? syncErr.message : syncErr
+          );
+        }
+      }
+    }
+
     const videoFilename = `reel-${input.influencerId}-${nanoid(6)}.mp4`;
-    const storedUrl = await uploadFromUrl(outputUrls[0], videoFilename);
+    const storedUrl = await uploadFromUrl(finalVideoUrl, videoFilename);
 
     await deductCredits(userId, cost);
 
     return {
       videoUrl: storedUrl,
-      parameters: params,
+      parameters: {
+        ...params,
+        replicateModel: model,
+        durationRequestedSec: input.duration,
+        lipSyncApplied,
+        lipSyncModel,
+      },
     };
   } catch (error) {
     console.error("[ai-video] generateVideo error:", error);

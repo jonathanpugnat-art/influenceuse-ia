@@ -26,6 +26,8 @@ import { GrowthChart } from "@/components/analytics/growth-chart";
 import { TopContent } from "@/components/analytics/top-content";
 import { PlatformBreakdown } from "@/components/analytics/platform-breakdown";
 import { PerformanceTable } from "@/components/analytics/performance-table";
+import { CreditRoi } from "@/components/analytics/credit-roi";
+import { BestHoursHeatmap } from "@/components/analytics/best-hours-heatmap";
 import { cn } from "@/lib/utils";
 
 const PERIODS = [
@@ -106,6 +108,13 @@ export default function AnalyticsPage() {
       limit: 10,
       sortBy: tableSortBy,
       sortOrder: tableSortOrder,
+    });
+  const { data: roiRows, isLoading: loadingRoi } =
+    trpc.analytics.getCreditROI.useQuery({ period });
+  const { data: bestHours, isLoading: loadingBestHours } =
+    trpc.analytics.getBestPostingHours.useQuery({
+      influencerId: effectiveInfluencerId,
+      period,
     });
 
   const togglePlatform = (platform: string) => {
@@ -344,6 +353,15 @@ export default function AnalyticsPage() {
       >
         <TopContent items={contentPerf?.top ?? []} />
         <PlatformBreakdown data={platformBreakdown ?? []} />
+      </motion.section>
+
+      {/* Section 3b — Sprint 8: ROI + Best posting hours */}
+      <motion.section
+        variants={sectionVariants}
+        className="grid gap-6 lg:grid-cols-2"
+      >
+        <CreditRoi rows={roiRows} isLoading={loadingRoi} />
+        <BestHoursHeatmap data={bestHours} isLoading={loadingBestHours} />
       </motion.section>
 
       {/* Section 4 — Performance table */}

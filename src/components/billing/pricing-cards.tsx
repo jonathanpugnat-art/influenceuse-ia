@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { PLANS } from "@/lib/constants";
 
 interface PlanFeature {
   label: string;
@@ -20,49 +21,92 @@ interface PlanCard {
   features: PlanFeature[];
 }
 
+// All numbers (price, credits, max influencers, feature flags) come from
+// `PLANS` so the in-app billing screen is always consistent with the
+// public landing/pricing pages and with what we provision after Stripe
+// checkout.
+const fmtCredits = (n: number): string =>
+  Number.isFinite(n) ? `${n} crédits/mois` : "Crédits illimités";
+const fmtInfluencers = (n: number): string => {
+  if (!Number.isFinite(n)) return "Influenceuses illimitées";
+  return n === 1 ? "1 influenceuse" : `${n} influenceuses`;
+};
+
 const plans: PlanCard[] = [
   {
     id: "FREE",
-    name: "Free",
-    price: 0,
+    name: PLANS.FREE.name,
+    price: PLANS.FREE.price,
     priceId: null,
     popular: false,
     features: [
-      { label: "1 influenceuse", included: true },
-      { label: "50 crédits/mois", included: true },
+      { label: fmtInfluencers(PLANS.FREE.maxInfluencers), included: true },
+      { label: fmtCredits(PLANS.FREE.credits), included: true },
       { label: "Génération de photos", included: true },
-      { label: "Génération de vidéos", included: false },
-      { label: "Contenu NSFW", included: false },
-      { label: "Publication automatique", included: false },
-      { label: "Analytics avancés", included: false },
+      { label: "Génération de vidéos", included: PLANS.FREE.hasVideo },
+      { label: "Publication automatique", included: PLANS.FREE.hasAutoPublish },
+      {
+        label: "Analytics avancés",
+        included: PLANS.FREE.hasAdvancedAnalytics,
+      },
+    ],
+  },
+  {
+    id: "STARTER",
+    name: PLANS.STARTER.name,
+    price: PLANS.STARTER.price,
+    priceId: process.env.NEXT_PUBLIC_STRIPE_STARTER_PRICE_ID ?? null,
+    popular: false,
+    features: [
+      { label: fmtInfluencers(PLANS.STARTER.maxInfluencers), included: true },
+      { label: fmtCredits(PLANS.STARTER.credits), included: true },
+      { label: "Génération de photos", included: true },
+      { label: "Génération de vidéos", included: PLANS.STARTER.hasVideo },
+      {
+        label: "Publication automatique",
+        included: PLANS.STARTER.hasAutoPublish,
+      },
+      {
+        label: "Analytics avancés",
+        included: PLANS.STARTER.hasAdvancedAnalytics,
+      },
     ],
   },
   {
     id: "PRO",
-    name: "Pro",
-    price: 29,
+    name: PLANS.PRO.name,
+    price: PLANS.PRO.price,
     priceId: process.env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID ?? null,
     popular: true,
     features: [
-      { label: "5 influenceuses", included: true },
-      { label: "500 crédits/mois", included: true },
+      { label: fmtInfluencers(PLANS.PRO.maxInfluencers), included: true },
+      { label: fmtCredits(PLANS.PRO.credits), included: true },
       { label: "Génération de photos", included: true },
-      { label: "Génération de vidéos", included: true },
-      { label: "Contenu NSFW", included: true },
-      { label: "Publication automatique", included: true },
-      { label: "Analytics avancés", included: false },
+      { label: "Génération de vidéos", included: PLANS.PRO.hasVideo },
+      {
+        label: "Publication automatique",
+        included: PLANS.PRO.hasAutoPublish,
+      },
+      {
+        label: "Analytics avancés",
+        included: PLANS.PRO.hasAdvancedAnalytics,
+      },
     ],
   },
   {
     id: "ENTERPRISE",
-    name: "Enterprise",
-    price: 99,
+    name: PLANS.ENTERPRISE.name,
+    price: PLANS.ENTERPRISE.price,
     priceId: process.env.NEXT_PUBLIC_STRIPE_ENTERPRISE_PRICE_ID ?? null,
     popular: false,
     features: [
-      { label: "Influenceuses illimitées", included: true },
-      { label: "Crédits illimités", included: true },
-      { label: "Tout inclus", included: true },
+      {
+        label: fmtInfluencers(PLANS.ENTERPRISE.maxInfluencers),
+        included: true,
+      },
+      { label: fmtCredits(PLANS.ENTERPRISE.credits), included: true },
+      { label: "Génération de vidéos", included: true },
+      { label: "Génération batch", included: true },
       { label: "Analytics avancés", included: true },
       { label: "Support prioritaire", included: true },
     ],
@@ -88,16 +132,22 @@ export function PricingCards() {
     checkoutMutation.mutate({ priceId });
   };
 
+  // Plan ranking — ordered low → high so we can derive upgrade / downgrade
+  // states by index comparison instead of hand-coding every pair.
+  const TIER_ORDER = ["FREE", "STARTER", "PRO", "ENTERPRISE"] as const;
+  const userTier = TIER_ORDER.indexOf(
+    userPlan as (typeof TIER_ORDER)[number]
+  );
+
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
       {plans.map((plan) => {
         const isCurrent = userPlan === plan.id;
-        const isUpgrade =
-          (userPlan === "FREE" && plan.id !== "FREE") ||
-          (userPlan === "PRO" && plan.id === "ENTERPRISE");
-        const isDowngrade =
-          (userPlan === "PRO" && plan.id === "FREE") ||
-          (userPlan === "ENTERPRISE" && plan.id !== "ENTERPRISE");
+        const planTier = TIER_ORDER.indexOf(
+          plan.id as (typeof TIER_ORDER)[number]
+        );
+        const isUpgrade = planTier > userTier;
+        const isDowngrade = planTier < userTier;
 
         return (
           <div

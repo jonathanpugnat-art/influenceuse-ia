@@ -14,11 +14,20 @@ const mockDb = vi.hoisted(() => ({
 }));
 
 vi.mock("@/server/db", () => ({ db: mockDb }));
+// Minimal `PLANS` mock — only the fields actually consumed by the router
+// under test need to be present. We include every tier (FREE/STARTER/PRO/
+// ENTERPRISE) because `stripe.service.ts` (transitively imported via the
+// billing router) reads `PLANS.<tier>.credits` at module load time.
 vi.mock("@/lib/constants", () => ({
   PLANS: {
-    FREE: { name: "Free", maxInfluencers: 1 },
-    PRO: { name: "Pro", maxInfluencers: 5 },
-    ENTERPRISE: { name: "Enterprise", maxInfluencers: Infinity },
+    FREE: { name: "Free", maxInfluencers: 1, credits: 50 },
+    STARTER: { name: "Creator", maxInfluencers: 2, credits: 500 },
+    PRO: { name: "Pro", maxInfluencers: 5, credits: 1500 },
+    ENTERPRISE: {
+      name: "Agency",
+      maxInfluencers: Infinity,
+      credits: 5000,
+    },
   },
 }));
 

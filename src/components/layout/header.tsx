@@ -76,7 +76,7 @@ function Breadcrumb() {
 function PlanBadge() {
   const { data } = trpc.billing.getCurrentPlan.useQuery();
   const t = useTranslations("layout");
-  const plan = (data?.plan ?? "FREE") as "FREE" | "PRO" | "ENTERPRISE";
+  const plan = (data?.plan ?? "FREE") as "FREE" | "STARTER" | "PRO" | "ENTERPRISE";
 
   if (plan === "ENTERPRISE") {
     return (
@@ -90,6 +90,14 @@ function PlanBadge() {
     return (
       <Badge className="border-violet-500/30 bg-violet-500/10 px-2.5 py-0.5 text-xs text-violet-400">
         {t("planPro")}
+      </Badge>
+    );
+  }
+
+  if (plan === "STARTER") {
+    return (
+      <Badge className="border-indigo-500/30 bg-indigo-500/10 px-2.5 py-0.5 text-xs text-indigo-300">
+        {t("planStarter")}
       </Badge>
     );
   }

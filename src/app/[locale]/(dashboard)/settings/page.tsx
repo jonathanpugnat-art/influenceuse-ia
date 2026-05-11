@@ -36,6 +36,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { WebhooksSection } from "@/components/settings/webhooks-section";
+import { ApiKeysSection } from "@/components/settings/api-keys-section";
+import { ReferralSection } from "@/components/settings/referral-section";
 
 const UserProfileSection = dynamic(
   () =>
@@ -226,6 +229,15 @@ export default function SettingsPage() {
           </p>
         </CardContent>
       </Card>
+
+      {/* Sprint 9 — Public API keys */}
+      <ApiKeysSection />
+
+      {/* Sprint 9 — Referral program */}
+      <ReferralSection />
+
+      {/* Webhooks (Phase 5 — outbound distribution) */}
+      <WebhooksSection />
 
       {/* Danger Zone */}
       <Card className="border-red-500/20 bg-red-500/5">

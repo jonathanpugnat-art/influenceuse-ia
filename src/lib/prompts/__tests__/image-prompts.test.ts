@@ -5,13 +5,13 @@ import {
   buildBasePortraitPrompt,
   NEGATIVE_PROMPT_SFW,
   NEGATIVE_PROMPT_NSFW,
-  NSFW_TEMPLATES,
 } from "@/lib/prompts/image-prompts";
 
 describe("image-prompts", () => {
   describe("buildFullPrompt", () => {
-    it("generates a coherent prompt with all main parameters", () => {
+    it("generates a coherent prompt with all main parameters (female)", () => {
       const result = buildFullPrompt({
+        gender: "female",
         age: 25,
         ethnicity: "Caucasian",
         hairColor: "blonde",
@@ -35,26 +35,86 @@ describe("image-prompts", () => {
       expect(result).toContain("OOTD");
       expect(result).toContain("genuine big smile");
       expect(result).toContain("golden hour");
-      expect(result).toContain("iPhone 15 Pro");
-      expect(result).toContain("Instagram");
+      expect(result).toContain("iPhone");
+      expect(result).toContain("TikTok");
       expect(result).toContain("wind in hair");
+    });
+
+    it("front-loads outfit and brackets it with reinforcement (Sprint 11)", () => {
+      const result = buildFullPrompt({
+        gender: "female",
+        outfit: "red leather jacket with white sneakers",
+        scene: "urban",
+        pose: "fullBody",
+        expression: "natural",
+        style: "fashion_campaign",
+      });
+      // Outfit must come before scene description in the prompt.
+      const outfitPos = result.indexOf("red leather jacket");
+      const scenePos = result.indexOf("real city sidewalk");
+      expect(outfitPos).toBeGreaterThan(0);
+      expect(scenePos).toBeGreaterThan(outfitPos);
+      // We explicitly emphasize the outfit so the model doesn't drift.
+      expect(result).toContain("outfit clearly visible");
+      // The defanged style template must NOT contradict the outfit any more.
+      expect(result).not.toMatch(/luxury menswear|well-dressed.*luxury|effortless feminine style/);
+    });
+
+    it("encodes 'NOT a studio shoot' negatives directly in the positive prompt (Sprint 11.1)", () => {
+      const result = buildFullPrompt({
+        gender: "female",
+        scene: "cafe",
+        expression: "natural",
+        style: "natural",
+      });
+      // Flux Kontext Pro has no negative_prompt channel — we encode them inline.
+      expect(result).toContain("real candid iPhone photo");
+      expect(result).toContain("snapped by a friend on an iPhone");
+      expect(result).toContain("iPhone flash");
+      expect(result).toContain("NOT a studio photo");
+      expect(result).toContain("NOT AI-perfect");
+    });
+
+    it("generates a masculine prompt for male gender", () => {
+      const result = buildFullPrompt({
+        gender: "male",
+        age: 28,
+        scene: "urban",
+        pose: "fullBody",
+        expression: "serious",
+      });
+      expect(result).toContain("a man");
+      expect(result).toContain("masculine man");
+      expect(result).toContain("NO feminine clothing");
+      expect(result).toContain("leather backpack");
+      // Sprint 11.1 — "editorial stare" replaced with a more candid neutral.
+      expect(result).toContain("neutral expression");
+    });
+
+    it("includes location in prompt when provided", () => {
+      const result = buildFullPrompt({
+        gender: "female",
+        location: "Eiffel Tower Paris",
+      });
+      expect(result).toContain("Eiffel Tower Paris");
+      expect(result).toContain("famous landmark visible");
     });
 
     it("includes NSFW template only when isNsfw is true and nsfwLevel is set", () => {
       const sfw = buildFullPrompt({
+        gender: "female",
         isNsfw: false,
         nsfwLevel: "suggestive",
         expression: "natural",
       });
-      expect(sfw).not.toContain(NSFW_TEMPLATES.suggestive);
       expect(sfw).not.toContain("lingerie");
 
       const nsfw = buildFullPrompt({
+        gender: "female",
         isNsfw: true,
         nsfwLevel: "suggestive",
         expression: "natural",
       });
-      expect(nsfw).toContain(NSFW_TEMPLATES.suggestive);
       expect(nsfw).toContain("lingerie");
     });
 
@@ -65,7 +125,7 @@ describe("image-prompts", () => {
         expression: "natural",
       });
       expect(result).not.toContain("explicit");
-      expect(result).toContain("iPhone 15 Pro");
+      expect(result).toContain("iPhone");
     });
 
     it("uses fallback for unknown scene/pose/expression keys", () => {
@@ -79,29 +139,70 @@ describe("image-prompts", () => {
       expect(result).toContain("custom_expr");
     });
 
+    it("includes identity lock when useReferenceFace is true", () => {
+      const result = buildFullPrompt({
+        gender: "female",
+        useReferenceFace: true,
+        expression: "natural",
+      });
+      expect(result).toContain("same exact person as the reference photo");
+      expect(result).toContain("identical facial identity");
+    });
+
+    it("does not add identity lock when useReferenceFace is false", () => {
+      const result = buildFullPrompt({
+        gender: "female",
+        useReferenceFace: false,
+        expression: "natural",
+      });
+      expect(result).not.toContain("same exact person as the reference photo");
+    });
+
     it("always ends with quality and can append customPrompt", () => {
       const result = buildFullPrompt({
         customPrompt: "extra detail",
       });
-      expect(result).toContain("iPhone 15 Pro");
-      expect(result).toContain("Instagram");
+      expect(result).toContain("iPhone");
+      expect(result).toContain("TikTok");
       expect(result).toContain("extra detail");
     });
   });
 
   describe("buildNegativePrompt", () => {
-    it("returns SFW negative prompt when isNsfw is false", () => {
-      const result = buildNegativePrompt(false);
+    it("returns SFW negative prompt for female", () => {
+      const result = buildNegativePrompt(false, "female");
       expect(result).toBe(NEGATIVE_PROMPT_SFW);
       expect(result).toContain("nsfw");
       expect(result).toContain("nude");
     });
 
     it("returns NSFW negative prompt when isNsfw is true", () => {
-      const result = buildNegativePrompt(true);
+      const result = buildNegativePrompt(true, "female");
       expect(result).toBe(NEGATIVE_PROMPT_NSFW);
       expect(result).not.toContain("nsfw");
       expect(result).not.toContain("nude");
+    });
+
+    it("adds face-lock negative terms when lockFace is true", () => {
+      const result = buildNegativePrompt(false, "female", { lockFace: true });
+      expect(result).toContain(NEGATIVE_PROMPT_SFW);
+      expect(result).toContain("face swap");
+      expect(result).toContain("wrong face");
+    });
+
+    it("adds face-lock and masculine terms for male with lockFace", () => {
+      const result = buildNegativePrompt(false, "male", { lockFace: true });
+      expect(result).toContain("dress");
+      expect(result).toContain("face swap");
+    });
+
+    it("adds masculine negative terms for male gender", () => {
+      const result = buildNegativePrompt(false, "male");
+      expect(result).toContain(NEGATIVE_PROMPT_SFW);
+      expect(result).toContain("dress");
+      expect(result).toContain("skirt");
+      expect(result).toContain("lipstick");
+      expect(result).toContain("feminine clothing");
     });
   });
 
@@ -121,6 +222,22 @@ describe("image-prompts", () => {
       expect(result).toContain("straight");
       expect(result).toContain("athletic");
       expect(result).toContain("streetwear");
+    });
+
+    it("uses gender label in base portrait", () => {
+      const female = buildBasePortraitPrompt({
+        age: 25, ethnicity: "caucasian", hairColor: "brown",
+        hairStyle: "long", bodyType: "slim", fashionStyle: "casual",
+        gender: "female",
+      });
+      expect(female).toContain("woman");
+
+      const male = buildBasePortraitPrompt({
+        age: 30, ethnicity: "caucasian", hairColor: "black",
+        hairStyle: "short", bodyType: "athletic", fashionStyle: "casual",
+        gender: "male",
+      });
+      expect(male).toContain("man");
     });
   });
 });

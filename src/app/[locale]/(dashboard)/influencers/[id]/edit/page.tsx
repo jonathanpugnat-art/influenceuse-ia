@@ -33,6 +33,7 @@ const niches = [
 
 const schema = z.object({
   name: z.string().min(2).max(50),
+  gender: z.enum(["female", "male", "nonbinary"]),
   bio: z.string().min(10).max(2000),
   personality: z.string().min(10).max(2000),
   niche: z.enum(["FASHION", "FITNESS", "LIFESTYLE", "TRAVEL", "TECH", "GAMING", "ADULT", "FOOD"]),
@@ -81,6 +82,7 @@ export default function EditInfluencerPage({
     resolver: zodResolver(schema),
     defaultValues: {
       name: "",
+      gender: "female",
       bio: "",
       personality: "",
       niche: "FASHION",
@@ -90,6 +92,7 @@ export default function EditInfluencerPage({
     values: influencer
       ? {
           name: influencer.name,
+          gender: (influencer.gender as "female" | "male" | "nonbinary") ?? "female",
           bio: influencer.bio,
           personality: influencer.personality,
           niche: influencer.niche,
@@ -136,6 +139,7 @@ export default function EditInfluencerPage({
     updateMutation.mutate({
       id,
       name: formData.name,
+      gender: formData.gender,
       bio: formData.bio,
       personality: formData.personality,
       niche: formData.niche,
@@ -258,16 +262,7 @@ export default function EditInfluencerPage({
               )}
             </div>
 
-            <div className="flex items-center justify-between rounded-xl border border-slate-800/50 bg-slate-800/20 p-4">
-              <Label className="text-slate-300">Contenu adulte (NSFW)</Label>
-              <Controller
-                name="isNsfw"
-                control={form.control}
-                render={({ field }) => (
-                  <Switch checked={field.value} onCheckedChange={field.onChange} />
-                )}
-              />
-            </div>
+            {/* NSFW toggle — hidden for now, will be re-enabled later */}
           </div>
 
           {/* Colonne 2 — Apparence */}

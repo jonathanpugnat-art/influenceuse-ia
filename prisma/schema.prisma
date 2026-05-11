@@ -16,6 +16,7 @@ datasource db {
 
 enum Plan {
   FREE
+  STARTER
   PRO
   ENTERPRISE
 }
@@ -107,6 +108,14 @@ model User {
 
   influencers    Influencer[]
   generationJobs GenerationJob[]
+  webhooks       Webhook[]
+
+  // Sprint 9 — B2B
+  apiKeys              ApiKey[]
+  ownedWorkspaces      Workspace[]       @relation("OwnedWorkspaces")
+  workspaceMemberships WorkspaceMember[]
+  referralsMade        Referral[]        @relation("ReferralsAsReferrer")
+  referralReceived     Referral?         @relation("ReferralsAsReferred")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -118,23 +127,24 @@ model User {
 
 /// Une influenceuse IA virtuelle
 model Influencer {
-  id          String           @id @default(cuid())
-  userId      String
-  name        String
-  slug        String           @unique
-  bio         String           @db.Text
-  personality String           @db.Text
-  niche       Niche
-  age         Int
+  id           String           @id @default(cuid())
+  userId       String
+  name         String
+  slug         String           @unique
+  bio          String           @db.Text
+  personality  String           @db.Text
+  gender       String           @default("female")
+  niche        Niche
+  age          Int
   /// Stocke : { ethnicity, hairColor, hairStyle, bodyType, fashionStyle }
-  style       Json
+  style        Json
   /// Image de référence du visage pour la consistance
   baseImageUrl String?
-  avatarUrl   String?
-  isNsfw      Boolean          @default(false)
-  status      InfluencerStatus @default(ACTIVE)
+  avatarUrl    String?
+  isNsfw       Boolean          @default(false)
+  status       InfluencerStatus @default(ACTIVE)
 
-  user           User                  @relation(fields: [userId], references: [id])
+  user           User                 @relation(fields: [userId], references: [id])
   socialAccounts SocialAccount[]
   contents       Content[]
   contentBatches ContentBatch[]
@@ -152,18 +162,18 @@ model Influencer {
 
 /// Compte social connecté à une influenceuse
 model SocialAccount {
-  id               String    @id @default(cuid())
-  influencerId     String
-  platform         Platform
-  username         String
+  id             String    @id @default(cuid())
+  influencerId   String
+  platform       Platform
+  username       String
   /// ID utilisateur côté plateforme (ig_user_id, tiktok open_id, etc.)
-  platformUserId   String?
+  platformUserId String?
   /// Sera encrypté côté app
-  accessToken      String?
-  refreshToken     String?
-  tokenExpiresAt   DateTime?
-  isConnected      Boolean   @default(false)
-  followers        Int      @default(0)
+  accessToken    String?
+  refreshToken   String?
+  tokenExpiresAt DateTime?
+  isConnected    Boolean   @default(false)
+  followers      Int       @default(0)
 
   influencer Influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
 
@@ -193,8 +203,8 @@ model Content {
   scheduledAt      DateTime?
   publishedAt      DateTime?
 
-  influencer       Influencer        @relation(fields: [influencerId], references: [id], onDelete: Cascade)
-  batch            ContentBatch?     @relation(fields: [batchId], references: [id])
+  influencer       Influencer         @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+  batch            ContentBatch?      @relation(fields: [batchId], references: [id])
   publishResults   PublishResult[]
   contentAnalytics ContentAnalytics[]
 
@@ -273,19 +283,19 @@ model InfluencerAnalytics {
 
 /// Jobs de génération IA en attente/en cours
 model GenerationJob {
-  id            String         @id @default(cuid())
-  userId        String
-  influencerId  String
-  contentId     String?
-  type          GenerationType
-  status        JobStatus      @default(PENDING)
-  prompt        String         @db.Text
-  parameters    Json?
-  resultUrl     String?
-  error         String?
-  creditsUsed   Float          @default(1)
-  startedAt     DateTime?
-  completedAt   DateTime?
+  id           String         @id @default(cuid())
+  userId       String
+  influencerId String
+  contentId    String?
+  type         GenerationType
+  status       JobStatus      @default(PENDING)
+  prompt       String         @db.Text
+  parameters   Json?
+  resultUrl    String?
+  error        String?
+  creditsUsed  Float          @default(1)
+  startedAt    DateTime?
+  completedAt  DateTime?
 
   user User @relation(fields: [userId], references: [id])
 
@@ -294,4 +304,219 @@ model GenerationJob {
   @@index([userId])
   @@index([status])
   @@index([type])
+}
+
+// ──────────────────────────────────────────────
+// Webhooks sortants (Phase 5 — Distribution)
+// ──────────────────────────────────────────────
+
+enum WebhookEvent {
+  CONTENT_PUBLISHED
+  CONTENT_FAILED
+  BATCH_COMPLETED
+  CONTENT_SCHEDULED
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  RETRYING
+}
+
+/// Webhook sortant configuré par l'utilisateur (Zapier, n8n, custom backend, etc.)
+model Webhook {
+  id            String         @id @default(cuid())
+  userId        String
+  name          String
+  url           String
+  /// HMAC-SHA256 secret partagé pour signer le payload
+  secret        String
+  events        WebhookEvent[]
+  isActive      Boolean        @default(true)
+  failureCount  Int            @default(0)
+  lastFailedAt  DateTime?
+  lastSuccessAt DateTime?
+
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, isActive])
+}
+
+// ──────────────────────────────────────────────
+// Sprint 9 — Scale & B2B
+// ──────────────────────────────────────────────
+
+enum ApiKeyScope {
+  READ
+  WRITE
+  ADMIN
+}
+
+/// Clé d'API publique pour automation (B2B Sprint 9)
+/// Le `key` stocké est un hash SHA-256, jamais la clé en clair.
+model ApiKey {
+  id                 String        @id @default(cuid())
+  userId             String
+  name               String
+  /// Préfixe public visible dans la liste (ex: "iia_live_a1b2c3"), sert d'identifiant rapide
+  prefix             String        @unique
+  /// Hash SHA-256 de la clé complète. La clé claire n'est jamais re-affichée après création.
+  hashedKey          String        @unique
+  scopes             ApiKeyScope[]
+  isActive           Boolean       @default(true)
+  lastUsedAt         DateTime?
+  /// Compteur incrémentiel pour rate limiting léger (reset par cron / window)
+  requestsThisWindow Int           @default(0)
+  windowStartedAt    DateTime      @default(now())
+  expiresAt          DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([prefix])
+  @@index([isActive])
+}
+
+enum WorkspaceRole {
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+/// Workspace = client géré (Agency mode)
+model Workspace {
+  id          String  @id @default(cuid())
+  /// User propriétaire (créateur du workspace, plan Agency requis)
+  ownerId     String
+  name        String
+  slug        String  @unique
+  description String? @db.Text
+
+  owner   User              @relation("OwnedWorkspaces", fields: [ownerId], references: [id], onDelete: Cascade)
+  members WorkspaceMember[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([slug])
+}
+
+model WorkspaceMember {
+  id          String        @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole @default(MEMBER)
+  invitedBy   String?
+  acceptedAt  DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+  @@index([workspaceId])
+}
+
+enum MediaAssetKind {
+  IMAGE
+  VIDEO
+  AUDIO
+  PRESET
+}
+
+/// Catalogue d'assets ré-utilisables (Sprint 9 — Media Library)
+model MediaAsset {
+  id           String         @id @default(cuid())
+  userId       String
+  /// Optionnel: scope l'asset à un influenceur précis. NULL = global au compte.
+  influencerId String?
+  name         String
+  kind         MediaAssetKind
+  url          String
+  thumbnailUrl String?
+  /// Tags libres pour la recherche ("sunset", "studio", "outfit-1", etc.)
+  tags         String[]
+  /// Taille en octets (pour quotas / display).
+  sizeBytes    Int?
+  /// Métadonnées libres : dimensions, prompt, palette dominante…
+  metadata     Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, kind])
+  @@index([influencerId])
+}
+
+enum ReferralStatus {
+  PENDING
+  CONVERTED
+  REWARDED
+}
+
+/// Referral program (Sprint 9 — Growth)
+/// Chaque user a un code unique. Quand un nouveau user s'inscrit avec ce code,
+/// on crée un Referral PENDING. À la 1ère sub, il devient REWARDED et on
+/// crédite les 2 parties.
+model Referral {
+  id            String         @id @default(cuid())
+  /// Le user qui parraine
+  referrerId    String
+  /// Le user parrainé (NULL tant que le filleul n'a pas signup)
+  referredId    String?        @unique
+  /// Code unique partagé publiquement
+  code          String         @unique
+  status        ReferralStatus @default(PENDING)
+  /// Crédits attribués au referrer une fois converti
+  rewardCredits Int            @default(50)
+  convertedAt   DateTime?
+  rewardedAt    DateTime?
+
+  referrer User  @relation("ReferralsAsReferrer", fields: [referrerId], references: [id], onDelete: Cascade)
+  referred User? @relation("ReferralsAsReferred", fields: [referredId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([referrerId])
+  @@index([code])
+  @@index([status])
+}
+
+/// Trace d'une tentative de livraison de webhook
+model WebhookDelivery {
+  id           String                @id @default(cuid())
+  webhookId    String
+  event        WebhookEvent
+  /// Payload envoyé (pour debug et retry)
+  payload      Json
+  status       WebhookDeliveryStatus @default(PENDING)
+  responseCode Int?
+  responseBody String?               @db.Text
+  error        String?               @db.Text
+  attempts     Int                   @default(0)
+  /// Prochaine tentative (NULL = pas de retry prévu)
+  nextRetryAt  DateTime?
+  deliveredAt  DateTime?
+
+  webhook Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([webhookId])
+  @@index([status])
+  @@index([nextRetryAt])
+  @@index([status, nextRetryAt])
 }

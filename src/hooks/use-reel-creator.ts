@@ -13,6 +13,8 @@ export interface ReelParams {
   textOverlay: string;
   contentMode: "SFW" | "NSFW";
   nsfwLevel: string;
+  /** Video identity / motion tradeoff (MiniMax prompt + optimizer). */
+  reelStylePreset: "stable_face" | "natural_motion" | "creative";
 }
 
 interface ReelCreatorState {
@@ -55,6 +57,7 @@ const defaultParams: ReelParams = {
   textOverlay: "",
   contentMode: "SFW",
   nsfwLevel: "suggestive",
+  reelStylePreset: "stable_face",
 };
 
 export const useReelCreator = create<ReelCreatorState>()((set) => ({

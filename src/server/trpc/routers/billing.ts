@@ -8,6 +8,9 @@ import {
   createPortalSession,
   getInvoices as getStripeInvoices,
   getSubscription,
+  createCreditPackCheckout,
+  getCreditPack,
+  CREDIT_PACKS,
 } from "@/server/services/stripe.service";
 import type { Plan } from "@/generated/prisma/client";
 
@@ -53,6 +56,10 @@ export const billingRouter = createTRPCRouter({
         hasNsfw: planConfig.hasNsfw,
         hasAutoPublish: planConfig.hasAutoPublish,
         hasAdvancedAnalytics: planConfig.hasAdvancedAnalytics,
+        hasContentPlan: "hasContentPlan" in planConfig ? planConfig.hasContentPlan : false,
+        hasBatchGeneration:
+          "hasBatchGeneration" in planConfig ? planConfig.hasBatchGeneration : false,
+        hasWebhooks: "hasWebhooks" in planConfig ? planConfig.hasWebhooks : false,
       },
     };
   }),
@@ -161,4 +168,53 @@ export const billingRouter = createTRPCRouter({
       return { invoices: [] };
     }
   }),
+
+  // ──────────────────────────────────────────────
+  // Credit packs (Sprint 7)
+  // ──────────────────────────────────────────────
+
+  /**
+   * listCreditPacks — Returns the catalog of one-time credit packs along
+   * with their availability flag (priceId might not be configured for this
+   * env, in which case the UI hides the card).
+   */
+  listCreditPacks: protectedProcedure.query(async () => {
+    return CREDIT_PACKS.map((p) => ({
+      id: p.id,
+      credits: p.credits,
+      priceEur: p.priceEur,
+      available: Boolean(p.priceId),
+    }));
+  }),
+
+  /**
+   * purchaseCredits — Creates a Stripe Checkout session in `payment` mode
+   * for a one-time credit top-up. The webhook handler grants the credits
+   * once the payment succeeds.
+   */
+  purchaseCredits: protectedProcedure
+    .input(z.object({ packId: z.enum(["small", "medium", "large"]) }))
+    .mutation(async ({ ctx, input }) => {
+      const user = await getDbUser(ctx.userId);
+      const pack = getCreditPack(input.packId);
+      if (!pack) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Pack not found" });
+      }
+
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+      try {
+        const url = await createCreditPackCheckout({
+          userId: user.id,
+          email: user.email,
+          name: user.name,
+          pack,
+          successUrl: `${appUrl}/billing?credits_added=true`,
+          cancelUrl: `${appUrl}/billing?credits_canceled=true`,
+        });
+        return { url };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Stripe error";
+        throw new TRPCError({ code: "BAD_REQUEST", message });
+      }
+    }),
 });

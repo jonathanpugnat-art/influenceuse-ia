@@ -1,18 +1,28 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertTriangle } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { AlertTriangle, Sparkles, Loader2, Wand2 } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { useInfluencerWizard } from "@/hooks/use-influencer-wizard";
+import { TemplatePicker } from "@/components/influencer/template-picker";
+import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 
@@ -58,6 +68,7 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
     () =>
       z.object({
         name: z.string().min(2, t("nameMin")).max(50, t("nameMax")),
+        gender: z.enum(["female", "male", "nonbinary"]).default("female"),
         bio: z.string().min(10, t("bioMin")).max(300, t("bioMax")),
         personality: z.string().min(10, t("personalityMin")).max(500, t("personalityMax")),
         niche: z.string().min(1, t("chooseNiche")),
@@ -88,12 +99,14 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
     control,
     watch,
     setValue,
+    reset,
     formState: { errors, isValid },
   } = useForm<FormData>({
     resolver: zodResolver(schema) as never,
     mode: "onChange",
     defaultValues: {
       name: data.name,
+      gender: data.gender ?? "female",
       bio: data.bio,
       personality: data.personality,
       niche: data.niche,
@@ -102,11 +115,76 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
     },
   });
 
+  // Sync form values when a template applies updates to the zustand store
+  // from outside this component (e.g. TemplatePicker).
+  useEffect(() => {
+    reset({
+      name: data.name,
+      gender: data.gender ?? "female",
+      bio: data.bio,
+      personality: data.personality,
+      niche: data.niche,
+      age: data.age || 24,
+      isNsfw: data.isNsfw,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.bio, data.personality, data.niche, data.gender, data.age, data.isNsfw]);
+
   const bio = watch("bio");
   const personality = watch("personality");
   const selectedNiche = watch("niche");
   const isNsfw = watch("isNsfw");
   const age = watch("age");
+  const currentName = watch("name");
+  const currentGender = watch("gender");
+
+  // Sprint 12 — AI persona suggestions ──────────────────────────────────────
+  const locale = useLocale();
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState<
+    Array<{ bio: string; personality: string }>
+  >([]);
+
+  const suggestMutation = trpc.influencer.suggestPersona.useMutation({
+    onSuccess: (ideas) => {
+      setSuggestions(ideas);
+      setSuggestOpen(true);
+    },
+    onError: (err) => {
+      toast.error(err.message);
+    },
+  });
+
+  const handleSuggest = () => {
+    if (!selectedNiche) {
+      toast.info("Choisis d'abord une niche pour des suggestions ciblées.");
+      return;
+    }
+    suggestMutation.mutate({
+      name: currentName?.trim() || undefined,
+      niche: selectedNiche as
+        | "FASHION"
+        | "FITNESS"
+        | "LIFESTYLE"
+        | "TRAVEL"
+        | "TECH"
+        | "GAMING"
+        | "ADULT"
+        | "FOOD",
+      gender: currentGender,
+      language: locale === "en" ? "en" : "fr",
+    });
+  };
+
+  const applySuggestion = (idx: number) => {
+    const s = suggestions[idx];
+    if (!s) return;
+    setValue("bio", s.bio, { shouldValidate: true });
+    setValue("personality", s.personality, { shouldValidate: true });
+    updateData({ bio: s.bio, personality: s.personality });
+    setSuggestOpen(false);
+    toast.success("Bio et personnalité appliquées ✨");
+  };
 
   const onSubmit = (formData: FormData) => {
     updateData(formData);
@@ -115,6 +193,9 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      {/* Sprint 7 — pre-baked persona templates */}
+      <TemplatePicker />
+
       {/* Name */}
       <div className="space-y-2">
         <Label className="text-slate-300">{t("influencerName")}</Label>
@@ -128,10 +209,58 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
         )}
       </div>
 
+      {/* Gender */}
+      <div className="space-y-2">
+        <Label className="text-slate-300">{t("gender")}</Label>
+        <div className="grid grid-cols-3 gap-2">
+          {(["female", "male", "nonbinary"] as const).map((g) => (
+            <button
+              key={g}
+              type="button"
+              onClick={() => setValue("gender", g, { shouldValidate: true })}
+              className={cn(
+                "rounded-xl border-2 px-3 py-2.5 text-sm font-medium transition-all",
+                watch("gender") === g
+                  ? "border-violet-500 bg-violet-500/20 text-violet-300"
+                  : "border-slate-800 bg-slate-800/30 text-slate-400 hover:border-slate-700"
+              )}
+            >
+              {g === "female" && t("genderFemale")}
+              {g === "male" && t("genderMale")}
+              {g === "nonbinary" && t("genderNonbinary")}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Bio */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <Label className="text-slate-300">{tInfluencer("bio")}</Label>
+          <div className="flex items-center gap-2">
+            <Label className="text-slate-300">{tInfluencer("bio")}</Label>
+            {/* Sprint 12 — AI magic suggest */}
+            <button
+              type="button"
+              onClick={handleSuggest}
+              disabled={suggestMutation.isPending || !selectedNiche}
+              className={cn(
+                "flex items-center gap-1 rounded-full border border-violet-500/40 bg-violet-500/10 px-2.5 py-0.5 text-[11px] font-medium text-violet-300 transition-colors hover:bg-violet-500/20 disabled:cursor-not-allowed disabled:opacity-40",
+                !selectedNiche && "opacity-50"
+              )}
+              title={
+                !selectedNiche
+                  ? "Choisis d'abord une niche"
+                  : "Génère 3 suggestions de bio + personnalité"
+              }
+            >
+              {suggestMutation.isPending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Wand2 className="h-3 w-3" />
+              )}
+              Suggérer
+            </button>
+          </div>
           <span
             className={cn(
               "text-xs",
@@ -226,7 +355,8 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
         )}
       </div>
 
-      {/* NSFW toggle */}
+      {/* NSFW toggle — hidden for now, will be re-enabled later */}
+      {false && (
       <div className="space-y-3 rounded-xl border border-slate-800/50 bg-slate-800/20 p-4">
         <div className="flex items-center justify-between">
           <Label htmlFor="nsfw-toggle" className="text-slate-300">
@@ -259,6 +389,7 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
           </div>
         )}
       </div>
+      )}
 
       {/* Submit */}
       <div className="flex justify-end pt-2">
@@ -270,6 +401,59 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
           {t("next")} →
         </button>
       </div>
+
+      {/* Sprint 12 — AI persona suggestions dialog */}
+      <Dialog open={suggestOpen} onOpenChange={setSuggestOpen}>
+        <DialogContent className="max-w-2xl border-slate-800 bg-slate-900 text-white">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-white">
+              <Sparkles className="h-5 w-5 text-violet-400" />
+              3 personnalités générées pour toi
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Clique sur celle qui te ressemble. Tu pourras toujours l&apos;éditer
+              ensuite.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            {suggestions.map((s, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => applySuggestion(i)}
+                className="group w-full rounded-xl border border-slate-700 bg-slate-800/30 p-4 text-left transition-all hover:border-violet-500 hover:bg-violet-500/10"
+              >
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="rounded-full bg-violet-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-300">
+                    {i === 0
+                      ? "Authentique"
+                      : i === 1
+                        ? "Drôle & joueuse"
+                        : "Audacieuse"}
+                  </span>
+                </div>
+                <p className="text-sm font-medium text-white">{s.bio}</p>
+                <p className="mt-2 text-xs leading-relaxed text-slate-400">
+                  {s.personality}
+                </p>
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={handleSuggest}
+              disabled={suggestMutation.isPending}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-700 py-2 text-xs text-slate-400 transition-colors hover:bg-slate-800 hover:text-white disabled:opacity-40"
+            >
+              {suggestMutation.isPending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Wand2 className="h-3 w-3" />
+              )}
+              Régénérer 3 nouvelles propositions
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </form>
   );
 }

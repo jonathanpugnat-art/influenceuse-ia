@@ -4,10 +4,44 @@
  */
 
 import { db } from "@/server/db";
-import { decrypt } from "@/lib/encryption";
+import { decrypt, encrypt } from "@/lib/encryption";
 import * as instagram from "./instagram.service";
 import * as tiktok from "./tiktok.service";
 import * as onlyfans from "./onlyfans.service";
+import { emitEvent } from "./webhook.service";
+
+/** IG long-lived tokens last ~60 days; refresh when <7 days remain. */
+const IG_REFRESH_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * If the Instagram account's long-lived token is about to expire, refresh it
+ * and persist the new token (encrypted). Returns the (possibly fresh) token.
+ * Best-effort: a refresh failure falls back to the existing token.
+ */
+async function ensureFreshIgToken(
+  accountId: string,
+  decryptedToken: string,
+  expiresAt?: Date | null
+): Promise<string> {
+  if (!expiresAt) return decryptedToken;
+  const remaining = expiresAt.getTime() - Date.now();
+  if (remaining > IG_REFRESH_THRESHOLD_MS) return decryptedToken;
+  try {
+    const refreshed = await instagram.refreshToken(decryptedToken);
+    await db.socialAccount.update({
+      where: { id: accountId },
+      data: {
+        accessToken: encrypt(refreshed.accessToken),
+        tokenExpiresAt: refreshed.expiresAt,
+      },
+    });
+    console.log(`[publisher] Refreshed IG token for account ${accountId}`);
+    return refreshed.accessToken;
+  } catch (err) {
+    console.warn(`[publisher] IG token refresh failed (${err}). Using existing token.`);
+    return decryptedToken;
+  }
+}
 
 type Platform = "INSTAGRAM" | "TIKTOK" | "ONLYFANS";
 type PublishStatus = "PENDING" | "SUCCESS" | "FAILED";
@@ -30,6 +64,7 @@ type ContentWithInfluencer = {
       accessToken: string | null;
       refreshToken: string | null;
       platformUserId: string | null;
+      tokenExpiresAt?: Date | null;
       isConnected: boolean;
     }>;
   };
@@ -48,6 +83,30 @@ export type PublishResultItem = {
  * Publie un contenu sur chaque plateforme demandée.
  * Crée les PublishResult en base et retourne les résultats.
  */
+/**
+ * Retry helper: re-runs `fn` up to 3 times on transient failures (rate-limit,
+ * timeouts, 5xx). Permanent errors (token expired, bad request) bubble up
+ * immediately so we don't waste retries.
+ */
+async function withRetry<T>(label: string, fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      const transient =
+        /rate.?limit|timeout|ETIMEDOUT|ECONNRESET|ENOTFOUND|EAI_AGAIN|429|5\d\d/i.test(msg);
+      if (!transient || attempt === maxAttempts) throw err;
+      const wait = 1500 * attempt;
+      console.warn(`[publisher] ${label} attempt ${attempt} failed (${msg}). Retrying in ${wait}ms...`);
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+  throw lastErr;
+}
+
 export async function publishContent(content: ContentWithInfluencer): Promise<PublishResultItem[]> {
   const results: PublishResultItem[] = [];
   const caption = content.caption ?? "";
@@ -55,7 +114,27 @@ export async function publishContent(content: ContentWithInfluencer): Promise<Pu
     ? `${caption}\n\n${content.hashtags.join(" ")}`
     : caption;
 
+  // Idempotency: skip platforms that already have a SUCCESS PublishResult for
+  // this content. Protects against double-runs of the cron, manual retries, or
+  // a user clicking "Publish now" while the scheduler is already on it.
+  const existingResults = await db.publishResult.findMany({
+    where: { contentId: content.id, status: "SUCCESS" },
+    select: { platform: true, externalPostId: true, publishedAt: true },
+  });
+  const alreadyPublished = new Set(existingResults.map((r) => r.platform));
+  for (const r of existingResults) {
+    if (content.platforms.includes(r.platform as Platform)) {
+      results.push({
+        platform: r.platform as Platform,
+        status: "SUCCESS",
+        externalPostId: r.externalPostId,
+        publishedAt: r.publishedAt,
+      });
+    }
+  }
+
   for (const platform of content.platforms) {
+    if (alreadyPublished.has(platform)) continue;
     try {
       const account = content.influencer.socialAccounts.find(
         (a) => a.platform === platform && a.isConnected
@@ -70,11 +149,16 @@ export async function publishContent(content: ContentWithInfluencer): Promise<Pu
         continue;
       }
 
-      const accessToken = decrypt(account.accessToken);
+      let accessToken = decrypt(account.accessToken);
       const igUserId = account.platformUserId ?? undefined;
 
       switch (platform) {
         case "INSTAGRAM": {
+          accessToken = await ensureFreshIgToken(
+            account.id,
+            accessToken,
+            account.tokenExpiresAt
+          );
           if (!igUserId) {
             results.push({
               platform,
@@ -84,11 +168,13 @@ export async function publishContent(content: ContentWithInfluencer): Promise<Pu
             break;
           }
           if (content.type === "PHOTO" && content.mediaUrls[0]) {
-            const { mediaId } = await instagram.publishPhoto(
-              accessToken,
-              igUserId,
-              content.mediaUrls[0],
-              textWithHashtags
+            const { mediaId } = await withRetry("instagram.publishPhoto", () =>
+              instagram.publishPhoto(
+                accessToken,
+                igUserId,
+                content.mediaUrls[0],
+                textWithHashtags
+              )
             );
             results.push({
               platform,
@@ -97,11 +183,13 @@ export async function publishContent(content: ContentWithInfluencer): Promise<Pu
               publishedAt: new Date(),
             });
           } else if (content.type === "CAROUSEL" && content.mediaUrls.length) {
-            const { mediaId } = await instagram.publishCarousel(
-              accessToken,
-              igUserId,
-              content.mediaUrls,
-              textWithHashtags
+            const { mediaId } = await withRetry("instagram.publishCarousel", () =>
+              instagram.publishCarousel(
+                accessToken,
+                igUserId,
+                content.mediaUrls,
+                textWithHashtags
+              )
             );
             results.push({
               platform,
@@ -110,12 +198,14 @@ export async function publishContent(content: ContentWithInfluencer): Promise<Pu
               publishedAt: new Date(),
             });
           } else if (content.type === "REEL" && content.mediaUrls[0]) {
-            const { mediaId } = await instagram.publishReel(
-              accessToken,
-              igUserId,
-              content.mediaUrls[0],
-              textWithHashtags,
-              content.thumbnailUrl ?? undefined
+            const { mediaId } = await withRetry("instagram.publishReel", () =>
+              instagram.publishReel(
+                accessToken,
+                igUserId,
+                content.mediaUrls[0],
+                textWithHashtags,
+                content.thumbnailUrl ?? undefined
+              )
             );
             results.push({
               platform,
@@ -143,10 +233,8 @@ export async function publishContent(content: ContentWithInfluencer): Promise<Pu
             });
             break;
           }
-          const { publishId } = await tiktok.publishVideo(
-            accessToken,
-            videoUrl,
-            textWithHashtags
+          const { publishId } = await withRetry("tiktok.publishVideo", () =>
+            tiktok.publishVideo(accessToken, videoUrl, textWithHashtags)
           );
           results.push({
             platform,
@@ -199,16 +287,28 @@ export async function publishContent(content: ContentWithInfluencer): Promise<Pu
 
 /**
  * Persiste les résultats en base et met à jour le statut du contenu.
- * À appeler après publishContent.
+ * À appeler après publishContent. Émet aussi les webhooks `content.published`
+ * ou `content.failed` (Phase 5).
+ *
+ * Idempotent: on saute la persistance d'un PublishResult SUCCESS déjà existant
+ * pour la même (contentId, platform) afin d'éviter les doublons en cas de
+ * double-tick du cron.
  */
 export async function savePublishResults(
   contentId: string,
   results: PublishResultItem[]
 ): Promise<void> {
-  const allSuccess = results.every((r) => r.status === "SUCCESS");
   const anySuccess = results.some((r) => r.status === "SUCCESS");
+  const allSuccess = results.every((r) => r.status === "SUCCESS");
 
   for (const r of results) {
+    if (r.status === "SUCCESS") {
+      const existing = await db.publishResult.findFirst({
+        where: { contentId, platform: r.platform, status: "SUCCESS" },
+        select: { id: true },
+      });
+      if (existing) continue;
+    }
     await db.publishResult.create({
       data: {
         contentId,
@@ -222,12 +322,55 @@ export async function savePublishResults(
     });
   }
 
-  await db.content.update({
+  const updated = await db.content.update({
     where: { id: contentId },
     data: {
       status: allSuccess ? "PUBLISHED" : anySuccess ? "PUBLISHED" : "FAILED",
       publishedAt: anySuccess ? new Date() : undefined,
       scheduledAt: null,
     },
+    select: {
+      id: true,
+      type: true,
+      caption: true,
+      hashtags: true,
+      mediaUrls: true,
+      thumbnailUrl: true,
+      platforms: true,
+      publishedAt: true,
+      influencer: { select: { id: true, name: true, userId: true } },
+    },
   });
+
+  const successPlatforms = results
+    .filter((r) => r.status === "SUCCESS")
+    .map((r) => ({ platform: r.platform, externalPostId: r.externalPostId ?? null }));
+  const failures = results
+    .filter((r) => r.status === "FAILED")
+    .map((r) => ({ platform: r.platform, error: r.error ?? null }));
+
+  const userId = updated.influencer.userId;
+
+  if (anySuccess) {
+    await emitEvent(userId, "CONTENT_PUBLISHED", {
+      contentId: updated.id,
+      type: updated.type,
+      caption: updated.caption,
+      hashtags: updated.hashtags,
+      mediaUrls: updated.mediaUrls,
+      thumbnailUrl: updated.thumbnailUrl,
+      publishedAt: updated.publishedAt,
+      influencer: { id: updated.influencer.id, name: updated.influencer.name },
+      platforms: successPlatforms,
+      failures: failures.length ? failures : undefined,
+    });
+  }
+  if (!anySuccess && failures.length > 0) {
+    await emitEvent(userId, "CONTENT_FAILED", {
+      contentId: updated.id,
+      type: updated.type,
+      influencer: { id: updated.influencer.id, name: updated.influencer.name },
+      failures,
+    });
+  }
 }

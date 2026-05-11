@@ -18,6 +18,7 @@ import {
   LogOut,
   User as UserIcon,
   MoreHorizontal,
+  FolderOpen,
 } from "lucide-react";
 import {
   Tooltip,
@@ -50,6 +51,7 @@ const mainNavItems = [
   { labelKey: "common.influencers", icon: Users, href: "/influencers" },
   { labelKey: "dashboard.createContent", icon: ImagePlus, href: "/content" },
   { labelKey: "common.calendar", icon: Calendar, href: "/calendar" },
+  { labelKey: "common.library", icon: FolderOpen, href: "/library" },
   { labelKey: "common.analytics", icon: BarChart3, href: "/analytics" },
 ];
 

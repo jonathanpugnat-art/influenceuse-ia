@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import { db } from "@/server/db";
+import { PLANS } from "@/lib/constants";
 
 // ──────────────────────────────────────────────
 // Stripe Client (lazy singleton)
@@ -170,14 +171,30 @@ export async function getInvoices(
 // Plan helpers
 // ──────────────────────────────────────────────
 
+// Map every paid Stripe Price ID to its internal plan + monthly credit
+// allowance. We pull credit numbers from `PLANS` so a single source of
+// truth (constants.ts) drives both the UI and what we provision after a
+// successful Stripe checkout / subscription update.
+//
+// `Infinity` is not safe to persist in Postgres, so the ENTERPRISE plan
+// (which is "unlimited" in marketing terms) is materialised as a large
+// finite number that nobody will ever hit organically.
+const ENTERPRISE_CREDITS_CAP = 999_999;
+const safeCredits = (n: number): number =>
+  Number.isFinite(n) ? n : ENTERPRISE_CREDITS_CAP;
+
 const PRICE_TO_PLAN: Record<string, { plan: string; creditsLimit: number }> = {
+  [process.env.STRIPE_STARTER_PRICE_ID ?? "price_starter"]: {
+    plan: "STARTER",
+    creditsLimit: safeCredits(PLANS.STARTER.credits),
+  },
   [process.env.STRIPE_PRO_PRICE_ID ?? "price_pro"]: {
     plan: "PRO",
-    creditsLimit: 500,
+    creditsLimit: safeCredits(PLANS.PRO.credits),
   },
   [process.env.STRIPE_ENTERPRISE_PRICE_ID ?? "price_enterprise"]: {
     plan: "ENTERPRISE",
-    creditsLimit: 999999,
+    creditsLimit: safeCredits(PLANS.ENTERPRISE.credits),
   },
 };
 
@@ -186,4 +203,89 @@ const PRICE_TO_PLAN: Record<string, { plan: string; creditsLimit: number }> = {
  */
 export function getPlanFromPriceId(priceId: string) {
   return PRICE_TO_PLAN[priceId] ?? null;
+}
+
+// ──────────────────────────────────────────────
+// Credit packs (Sprint 7 — add-ons)
+//
+// One-time purchases that top up the user's `creditsLimit` without changing
+// their subscription tier. Configured via STRIPE_CREDIT_PACK_<ID>_PRICE_ID
+// env vars + a fixed `credits` amount per pack.
+// ──────────────────────────────────────────────
+
+export interface CreditPack {
+  id: "small" | "medium" | "large";
+  /** Number of credits added to `creditsLimit` once payment succeeds. */
+  credits: number;
+  /** Display price for UI (Stripe is the source of truth at checkout). */
+  priceEur: number;
+  /** Stripe Price id; null when not configured for this env. */
+  priceId: string | null;
+}
+
+export const CREDIT_PACKS: CreditPack[] = [
+  {
+    id: "small",
+    credits: 100,
+    priceEur: 9,
+    priceId: process.env.STRIPE_CREDIT_PACK_SMALL_PRICE_ID ?? null,
+  },
+  {
+    id: "medium",
+    credits: 500,
+    priceEur: 39,
+    priceId: process.env.STRIPE_CREDIT_PACK_MEDIUM_PRICE_ID ?? null,
+  },
+  {
+    id: "large",
+    credits: 1500,
+    priceEur: 99,
+    priceId: process.env.STRIPE_CREDIT_PACK_LARGE_PRICE_ID ?? null,
+  },
+];
+
+export function getCreditPack(id: CreditPack["id"]): CreditPack | null {
+  return CREDIT_PACKS.find((p) => p.id === id) ?? null;
+}
+
+/**
+ * Maps a Stripe priceId to its credit pack. Used by the webhook handler
+ * to know how many credits to grant on `checkout.session.completed`.
+ */
+export function getCreditPackFromPriceId(priceId: string): CreditPack | null {
+  return CREDIT_PACKS.find((p) => p.priceId && p.priceId === priceId) ?? null;
+}
+
+/**
+ * One-time payment Checkout for buying a credit pack. Payload metadata is
+ * read by the webhook handler so we can credit the right user.
+ */
+export async function createCreditPackCheckout(opts: {
+  userId: string;
+  email: string;
+  name?: string | null;
+  pack: CreditPack;
+  successUrl: string;
+  cancelUrl: string;
+}): Promise<string> {
+  if (!opts.pack.priceId) {
+    throw new Error(`Credit pack "${opts.pack.id}" is not configured (missing STRIPE_CREDIT_PACK_${opts.pack.id.toUpperCase()}_PRICE_ID)`);
+  }
+  const customerId = await createOrGetCustomer(opts.userId, opts.email, opts.name);
+  const session = await stripe.checkout.sessions.create({
+    customer: customerId,
+    mode: "payment",
+    payment_method_types: ["card"],
+    line_items: [{ price: opts.pack.priceId, quantity: 1 }],
+    success_url: opts.successUrl,
+    cancel_url: opts.cancelUrl,
+    metadata: {
+      userId: opts.userId,
+      kind: "credit_pack",
+      packId: opts.pack.id,
+      credits: String(opts.pack.credits),
+    },
+  });
+  if (!session.url) throw new Error("Stripe did not return a checkout URL");
+  return session.url;
 }

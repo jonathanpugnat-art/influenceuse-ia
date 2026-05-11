@@ -10,8 +10,11 @@ export interface PhotoParams {
   expression: string;
   photoStyle: string;
   timeOfDay: string;
+  location: string;
   customPrompt: string;
   numberOfImages: number;
+  /** When true, SFW photos use base/avatar image + identity prompts (Flux). */
+  useFaceReference: boolean;
   contentMode: "SFW" | "NSFW";
   nsfwLevel: string;
 }
@@ -52,8 +55,10 @@ const defaultParams: PhotoParams = {
   expression: "smile",
   photoStyle: "natural",
   timeOfDay: "natural",
+  location: "",
   customPrompt: "",
   numberOfImages: 1,
+  useFaceReference: true,
   contentMode: "SFW",
   nsfwLevel: "suggestive",
 };

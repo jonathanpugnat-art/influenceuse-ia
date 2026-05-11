@@ -6,7 +6,9 @@ import {
   buildNegativePrompt,
   DEFAULT_IMAGE_PARAMS,
   PORTRAIT_IMAGE_PARAMS,
+  KONTEXT_IMAGE_PARAMS,
   type PromptBuildInput,
+  type Gender,
 } from "@/lib/prompts/image-prompts";
 import { uploadFromUrl } from "@/server/services/storage.service";
 import { checkCredits, deductCredits } from "@/server/services/credits.service";
@@ -17,6 +19,7 @@ import { CREDIT_COSTS } from "@/lib/constants";
 // ──────────────────────────────────────────────
 
 export interface InfluencerStyle {
+  gender?: Gender;
   ethnicity?: string;
   hairColor?: string;
   hairStyle?: string;
@@ -27,12 +30,15 @@ export interface InfluencerStyle {
 export interface ImageGenerationInput {
   influencerId: string;
   baseImageUrl?: string;
+  /** When true (default), use reference image + identity prompts when a URL is present. */
+  useReferenceFace?: boolean;
   scene: string;
   pose: string;
   outfit: string;
   expression: string;
   style: string;
   lighting: string;
+  location?: string;
   isNsfw: boolean;
   nsfwLevel?: string;
   customPrompt?: string;
@@ -50,7 +56,21 @@ export interface ImageGenerationOutput {
 // Replicate SDK
 // ──────────────────────────────────────────────
 
-const MODEL_SFW = "black-forest-labs/flux-1.1-pro" as const;
+/**
+ * SFW base model — used when the wizard generates the very first portrait of
+ * a new influencer. This is a pure T2I model (no input_image), Flux 1.1 Pro.
+ */
+const MODEL_SFW_T2I = "black-forest-labs/flux-1.1-pro" as const;
+
+/**
+ * SFW content model with character reference (Sprint 11). Flux Kontext Pro
+ * accepts an `input_image` URL and preserves identity across generations.
+ * Used for every content photo when a baseImageUrl exists. Schema:
+ *   prompt (req), input_image (req), aspect_ratio, prompt_upsampling,
+ *   safety_tolerance (max 2 with input_image), output_format, seed.
+ */
+const MODEL_SFW_KONTEXT = "black-forest-labs/flux-kontext-pro" as const;
+
 const MODEL_NSFW = "lucataco/flux-dev-uncensored" as const;
 
 const NSFW_ERROR_MESSAGE =
@@ -106,9 +126,14 @@ function extractOutputUrls(output: unknown): string[] {
 }
 
 /**
- * Sanitize params per model. NSFW models (flux-dev-uncensored) only accept:
- * prompt, width, height, num_inference_steps, guidance_scale, seed,
- * output_format, output_quality, go_fast, megapixels.
+ * Sanitize params per model.
+ *
+ * - **flux-dev-uncensored** (NSFW): no safety_tolerance, no negative_prompt,
+ *   no num_outputs, no image, no ip_adapter_scale.
+ * - **flux-kontext-pro** (SFW with reference): no width/height (use
+ *   `aspect_ratio` instead), no num_inference_steps, no guidance_scale, no
+ *   negative_prompt, no num_outputs, no output_quality, no ip_adapter_scale.
+ *   Sends `input_image` (renamed from `image`).
  */
 function sanitizeParamsForModel(
   model: string,
@@ -125,6 +150,27 @@ function sanitizeParamsForModel(
     } = params;
     return clean;
   }
+
+  if (model === MODEL_SFW_KONTEXT) {
+    const {
+      width: _w,
+      height: _h,
+      num_inference_steps: _steps,
+      guidance_scale: _g,
+      negative_prompt: _neg,
+      num_outputs: _no,
+      output_quality: _oq,
+      ip_adapter_scale: _ip,
+      ...rest
+    } = params;
+    // Rename `image` → `input_image` to match Flux Kontext Pro schema.
+    const { image, ...clean } = rest;
+    if (image && !clean.input_image) {
+      clean.input_image = image;
+    }
+    return clean;
+  }
+
   return params;
 }
 
@@ -168,24 +214,36 @@ async function runReplicatePrediction(
 }
 
 /**
- * Generate multiple images sequentially for models that don't support num_outputs.
+ * Generate multiple images. Strategy depends on the model:
+ *  - flux-1.1-pro: native `num_outputs` support, single API call.
+ *  - flux-kontext-pro / flux-dev-uncensored: no num_outputs → fan out in
+ *    parallel with different seeds.
  */
 async function runMultiplePredictions(
   model: string,
   input: Record<string, unknown>,
   count: number
 ): Promise<string[]> {
-  if (model === MODEL_SFW) {
+  if (model === MODEL_SFW_T2I) {
     return runReplicatePrediction(model, { ...input, num_outputs: count });
   }
 
-  const results: string[] = [];
-  for (let i = 0; i < count; i++) {
-    const urls = await runReplicatePrediction(model, {
+  // Parallel fan-out for Kontext / NSFW. Different seeds = different photos.
+  const tasks = Array.from({ length: count }, () =>
+    runReplicatePrediction(model, {
       ...input,
       seed: Math.floor(Math.random() * 2147483647),
-    });
-    results.push(...urls);
+    })
+  );
+  const settled = await Promise.allSettled(tasks);
+  const results: string[] = [];
+  const errors: unknown[] = [];
+  for (const r of settled) {
+    if (r.status === "fulfilled") results.push(...r.value);
+    else errors.push(r.reason);
+  }
+  if (results.length === 0 && errors.length > 0) {
+    throw errors[0];
   }
   return results;
 }
@@ -212,14 +270,15 @@ export async function generateBaseImage(
 
   const prompt = buildBasePortraitPrompt({
     age: influencerAge,
+    gender: style.gender,
     ethnicity: style.ethnicity ?? "caucasian",
     hairColor: style.hairColor ?? "brown",
-    hairStyle: style.hairStyle ?? "long straight",
+    hairStyle: style.hairStyle ?? (style.gender === "male" ? "short" : "long straight"),
     bodyType: style.bodyType ?? "average",
     fashionStyle: style.fashionStyle ?? "casual",
   });
 
-  const negativePrompt = buildNegativePrompt(false);
+  const negativePrompt = buildNegativePrompt(false, style.gender ?? "female");
 
   const params: Record<string, unknown> = {
     ...PORTRAIT_IMAGE_PARAMS,
@@ -232,7 +291,7 @@ export async function generateBaseImage(
   try {
     console.log("[ai-image] Generating base image...");
 
-    const outputUrls = await runMultiplePredictions(MODEL_SFW, params, 4);
+    const outputUrls = await runMultiplePredictions(MODEL_SFW_T2I, params, 4);
 
     const storedUrls = await Promise.all(
       outputUrls.map(async (url, i) => {
@@ -273,7 +332,14 @@ export async function generateContentImage(
     );
   }
 
+  const wantFaceLock = input.useReferenceFace !== false;
+  const hasRefUrl = Boolean(input.baseImageUrl?.trim());
+  /** Identity reference is only honored on the SFW path (NSFW model has no input_image). */
+  const sendsRefImage = !input.isNsfw && wantFaceLock && hasRefUrl;
+  const useIdentityPrompt = sendsRefImage;
+
   const promptInput: PromptBuildInput = {
+    gender: influencerStyle.gender,
     age: influencerAge,
     ethnicity: influencerStyle.ethnicity,
     hairColor: influencerStyle.hairColor,
@@ -285,32 +351,54 @@ export async function generateContentImage(
     expression: input.expression,
     style: input.style,
     lighting: input.lighting,
+    location: input.location,
     outfit: input.outfit,
+    useReferenceFace: useIdentityPrompt,
     isNsfw: input.isNsfw,
     nsfwLevel: input.nsfwLevel,
     customPrompt: input.customPrompt,
   };
 
   const prompt = buildFullPrompt(promptInput);
-  const negativePrompt = buildNegativePrompt(input.isNsfw);
-  const model = input.isNsfw ? MODEL_NSFW : MODEL_SFW;
+  const negativePrompt = buildNegativePrompt(input.isNsfw, influencerStyle.gender ?? "female", {
+    lockFace: useIdentityPrompt,
+  });
 
-  const params: Record<string, unknown> = {
-    ...DEFAULT_IMAGE_PARAMS,
-    prompt,
-    negative_prompt: negativePrompt,
-    num_outputs: numImages,
-    safety_tolerance: input.isNsfw ? 6 : 5,
-  };
-
-  if (input.baseImageUrl) {
-    params.image = input.baseImageUrl;
-    params.ip_adapter_scale = 0.6;
+  // ── Model routing (Sprint 11) ───────────────────────────────────────────
+  // SFW + reference image  → Flux Kontext Pro (true character reference)
+  // SFW without reference   → Flux 1.1 Pro    (T2I)
+  // NSFW                    → Flux Dev Uncensored
+  let model: string;
+  let params: Record<string, unknown>;
+  if (input.isNsfw) {
+    model = MODEL_NSFW;
+    params = {
+      ...DEFAULT_IMAGE_PARAMS,
+      prompt,
+      negative_prompt: negativePrompt,
+      num_outputs: numImages,
+      safety_tolerance: 6,
+    };
+  } else if (sendsRefImage && input.baseImageUrl) {
+    model = MODEL_SFW_KONTEXT;
+    params = {
+      ...KONTEXT_IMAGE_PARAMS,
+      prompt,
+      input_image: input.baseImageUrl,
+    };
+  } else {
+    model = MODEL_SFW_T2I;
+    params = {
+      ...DEFAULT_IMAGE_PARAMS,
+      prompt,
+      negative_prompt: negativePrompt,
+      num_outputs: numImages,
+      safety_tolerance: 5,
+    };
   }
 
   try {
-    console.log("[ai-image] Generating content image...");
-    console.log("[ai-image] Model:", model);
+    console.log("[ai-image] Generating content image with", model, sendsRefImage ? "(face-locked)" : "(no reference)");
 
     const outputUrls = await runMultiplePredictions(model, params, numImages);
 

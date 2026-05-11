@@ -37,17 +37,39 @@ export async function POST(req: NextRequest) {
       case "checkout.session.completed": {
         const session = event.data.object;
         const userId = session.metadata?.userId;
+        if (!userId) {
+          console.warn("[stripe-webhook] Missing userId in checkout metadata");
+          break;
+        }
+
+        // Sprint 7 — One-time credit pack purchase (mode=payment).
+        if (session.metadata?.kind === "credit_pack") {
+          const credits = Number(session.metadata.credits ?? 0);
+          if (!Number.isFinite(credits) || credits <= 0) {
+            console.warn("[stripe-webhook] Invalid credits amount in pack metadata");
+            break;
+          }
+          await db.user.update({
+            where: { id: userId },
+            data: { creditsLimit: { increment: credits } },
+          });
+          console.log(
+            `[stripe-webhook] User ${userId} bought credit pack +${credits} credits`
+          );
+          break;
+        }
+
+        // Subscription path (existing).
         const subscriptionId =
           typeof session.subscription === "string"
             ? session.subscription
             : session.subscription?.toString();
 
-        if (!userId || !subscriptionId) {
-          console.warn("[stripe-webhook] Missing userId or subscriptionId in checkout");
+        if (!subscriptionId) {
+          console.warn("[stripe-webhook] Missing subscriptionId in subscription checkout");
           break;
         }
 
-        // Fetch subscription to get priceId
         const subscription = (await stripe.subscriptions.retrieve(subscriptionId)) as unknown as Sub;
         const priceId = subscription.items.data[0]?.price?.id;
         const planInfo = priceId ? getPlanFromPriceId(priceId) : null;

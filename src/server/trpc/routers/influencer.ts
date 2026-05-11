@@ -145,12 +145,52 @@ export const influencerRouter = createTRPCRouter({
     }),
 
   /**
+   * Sprint 12 — suggestPersona
+   * Returns 3 distinct {bio, personality} drafts so the wizard can offer a
+   * "magic" autofill button. Free of charge: we don't deduct credits to keep
+   * the friction at zero (LLM cost is negligible vs the activation gain).
+   */
+  suggestPersona: protectedProcedure
+    .input(
+      z.object({
+        name: z.string().max(50).optional(),
+        niche: z.enum(nicheValues),
+        gender: z.enum(["female", "male", "nonbinary"]).default("female"),
+        language: z.enum(["fr", "en"]).default("fr"),
+        tone: z.string().max(50).optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const { generatePersonaIdeas } = await import(
+        "@/server/services/ai-text.service"
+      );
+      try {
+        const ideas = await generatePersonaIdeas({
+          name: input.name,
+          niche: input.niche,
+          gender: input.gender,
+          language: input.language,
+          tone: input.tone,
+        });
+        return ideas;
+      } catch (err) {
+        console.error("[influencer.suggestPersona]", err);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message:
+            "Impossible de générer des suggestions pour le moment. Réessaie dans quelques secondes.",
+        });
+      }
+    }),
+
+  /**
    * create – Crée une nouvelle influenceuse
    */
   create: protectedProcedure
     .input(
       z.object({
         name: z.string().min(2).max(50),
+        gender: z.enum(["female", "male", "nonbinary"]).default("female"),
         bio: z.string().min(10).max(2000),
         personality: z.string().min(10).max(2000),
         niche: z.enum(nicheValues),
@@ -173,7 +213,9 @@ export const influencerRouter = createTRPCRouter({
       if (currentCount >= planConfig.maxInfluencers) {
         throw new TRPCError({
           code: "FORBIDDEN",
-          message: `Your ${planConfig.name} plan allows max ${planConfig.maxInfluencers} influencer(s). Upgrade to create more.`,
+          // Tag prefix consumed by `useUpgradeOnLimitError` on the client to
+          // open the contextual upgrade modal (Phase 6).
+          message: `UPGRADE_REQUIRED:max_influencers:${planConfig.name}:${planConfig.maxInfluencers}`,
         });
       }
 
@@ -186,6 +228,7 @@ export const influencerRouter = createTRPCRouter({
         data: {
           userId: user.id,
           name: input.name,
+          gender: input.gender,
           slug,
           bio: input.bio,
           personality: input.personality,
@@ -218,6 +261,7 @@ export const influencerRouter = createTRPCRouter({
       z.object({
         id: z.string(),
         name: z.string().min(2).max(50).optional(),
+        gender: z.enum(["female", "male", "nonbinary"]).optional(),
         bio: z.string().min(10).max(2000).optional(),
         personality: z.string().min(10).max(2000).optional(),
         niche: z.enum(nicheValues).optional(),

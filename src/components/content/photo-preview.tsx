@@ -21,6 +21,7 @@ import { usePhotoCreator } from "@/hooks/use-photo-creator";
 import { trpc } from "@/lib/trpc";
 import { CREDIT_COSTS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import { useUpgradeOnLimitError } from "@/hooks/use-upgrade-on-limit-error";
 import { toast } from "sonner";
 
 export function PhotoPreview() {
@@ -48,6 +49,7 @@ export function PhotoPreview() {
   } = usePhotoCreator();
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const handleUpgrade = useUpgradeOnLimitError();
 
   const generateMutation = trpc.content.generatePhoto.useMutation({
     onSuccess: (data) => {
@@ -55,7 +57,9 @@ export function PhotoPreview() {
       setGenerationStep("generate");
     },
     onError: (err) => {
-      toast.error(err.message);
+      if (!handleUpgrade(err.message)) {
+        toast.error(err.message);
+      }
       setIsGenerating(false);
       setGenerationStep("");
     },
@@ -106,10 +110,12 @@ export function PhotoPreview() {
       expression: params.expression,
       photoStyle: params.photoStyle,
       timeOfDay: params.timeOfDay,
+      location: params.location || undefined,
       customPrompt: params.customPrompt || undefined,
       numberOfImages: params.numberOfImages,
       contentMode: params.contentMode,
       nsfwLevel: params.contentMode === "NSFW" ? params.nsfwLevel : undefined,
+      useFaceReference: params.useFaceReference,
     });
   };
 
