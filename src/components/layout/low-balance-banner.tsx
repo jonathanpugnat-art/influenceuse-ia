@@ -6,6 +6,7 @@ import { Link } from "@/i18n/navigation";
 import { AlertTriangle, X, Zap } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
+import { isBetaFreeMode } from "@/lib/payments";
 
 const SESSION_KEY = "low_balance_dismissed_v1";
 
@@ -57,12 +58,18 @@ export function LowBalanceBanner() {
         </span>
       </div>
       <div className="flex items-center gap-2">
-        <Link
-          href="/billing"
-          className="rounded-lg bg-white/10 px-3 py-1 text-xs font-medium hover:bg-white/20"
-        >
-          {t("upgradeCta")}
-        </Link>
+        {/* Hide the upgrade link while payments are disabled — the bêta
+            credit-pool refill happens on the 1st of every month from the
+            same `PLANS.FREE.credits` constant, so there's nothing for the
+            user to "upgrade" to in the meantime. */}
+        {!isBetaFreeMode() && (
+          <Link
+            href="/billing"
+            className="rounded-lg bg-white/10 px-3 py-1 text-xs font-medium hover:bg-white/20"
+          >
+            {t("upgradeCta")}
+          </Link>
+        )}
         <button
           type="button"
           aria-label={t("dismiss")}

@@ -19,6 +19,7 @@ import {
   User as UserIcon,
   MoreHorizontal,
   FolderOpen,
+  TrendingUp,
 } from "lucide-react";
 import {
   Tooltip,
@@ -52,6 +53,7 @@ const mainNavItems = [
   { labelKey: "dashboard.createContent", icon: ImagePlus, href: "/content" },
   { labelKey: "common.calendar", icon: Calendar, href: "/calendar" },
   { labelKey: "common.library", icon: FolderOpen, href: "/library" },
+  { labelKey: "common.trends", icon: TrendingUp, href: "/trends" },
   { labelKey: "common.analytics", icon: BarChart3, href: "/analytics" },
 ];
 

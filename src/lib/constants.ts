@@ -18,12 +18,19 @@
 //   - SFW content without face ref → Flux 1.1 Pro
 //   - NSFW                         → Flux Dev Uncensored
 //   - Wizard base portrait         → Flux 1.1 Pro
+// Beta period (2026-05): the FREE tier is intentionally generous (500 credits
+// instead of 50) so early adopters can fully exercise the app — generate
+// multiple influencers, run several content batches — without ever hitting a
+// paywall during the closed-bêta window. The `creditsLimit` we persist on
+// `User.creditsLimit` keeps reading from this constant, so existing FREE
+// users automatically get the bump on their next sign-in (no migration).
+// Drop back to 50 when the beta ends and the paid plans are open.
 export const PLANS = {
   FREE: {
     name: "Free",
     price: 0,
     maxInfluencers: 1,
-    credits: 50,
+    credits: 500,
     hasVideo: false,
     hasNsfw: false,
     hasAutoPublish: false,
@@ -31,6 +38,9 @@ export const PLANS = {
     hasContentPlan: false,
     hasBatchGeneration: false,
     hasWebhooks: false,
+    /** v0.12 — trend feed visible? FREE gets a 3-card teaser only. */
+    hasTrends: false,
+    trendsMaxFeed: 3,
   },
   STARTER: {
     name: "Creator",
@@ -44,6 +54,8 @@ export const PLANS = {
     hasContentPlan: true,
     hasBatchGeneration: false,
     hasWebhooks: false,
+    hasTrends: true,
+    trendsMaxFeed: 15,
   },
   PRO: {
     name: "Pro",
@@ -57,6 +69,8 @@ export const PLANS = {
     hasContentPlan: true,
     hasBatchGeneration: true,
     hasWebhooks: true,
+    hasTrends: true,
+    trendsMaxFeed: 50,
   },
   ENTERPRISE: {
     name: "Agency",
@@ -70,6 +84,8 @@ export const PLANS = {
     hasContentPlan: true,
     hasBatchGeneration: true,
     hasWebhooks: true,
+    hasTrends: true,
+    trendsMaxFeed: 200,
   },
 } as const;
 
@@ -103,4 +119,12 @@ export const CREDIT_COSTS = {
   CONTENT_PLAN_PER_POST: 0.5,
   /** Idea brainstorm (returns ~5-15 short ideas). */
   IDEAS: 0.25,
+  /**
+   * v0.12 — Trends. Reading the cached feed is free (no LLM call).
+   * Generating LLM-personalized recommendations for an influencer costs
+   * ~1 caption-equivalent: it's a single small JSON LLM call covering
+   * 5-15 trends in one shot.
+   */
+  TREND_FEED: 0,
+  TREND_ANALYSIS: 0.5,
 } as const;

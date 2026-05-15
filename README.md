@@ -66,6 +66,12 @@ Copier `.env.example` → `.env` et renseigner :
 | `REDIS_URL` | File de jobs | ✅ |
 | `CRON_SECRET` | Auth des endpoints cron | ✅ |
 | `ENCRYPTION_SECRET` | Encryption des tokens sociaux | ✅ |
+| `TRENDS_PROVIDER` | `apify` / `http` / `stub` (auto-resolve si vide) | ❌ |
+| `APIFY_TOKEN` | Token Apify (active TikTok + Instagram d'un coup) | ❌ |
+| `APIFY_TIKTOK_ACTOR` / `APIFY_INSTAGRAM_ACTOR` | Override des actors par défaut | ❌ |
+| `APIFY_TIKTOK_COUNTRY` / `APIFY_TIKTOK_PERIOD` | Pays + fenêtre (7/30/120 j) TikTok | ❌ |
+| `APIFY_INSTAGRAM_HASHTAGS` | Hashtags seeds Instagram (CSV) | ❌ |
+| `TRENDS_HTTP_URL` / `TRENDS_HTTP_TOKEN` | Feed HTTP custom (`RawTrendItem[]`) | ❌ |
 
 ---
 
@@ -159,8 +165,22 @@ Configurés dans `vercel.json` :
 | `/api/cron/publish` | toutes les 5 min | Publie le contenu `SCHEDULED` arrivé à échéance |
 | `/api/cron/process-batches` | toutes les 10 min | Avance les batches `DRAFT → READY/SCHEDULED` |
 | `/api/cron/retry-webhooks` | toutes les 15 min | Relance les webhooks `FAILED/RETRYING` avec backoff |
+| `/api/cron/fetch-analytics` | toutes les heures | Récupère les métriques Instagram/TikTok |
+| `/api/cron/fetch-trends` | une fois par jour (05:00 UTC) | Rafraîchit le cache de tendances TikTok/Instagram |
 
 Tous protégés par `Authorization: Bearer $CRON_SECRET`.
+
+### Module Tendances
+
+La page `/trends` du dashboard agrège des signaux de tendances TikTok et Instagram et les transforme en briefs prêts-à-shooter (scène, pose, expression, outfit) pour chaque influenceuse. Sans clé provider configurée, le module **dégrade proprement** : la UI affiche un bandeau « Tendances non configurées » et le cron renvoie `{ ok: true, skipped: "no-provider-configured" }`.
+
+- **Sources réelles** (avec `APIFY_TOKEN` configuré) :
+  - **TikTok** : top hashtags du Creative Center via l'actor `scrapeengine/tiktok-trending-hashtags-scraper`. Configurable par pays (`APIFY_TIKTOK_COUNTRY`) et fenêtre 7/30/120 jours (`APIFY_TIKTOK_PERIOD`). Les `industry_info` Apify sont mappées sur nos `Niche` Prisma, les `video_views` log-normalisées en `growthScore` 0–100.
+  - **Instagram** : scrape des posts récents les plus engagés via `apify/instagram-hashtag-scraper` sur une liste de hashtags seed (`APIFY_INSTAGRAM_HASHTAGS`). On agrège par hashtag, on prend les 3 meilleurs posts par engagement et on construit un brief avec un extrait de caption + les hashtags croisés.
+  - Les deux sous-fetchers tournent en `Promise.allSettled` : si TikTok plante (rate limit, captcha), Instagram passe quand même — et vice-versa.
+- Fetch quotidien via `/api/cron/fetch-trends` avec cache 24 h (idempotent : `(provider, platform, contentHash)` dédupliqué).
+- Personnalisation LLM facturée `CREDIT_COSTS.TREND_ANALYSIS` (0.5 crédit) — gated `STARTER+`, le plan `FREE` voit un teaser de 3 cartes.
+- Implémentations fournies : `ApifyTrendsProvider`, `GenericHttpProvider`, `DevStubProvider` (dev only, données factices).
 
 ---
 

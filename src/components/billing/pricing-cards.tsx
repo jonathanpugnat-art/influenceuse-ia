@@ -1,11 +1,12 @@
 "use client";
 
-import { Check, X, Star } from "lucide-react";
+import { Check, X, Star, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { PLANS } from "@/lib/constants";
+import { isBetaFreeMode } from "@/lib/payments";
 
 interface PlanFeature {
   label: string;
@@ -199,8 +200,16 @@ export function PricingCards() {
               ))}
             </ul>
 
-            {/* Button */}
-            {isCurrent ? (
+            {/* Button — during the v0.11 closed bêta every paid plan is
+                gated behind a "Bêta gratuite" pill so users don't try to
+                pay while Stripe is still in TEST mode. We keep the
+                checkout flow untouched and just flip the CTA. */}
+            {isBetaFreeMode() && plan.id !== "FREE" ? (
+              <div className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-violet-500/30 bg-violet-500/10 py-2.5 text-sm font-medium text-violet-200">
+                <Sparkles className="h-3.5 w-3.5" />
+                Bêta gratuite
+              </div>
+            ) : isCurrent ? (
               <button
                 disabled
                 className="w-full rounded-xl border border-slate-700 bg-slate-800/50 py-2.5 text-sm text-slate-400"

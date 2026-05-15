@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/fetch-analytics",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/fetch-trends",
+      "schedule": "0 5 * * *"
     }
   ]
 }

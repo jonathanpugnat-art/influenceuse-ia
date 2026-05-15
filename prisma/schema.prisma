@@ -149,6 +149,7 @@ model Influencer {
   contents       Content[]
   contentBatches ContentBatch[]
   analytics      InfluencerAnalytics?
+  trendRecommendations TrendRecommendation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -557,4 +558,122 @@ enum WaitlistEntryStatus {
   INVITED
   SIGNED_UP
   REJECTED
+}
+
+// ──────────────────────────────────────────────
+// Trends (v0.12 — TikTok / Instagram trend intelligence)
+// ──────────────────────────────────────────────
+//
+// Pipeline:
+//   1. Cron `/api/cron/fetch-trends` calls a configurable TrendsProvider
+//      (Apify, Predis, custom HTTP feed…) every day. The raw provider payload
+//      is stored once as a `TrendSnapshot` (deduped by content hash) so we
+//      can re-run analysis later without re-paying the provider.
+//   2. Each snapshot is normalized into N `TrendItem` rows. These are
+//      platform/region/niche-aware and are the rows we expose in the UI.
+//   3. Per-influencer LLM personalization produces `TrendRecommendation`
+//      rows: actionable photo/reel params (scene/pose/outfit…) the user can
+//      apply in 1 click to the content creator.
+//
+// We intentionally never store identifiable third-party usernames in the
+// recommendation — only short, source-agnostic citations like "trend_title"
+// or "hashtag #foo" so prompts stay reproducible and safe.
+
+/// One raw fetch from a TrendsProvider, deduped by content hash so the cron
+/// can run frequently without exploding the table. Keep `rawPayload` for
+/// audit + re-analysis.
+model TrendSnapshot {
+  id          String   @id @default(cuid())
+  /// Which platform the data is about — TIKTOK / INSTAGRAM (ONLYFANS unused).
+  platform    Platform
+  /// Optional region code (e.g. "FR", "US", "global"). NULL = provider didn't
+  /// expose a region (some feeds are language-only).
+  region      String?
+  /// ISO-639-1 locale (fr/en/…) when the provider returns localized data.
+  locale      String?
+  /// Identifier of the provider implementation that produced this snapshot.
+  /// Lets us A/B providers without losing history.
+  provider    String
+  /// Raw JSON from the provider, kept for debug and re-analysis.
+  rawPayload  Json
+  /// SHA-256 of the canonical raw payload — used to dedupe identical fetches.
+  contentHash String
+  fetchedAt   DateTime @default(now())
+
+  items TrendItem[]
+
+  @@unique([provider, platform, contentHash])
+  @@index([platform, fetchedAt])
+  @@index([fetchedAt])
+}
+
+/// One normalized trend item — what the UI actually shows.
+/// Denormalized from the snapshot so we can index/filter without joins.
+model TrendItem {
+  id            String   @id @default(cuid())
+  snapshotId    String
+  platform      Platform
+  /// Short headline for the trend, e.g. "Get-ready-with-me running edition".
+  title         String   @db.Text
+  /// 1-3 sentence description. May be empty for hashtag-only signals.
+  description   String?  @db.Text
+  /// Hashtags WITHOUT the leading '#'.
+  hashtags      String[]
+  /// Trending audio / song name when the provider exposes one. Null otherwise.
+  soundName     String?
+  /// 0..100 score from the provider (or normalized in service).
+  growthScore   Float?
+  /// Where the trend lives publicly (TikTok discover URL, IG explore tag…).
+  sourceUrl     String?
+  /// Coarse niche tag inferred at fetch time, used for filtering.
+  /// We don't FK to the Niche enum because some trends are cross-niche.
+  /// Valid values: Niche enum keys ("FASHION", "FITNESS"…) + "GENERAL".
+  nicheTags     String[]
+  /// NSFW flag from the provider (or inferred by service heuristic).
+  isNsfw        Boolean  @default(false)
+  /// Locale of the trend, when known (fr / en / …).
+  locale        String?
+  /// Optional region for filtering (FR, US, global…).
+  region        String?
+  /// When this trend should be considered stale and hidden from the feed.
+  /// NULL = no expiry (still up to `fetchedAt` recency to decide).
+  expiresAt     DateTime?
+  fetchedAt     DateTime @default(now())
+
+  snapshot       TrendSnapshot         @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  recommendations TrendRecommendation[]
+
+  @@index([platform])
+  @@index([fetchedAt])
+  @@index([platform, isNsfw, fetchedAt])
+  @@index([snapshotId])
+}
+
+/// Per-influencer LLM-personalized recommendation derived from a TrendItem.
+/// Multiple influencers can share the same TrendItem but each gets its own
+/// recommendation (different niche/voice/NSFW gating).
+model TrendRecommendation {
+  id              String   @id @default(cuid())
+  influencerId    String
+  trendItemId     String
+  /// Short scroll-stopping hook in the influencer's voice/language.
+  generatedHook   String   @db.Text
+  /// Structured JSON ready to feed into the photo/reel creator:
+  ///   { type, platform, scene, pose, expression, outfit, customPrompt,
+  ///     confidence, citations }
+  /// Always validated against `trendRecommendationFieldsSchema` at write time.
+  generatedFields Json
+  /// Which LLM produced this (e.g. "deepseek-chat", "claude-sonnet-4-5").
+  llmModel        String
+  /// User dismissed this card — don't show it again.
+  userDismissed   Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  influencer Influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+  trendItem  TrendItem  @relation(fields: [trendItemId], references: [id], onDelete: Cascade)
+
+  @@unique([influencerId, trendItemId])
+  @@index([influencerId])
+  @@index([influencerId, userDismissed])
+  @@index([createdAt])
 }

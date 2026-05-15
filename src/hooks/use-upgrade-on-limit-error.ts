@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { toast } from "sonner";
 import { useUpgradeModal, type UpgradeReason } from "@/components/billing/upgrade-modal";
+import { isBetaFreeMode } from "@/lib/payments";
 
 const REASON_TO_PLAN: Record<UpgradeReason, "STARTER" | "PRO" | "ENTERPRISE"> = {
   max_influencers: "PRO",
@@ -35,6 +36,11 @@ export function useUpgradeOnLimitError() {
       const [, rawReason] = message.split(":");
       const reason = rawReason as UpgradeReason;
       if (!REASON_TO_PLAN[reason]) return undefined;
+      // During the bêta we don't open the upgrade modal — there's nothing
+      // to upgrade to while Stripe is in TEST mode. We let the caller fall
+      // through to its toast.error() instead, which surfaces the underlying
+      // limit message ("Crédits insuffisants", etc.) in a non-clickable way.
+      if (isBetaFreeMode()) return undefined;
       show(reason, REASON_TO_PLAN[reason]);
       return true;
     },

@@ -11,6 +11,7 @@ import { workspaceRouter } from "./routers/workspace";
 import { mediaLibraryRouter } from "./routers/media-library";
 import { referralRouter } from "./routers/referral";
 import { adminRouter } from "./routers/admin";
+import { trendsRouter } from "./routers/trends";
 
 export const appRouter = createTRPCRouter({
   influencer: influencerRouter,
@@ -27,6 +28,8 @@ export const appRouter = createTRPCRouter({
   referral: referralRouter,
   // v0.11 — closed beta gating
   admin: adminRouter,
+  // v0.12 — TikTok / Instagram trends intelligence
+  trends: trendsRouter,
 });
 
 export type AppRouter = typeof appRouter;

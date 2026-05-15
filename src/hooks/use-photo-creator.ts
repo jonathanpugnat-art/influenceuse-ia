@@ -19,10 +19,29 @@ export interface PhotoParams {
   nsfwLevel: string;
 }
 
+/**
+ * v0.12 — Shape used when seeding the photo creator from a Trend
+ * recommendation. Kept loose on purpose (Partial) so the trends router can
+ * evolve without touching this hook.
+ */
+export interface PhotoCreatorSeed {
+  influencerId?: string;
+  scene?: string;
+  pose?: string;
+  outfit?: string;
+  expression?: string;
+  customPrompt?: string;
+  /** Optional hook copied into the caption textarea. */
+  caption?: string;
+  hashtags?: string[];
+}
+
 interface PhotoCreatorState {
   // Params
   params: PhotoParams;
   updateParams: (partial: Partial<PhotoParams>) => void;
+  /** Convenience: apply a Trends seed in one call (params + caption + tags). */
+  applySeed: (seed: PhotoCreatorSeed) => void;
   // Generation
   contentId: string | null;
   isGenerating: boolean;
@@ -67,6 +86,19 @@ export const usePhotoCreator = create<PhotoCreatorState>()((set) => ({
   params: { ...defaultParams },
   updateParams: (partial) =>
     set((s) => ({ params: { ...s.params, ...partial } })),
+  applySeed: (seed) =>
+    set((s) => {
+      const {
+        caption: captionSeed,
+        hashtags: hashtagsSeed,
+        ...paramSeed
+      } = seed;
+      return {
+        params: { ...s.params, ...paramSeed },
+        ...(captionSeed !== undefined ? { caption: captionSeed } : {}),
+        ...(hashtagsSeed !== undefined ? { hashtags: hashtagsSeed } : {}),
+      };
+    }),
   contentId: null,
   isGenerating: false,
   generationStep: "",
