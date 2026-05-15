@@ -1,24 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "_comment": [
-    "Vercel Hobby (free) caps cron frequency at exactly 1 run/day. To ship",
-    "the bêta on Hobby without upgrading to Pro ($20/mo) we run every cron",
-    "once a day at distinct UTC times. Trade-offs:",
-    "",
-    "  - Scheduled publications fire daily at 09:00 UTC (≈11:00 Paris) →",
-    "    a post scheduled for the rest of the day will go out the FOLLOWING",
-    "    morning. The UI warns the user about this during the bêta.",
-    "  - Batch processing runs at 09:30 UTC → batches queued during the day",
-    "    are processed overnight.",
-    "  - Webhook retries fire at 10:00 UTC → up to 24h delay on retry, but",
-    "    the persistent queue means nothing is lost.",
-    "  - Analytics + trends keep their original daily slots (they were",
-    "    daily-only before).",
-    "",
-    "Upgrade path: bump to Vercel Pro and restore:",
-    "  - publish, process-batches, retry-webhooks → '* * * * *' (every min)",
-    "  - fetch-analytics → '0 * * * *' (every hour)"
-  ],
   "crons": [
     {
       "path": "/api/cron/publish",
