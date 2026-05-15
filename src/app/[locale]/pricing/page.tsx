@@ -5,9 +5,9 @@ import { Link } from "@/i18n/navigation";
 import { PLANS } from "@/lib/constants";
 
 export const metadata: Metadata = {
-  title: "Tarifs — Influenceuse IA",
+  title: "Tarifs — Aura Influences",
   description:
-    "Tarifs simples et transparents pour Influenceuse IA. Free, Creator, Pro et Agency — choisissez le plan qui correspond à votre volume de génération.",
+    "Tarifs simples et transparents pour Aura Influences. Free, Creator, Pro et Agency — choisissez le plan qui correspond à votre volume de génération.",
 };
 
 /**
@@ -119,7 +119,7 @@ export default async function PricingPage({
           <div className="size-8 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
             <Sparkles className="size-4 text-white" />
           </div>
-          <span className="font-bold text-lg tracking-tight">Influenceuse IA</span>
+          <span className="font-bold text-lg tracking-tight">Aura Influences</span>
         </Link>
         <Link
           href="/"

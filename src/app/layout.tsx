@@ -19,9 +19,9 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"),
-  title: "Influenceuse IA",
+  title: "Aura Influences — Créez vos influenceuses IA",
   description:
-    "Plateforme de création et gestion d'influenceuses virtuelles par IA",
+    "Aura Influences est la plateforme tout-en-un pour créer, animer et publier des influenceuses virtuelles générées par IA. Photos iPhone-réelles, reels TikTok, planning auto. Bêta gratuite.",
 };
 
 function Providers({ children }: { children: React.ReactNode }) {

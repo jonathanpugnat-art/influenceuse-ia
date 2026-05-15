@@ -16,13 +16,16 @@ export function generateStaticParams() {
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
   const { locale } = await params;
-  const titles: Record<string, string> = { fr: "Influenceuse IA", en: "Influenceuse IA" };
+  const titles: Record<string, string> = {
+    fr: "Aura Influences — Créez vos influenceuses IA",
+    en: "Aura Influences — Build your AI influencers",
+  };
   const descriptions: Record<string, string> = {
-    fr: "Plateforme de création et gestion d'influenceuses virtuelles par IA",
-    en: "Platform for creating and managing AI virtual influencers",
+    fr: "Aura Influences : plateforme tout-en-un pour créer, animer et publier des influenceuses virtuelles générées par IA. Photos iPhone-réelles, reels TikTok, planning auto. Bêta gratuite.",
+    en: "Aura Influences: the all-in-one platform to create, animate and publish AI-generated virtual influencers. iPhone-real photos, TikTok reels, auto scheduling. Free beta.",
   };
   return {
-    title: { default: titles[locale] ?? titles.fr, template: `%s | ${titles[locale] ?? titles.fr}` },
+    title: { default: titles[locale] ?? titles.fr, template: `%s | Aura Influences` },
     description: descriptions[locale] ?? descriptions.fr,
   };
 }

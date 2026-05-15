@@ -2,7 +2,7 @@ import { ImageResponse } from "next/og";
 
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
-export const alt = "Influenceuse IA — Créez des influenceuses virtuelles IA";
+export const alt = "Aura Influences — Créez vos influenceuses virtuelles IA";
 
 export default function OGImage() {
   return new ImageResponse(
@@ -27,7 +27,7 @@ export default function OGImage() {
             marginBottom: 16,
           }}
         >
-          Influenceuse IA
+          Aura Influences
         </div>
         <div style={{ fontSize: 28, color: "#a78bfa" }}>
           {"Créez des influenceuses virtuelles propulsées par l'IA"}

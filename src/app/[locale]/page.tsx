@@ -184,7 +184,7 @@ export default function LandingPage() {
               <Sparkles className="size-4 text-white" />
             </div>
             <span className="font-bold text-lg tracking-tight">
-              Influenceuse IA
+              Aura Influences
             </span>
           </div>
 
@@ -1030,7 +1030,7 @@ export default function LandingPage() {
               <div className="size-6 rounded bg-violet-600 flex items-center justify-center">
                 <Sparkles className="size-3 text-white" />
               </div>
-              <span className="font-bold text-zinc-100">Influenceuse IA</span>
+              <span className="font-bold text-zinc-100">Aura Influences</span>
             </div>
 
             <div className="flex gap-6 text-sm text-zinc-500">
@@ -1055,7 +1055,7 @@ export default function LandingPage() {
             </div>
 
             <p className="text-sm text-zinc-600">
-              © {new Date().getFullYear()} Influenceuse IA. {t("footerRights")}
+              © {new Date().getFullYear()} Aura Influences. {t("footerRights")}
             </p>
           </div>
         </div>
