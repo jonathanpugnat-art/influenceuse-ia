@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "PRISMA_MIGRATE=1 npx prisma migrate deploy && npx next build",
+  "buildCommand": "npx prisma generate && PRISMA_MIGRATE=1 npx prisma migrate deploy && npx next build",
   "crons": [
     {
       "path": "/api/cron/publish",
