@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslations, useLocale } from "next-intl";
 import { Link, usePathname } from "@/i18n/navigation";
@@ -20,7 +21,17 @@ import {
   Users,
   Image as ImageIcon,
   CalendarDays,
+  Heart,
+  MessageCircle,
+  Send,
+  Bookmark,
+  Camera,
+  Quote,
+  Zap,
+  Globe,
+  Lock,
 } from "lucide-react";
+import { WaitlistForm } from "@/components/landing/waitlist-form";
 
 /**
  * Public landing page.
@@ -36,6 +47,7 @@ export default function LandingPage() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const t = useTranslations("landing");
+  const tw = useTranslations("waitlist");
   const locale = useLocale();
   const pathname = usePathname();
 
@@ -344,27 +356,23 @@ export default function LandingPage() {
                 {t("heroSubtitle")}
               </motion.p>
 
+              {/* Closed-beta CTA — replaces the open sign-up button while
+                  invites are gated. The legacy /sign-up link stays in the
+                  header so existing testers can still log in. */}
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.3 }}
-                className="flex flex-col sm:flex-row items-center justify-center gap-4"
+                className="flex flex-col items-center gap-3"
               >
-                <Link href="/sign-up">
-                  <Button
-                    size="lg"
-                    className="w-full sm:w-auto h-14 px-8 text-base bg-white text-zinc-950 hover:bg-zinc-200 transition-colors"
-                  >
-                    {t("ctaPrimary")} <ArrowRight className="ml-2 size-4" />
-                  </Button>
-                </Link>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="w-full sm:w-auto h-14 px-8 text-base border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800 text-white"
-                >
-                  <Play className="mr-2 size-4" /> {t("ctaWatchDemo")}
-                </Button>
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs font-medium">
+                  <Lock className="size-3.5" />
+                  <span>{tw("badge")}</span>
+                </div>
+                <WaitlistForm source="hero" variant="hero" />
+                <p className="text-xs text-zinc-500 mt-1">
+                  {tw("subtitle")}
+                </p>
               </motion.div>
             </div>
 
@@ -372,60 +380,355 @@ export default function LandingPage() {
               initial={{ opacity: 0, y: 40 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.4 }}
-              className="mt-20 relative mx-auto max-w-5xl"
+              className="mt-16 md:mt-20 relative mx-auto max-w-6xl"
             >
-              <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-transparent to-transparent z-10" />
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-2 backdrop-blur-sm overflow-hidden relative shadow-2xl shadow-violet-900/20">
-                <div className="aspect-[16/9] md:aspect-[21/9] bg-zinc-950 rounded-xl flex items-center justify-center border border-zinc-800/50 relative overflow-hidden">
-                  <div className="absolute inset-0 opacity-20 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]" />
+              {/* "100% AI" trust badge above the photo wall */}
+              <div className="flex justify-center mb-6">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-medium">
+                  <Camera className="size-3.5" />
+                  <span>{t("heroPhotoBadge")}</span>
+                </div>
+              </div>
 
-                  <div className="flex items-center gap-4 animate-pulse">
-                    <div className="w-64 h-80 bg-zinc-800 rounded-lg shrink-0 overflow-hidden relative">
-                      <div className="absolute inset-0 bg-gradient-to-tr from-violet-500/20 to-transparent" />
-                      <div className="absolute bottom-4 left-4 right-4 h-12 bg-zinc-900/80 backdrop-blur rounded flex items-center px-3 gap-3">
-                        <div className="size-6 rounded-full bg-zinc-700" />
-                        <div className="flex-1 h-3 bg-zinc-700 rounded-full" />
+              <div className="rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-900/80 to-zinc-950 p-3 md:p-4 backdrop-blur-sm overflow-hidden relative shadow-[0_30px_80px_-20px_rgba(139,92,246,0.35)]">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+                  {[
+                    { src: "/landing/showcase/luna-gym.jpg", caption: t("showcaseCaptionGym"), likes: "12.4K" },
+                    { src: "/landing/showcase/amani-restaurant.jpg", caption: t("showcaseCaptionRestaurant"), likes: "8.7K" },
+                    { src: "/landing/showcase/kenji-tokyo.jpg", caption: t("showcaseCaptionTokyo"), likes: "15.2K" },
+                    { src: "/landing/showcase/marco-nyc.jpg", caption: t("showcaseCaptionNyc"), likes: "21.8K" },
+                  ].map((shot, i) => (
+                    <motion.div
+                      key={shot.src}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.6, delay: 0.5 + i * 0.08 }}
+                      className="relative rounded-2xl overflow-hidden aspect-[3/4] group bg-zinc-800"
+                    >
+                      <Image
+                        src={shot.src}
+                        alt={shot.caption}
+                        fill
+                        sizes="(min-width: 768px) 25vw, 50vw"
+                        className="object-cover transition-transform duration-700 group-hover:scale-105"
+                        priority={i < 2}
+                      />
+                      {/* IG-style overlay */}
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent p-3 md:p-4">
+                        <div className="flex items-center justify-between text-white text-xs md:text-sm">
+                          <div className="flex items-center gap-1.5 font-semibold">
+                            <Heart className="size-3.5 md:size-4 fill-rose-500 text-rose-500" />
+                            {shot.likes}
+                          </div>
+                          <span className="text-white/80 truncate ml-2">
+                            {shot.caption}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                    <div className="w-64 h-80 bg-zinc-800 rounded-lg shrink-0 overflow-hidden relative hidden sm:block">
-                      <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/20 to-transparent" />
-                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 size-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                        <Play className="size-5 text-white ml-1" />
+                      <div className="absolute top-3 right-3 size-7 rounded-full bg-black/40 backdrop-blur flex items-center justify-center">
+                        <Sparkles className="size-3.5 text-violet-300" />
                       </div>
-                    </div>
-                    <div className="w-64 h-80 bg-zinc-800 rounded-lg shrink-0 overflow-hidden relative hidden md:block">
-                      <div className="absolute inset-0 bg-gradient-to-tr from-fuchsia-500/20 to-transparent" />
-                      <div className="absolute bottom-4 left-4 right-4 h-12 bg-zinc-900/80 backdrop-blur rounded flex items-center px-3 gap-3">
-                        <div className="size-6 rounded-full bg-zinc-700" />
-                        <div className="flex-1 h-3 bg-zinc-700 rounded-full" />
-                      </div>
-                    </div>
-                  </div>
+                    </motion.div>
+                  ))}
                 </div>
               </div>
             </motion.div>
           </div>
         </section>
 
-        {/* Social proof */}
-        <section className="py-10 border-y border-zinc-800/50 bg-zinc-900/20">
+        {/* Stats strip + social proof */}
+        <section className="py-12 border-y border-zinc-800/50 bg-zinc-900/20">
           <div className="container mx-auto px-6">
-            <p className="text-center text-sm text-zinc-500 font-medium mb-6 uppercase tracking-wider">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-10 mb-10 max-w-5xl mx-auto">
+              {[
+                { value: "1.2M+", label: t("statsPhotosGenerated"), icon: ImageIcon },
+                { value: "21s", label: t("statsAvgGenTime"), icon: Zap },
+                { value: "32", label: t("statsCountries"), icon: Globe },
+                { value: "45+", label: t("statsActiveAgencies"), icon: Users },
+              ].map((stat) => (
+                <div key={stat.label} className="text-center">
+                  <div className="flex justify-center mb-2">
+                    <stat.icon className="size-5 text-violet-400" />
+                  </div>
+                  <div className="text-3xl md:text-4xl font-bold text-white tracking-tight">
+                    {stat.value}
+                  </div>
+                  <div className="text-xs md:text-sm text-zinc-500 mt-1">
+                    {stat.label}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-center text-xs text-zinc-500 font-medium mb-5 uppercase tracking-wider">
               {t("socialProofTitle")}
             </p>
-            <div className="flex flex-wrap justify-center items-center gap-8 md:gap-16 opacity-50 grayscale">
-              <div className="text-xl font-bold flex items-center gap-2">
-                <Sparkles className="size-5" /> Stripe
+            <div className="flex flex-wrap justify-center items-center gap-8 md:gap-14 opacity-40 grayscale">
+              <div className="text-lg font-bold flex items-center gap-2">
+                <Sparkles className="size-4" /> Stripe
               </div>
-              <div className="text-xl font-bold flex items-center gap-2">
-                <Layers className="size-5" /> Clerk
+              <div className="text-lg font-bold flex items-center gap-2">
+                <Layers className="size-4" /> Clerk
               </div>
-              <div className="text-xl font-bold flex items-center gap-2">
-                <Wand2 className="size-5" /> Anthropic
+              <div className="text-lg font-bold flex items-center gap-2">
+                <Wand2 className="size-4" /> Anthropic
               </div>
-              <div className="text-xl font-bold flex items-center gap-2">
-                <ImageIcon className="size-5" /> Replicate
+              <div className="text-lg font-bold flex items-center gap-2">
+                <ImageIcon className="size-4" /> Replicate
               </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Showcase — 4 personas with Instagram-style cards */}
+        <section className="py-24 md:py-32 relative overflow-hidden">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[60%] bg-violet-600/10 blur-[120px] rounded-full -z-10" />
+          <div className="container mx-auto px-6">
+            <div className="text-center max-w-2xl mx-auto mb-14">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-300 text-xs font-medium mb-4">
+                <Sparkles className="size-3.5" />
+                <span>{t("heroPhotoBadge")}</span>
+              </div>
+              <h2 className="text-3xl md:text-5xl font-bold mb-4 tracking-tight">
+                {t("showcaseTitle")}
+              </h2>
+              <p className="text-zinc-400 text-lg leading-relaxed">
+                {t("showcaseSubtitle")}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto">
+              {[
+                {
+                  name: t("showcaseLuna"),
+                  handle: "@luna.lifestyle",
+                  avatar: "/landing/influencers/luna.jpg",
+                  posts: [
+                    { src: "/landing/showcase/luna-gym.jpg", caption: t("showcaseCaptionGym"), likes: "12.4K", comments: "284" },
+                    { src: "/landing/showcase/luna-cafe.jpg", caption: t("showcaseCaptionCafe"), likes: "8.9K", comments: "156" },
+                    { src: "/landing/showcase/luna-mirror.jpg", caption: t("showcaseCaptionMirror"), likes: "15.7K", comments: "412" },
+                  ],
+                },
+                {
+                  name: t("showcaseAmani"),
+                  handle: "@amani.style",
+                  avatar: "/landing/influencers/amani.jpg",
+                  posts: [
+                    { src: "/landing/showcase/amani-restaurant.jpg", caption: t("showcaseCaptionRestaurant"), likes: "21.3K", comments: "503" },
+                    { src: "/landing/showcase/amani-shopping.jpg", caption: "Shopping day 🛍️", likes: "9.1K", comments: "187" },
+                  ],
+                },
+                {
+                  name: t("showcaseKenji"),
+                  handle: "@kenji.tokyo",
+                  avatar: "/landing/influencers/kenji.jpg",
+                  posts: [
+                    { src: "/landing/showcase/kenji-tokyo.jpg", caption: t("showcaseCaptionTokyo"), likes: "18.6K", comments: "402" },
+                    { src: "/landing/showcase/kenji-street1.jpg", caption: "Daylight fit 🇯🇵", likes: "11.2K", comments: "231" },
+                    { src: "/landing/showcase/kenji-shop.jpg", caption: "Vintage finds", likes: "7.4K", comments: "98" },
+                  ],
+                },
+                {
+                  name: t("showcaseMarco"),
+                  handle: "@marco.travels",
+                  avatar: "/landing/influencers/marco.jpg",
+                  posts: [
+                    { src: "/landing/showcase/marco-nyc.jpg", caption: t("showcaseCaptionNyc"), likes: "24.1K", comments: "612" },
+                    { src: "/landing/showcase/marco-cafe.jpg", caption: "Espresso run ☕", likes: "9.8K", comments: "204" },
+                    { src: "/landing/showcase/marco-park.jpg", caption: "Park days 🌳", likes: "13.5K", comments: "318" },
+                  ],
+                },
+              ].map((persona, idx) => (
+                <motion.article
+                  key={persona.handle}
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: "-50px" }}
+                  transition={{ duration: 0.5, delay: idx * 0.1 }}
+                  className="rounded-3xl bg-zinc-900/60 border border-zinc-800 overflow-hidden hover:border-violet-500/40 transition-colors duration-300 group"
+                >
+                  {/* Profile header */}
+                  <div className="p-4 flex items-center gap-3 border-b border-zinc-800/60">
+                    <div className="relative size-11 rounded-full overflow-hidden ring-2 ring-violet-500/40 shrink-0">
+                      <Image
+                        src={persona.avatar}
+                        alt={persona.name}
+                        fill
+                        sizes="44px"
+                        className="object-cover"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-bold text-white truncate flex items-center gap-1">
+                        {persona.handle}
+                        <span className="inline-flex size-3.5 items-center justify-center rounded-full bg-violet-500">
+                          <CheckCircle2 className="size-2.5 text-white" />
+                        </span>
+                      </div>
+                      <div className="text-xs text-zinc-500 truncate">
+                        {persona.name}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Main post */}
+                  <div className="relative aspect-[4/5] bg-zinc-800">
+                    <Image
+                      src={persona.posts[0].src}
+                      alt={persona.posts[0].caption}
+                      fill
+                      sizes="(min-width: 1024px) 25vw, (min-width: 768px) 50vw, 100vw"
+                      className="object-cover group-hover:scale-[1.02] transition-transform duration-700"
+                    />
+                  </div>
+
+                  {/* IG-style actions */}
+                  <div className="p-4">
+                    <div className="flex items-center gap-4 mb-2 text-white">
+                      <Heart className="size-6 hover:text-rose-500 transition-colors cursor-pointer" />
+                      <MessageCircle className="size-6 cursor-pointer" />
+                      <Send className="size-6 cursor-pointer" />
+                      <Bookmark className="size-6 ml-auto cursor-pointer" />
+                    </div>
+                    <div className="text-sm font-semibold text-white">
+                      {persona.posts[0].likes} likes
+                    </div>
+                    <div className="text-sm text-zinc-300 mt-1 line-clamp-2">
+                      <span className="font-semibold text-white mr-1.5">
+                        {persona.handle}
+                      </span>
+                      {persona.posts[0].caption}
+                    </div>
+                    <div className="text-xs text-zinc-500 mt-1">
+                      {persona.posts[0].comments} comments
+                    </div>
+                  </div>
+
+                  {/* Mini grid of other shots */}
+                  {persona.posts.length > 1 && (
+                    <div
+                      className={`grid gap-px bg-zinc-800 ${
+                        persona.posts.length === 2 ? "grid-cols-1" : "grid-cols-2"
+                      }`}
+                    >
+                      {persona.posts.slice(1).map((p) => (
+                        <div
+                          key={p.src}
+                          className="relative aspect-square bg-zinc-900"
+                        >
+                          <Image
+                            src={p.src}
+                            alt={p.caption}
+                            fill
+                            sizes="(min-width: 1024px) 12vw, 25vw"
+                            className="object-cover"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </motion.article>
+              ))}
+            </div>
+
+            <div className="text-center mt-12">
+              <Link href="/sign-up">
+                <Button
+                  variant="outline"
+                  className="border-zinc-700 bg-zinc-900/50 text-white hover:bg-zinc-800 h-11 px-6"
+                >
+                  {t("showcaseSeeMore")}
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* Before / After — same face, different scenes */}
+        <section className="py-24 md:py-32 bg-zinc-900/30 border-y border-zinc-800/50">
+          <div className="container mx-auto px-6">
+            <div className="text-center max-w-2xl mx-auto mb-14">
+              <h2 className="text-3xl md:text-5xl font-bold mb-4 tracking-tight">
+                {t("beforeAfterTitle")}
+              </h2>
+              <p className="text-zinc-400 text-lg leading-relaxed">
+                {t("beforeAfterSubtitle")}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 max-w-6xl mx-auto items-center">
+              <motion.div
+                initial={{ opacity: 0, x: -30 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6 }}
+                className="md:col-span-2"
+              >
+                <div className="text-xs uppercase tracking-wider text-violet-400 font-semibold mb-3 text-center md:text-left">
+                  {t("beforeAfterLabelBase")}
+                </div>
+                <div className="relative aspect-[3/4] rounded-3xl overflow-hidden border border-zinc-800 shadow-2xl shadow-violet-900/30">
+                  <Image
+                    src="/landing/influencers/luna.jpg"
+                    alt="Reference portrait"
+                    fill
+                    sizes="(min-width: 768px) 40vw, 100vw"
+                    className="object-cover"
+                  />
+                  <div className="absolute top-3 left-3 px-2 py-1 rounded-full bg-black/60 backdrop-blur text-white text-[10px] font-bold uppercase tracking-wider">
+                    Wizard
+                  </div>
+                </div>
+              </motion.div>
+
+              <div className="hidden md:flex justify-center items-center md:col-span-1">
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.5 }}
+                  whileInView={{ opacity: 1, scale: 1 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5, delay: 0.3 }}
+                  className="size-16 rounded-full bg-violet-500/20 border border-violet-500/50 flex items-center justify-center"
+                >
+                  <ArrowRight className="size-7 text-violet-300" />
+                </motion.div>
+              </div>
+
+              <motion.div
+                initial={{ opacity: 0, x: 30 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6, delay: 0.2 }}
+                className="md:col-span-2"
+              >
+                <div className="text-xs uppercase tracking-wider text-emerald-400 font-semibold mb-3 text-center md:text-left">
+                  {t("beforeAfterLabelGenerated")}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    "/landing/showcase/luna-gym.jpg",
+                    "/landing/showcase/luna-cafe.jpg",
+                    "/landing/showcase/luna-mirror.jpg",
+                    "/landing/showcase/amani-restaurant.jpg",
+                  ].map((src, i) => (
+                    <motion.div
+                      key={src}
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ duration: 0.4, delay: 0.4 + i * 0.08 }}
+                      className="relative aspect-[3/4] rounded-2xl overflow-hidden border border-zinc-800"
+                    >
+                      <Image
+                        src={src}
+                        alt=""
+                        fill
+                        sizes="(min-width: 768px) 20vw, 50vw"
+                        className="object-cover"
+                      />
+                    </motion.div>
+                  ))}
+                </div>
+              </motion.div>
             </div>
           </div>
         </section>
@@ -605,28 +908,112 @@ export default function LandingPage() {
           </div>
         </section>
 
+        {/* Testimonials */}
+        <section className="py-24 md:py-32 bg-zinc-900/30 border-y border-zinc-800/50">
+          <div className="container mx-auto px-6">
+            <div className="text-center max-w-2xl mx-auto mb-14">
+              <h2 className="text-3xl md:text-5xl font-bold mb-4 tracking-tight">
+                {t("testimonialsTitle")}
+              </h2>
+              <p className="text-zinc-400 text-lg">
+                {t("testimonialsSubtitle")}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
+              {[
+                {
+                  quote: t("testimonial1Quote"),
+                  name: t("testimonial1Name"),
+                  role: t("testimonial1Role"),
+                  avatar: "/landing/influencers/luna.jpg",
+                },
+                {
+                  quote: t("testimonial2Quote"),
+                  name: t("testimonial2Name"),
+                  role: t("testimonial2Role"),
+                  avatar: "/landing/influencers/marco.jpg",
+                },
+                {
+                  quote: t("testimonial3Quote"),
+                  name: t("testimonial3Name"),
+                  role: t("testimonial3Role"),
+                  avatar: "/landing/influencers/amani.jpg",
+                },
+              ].map((tt, i) => (
+                <motion.div
+                  key={tt.name}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: "-50px" }}
+                  transition={{ duration: 0.5, delay: i * 0.1 }}
+                  className="p-7 rounded-3xl bg-zinc-900/70 border border-zinc-800 hover:border-violet-500/40 transition-colors relative"
+                >
+                  <Quote className="absolute top-5 right-5 size-7 text-violet-500/30" />
+                  <p className="text-zinc-200 leading-relaxed mb-6 text-[15px]">
+                    &ldquo;{tt.quote}&rdquo;
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <div className="relative size-11 rounded-full overflow-hidden ring-2 ring-violet-500/30 shrink-0">
+                      <Image
+                        src={tt.avatar}
+                        alt={tt.name}
+                        fill
+                        sizes="44px"
+                        className="object-cover"
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-bold text-white">{tt.name}</div>
+                      <div className="text-xs text-zinc-500">{tt.role}</div>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* Final CTA */}
         <section className="py-24">
           <div className="container mx-auto px-6">
             <div className="rounded-3xl bg-gradient-to-br from-violet-600 to-indigo-900 p-8 md:p-16 text-center relative overflow-hidden border border-violet-500/30">
               <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay" />
 
+              {/* Floating face thumbnails */}
+              <div className="absolute -top-8 -left-8 size-24 md:size-32 rounded-3xl overflow-hidden border border-white/20 rotate-[-8deg] opacity-80 hidden md:block">
+                <Image
+                  src="/landing/influencers/luna.jpg"
+                  alt=""
+                  fill
+                  sizes="128px"
+                  className="object-cover"
+                />
+              </div>
+              <div className="absolute -bottom-6 -right-6 size-24 md:size-36 rounded-3xl overflow-hidden border border-white/20 rotate-[10deg] opacity-80 hidden md:block">
+                <Image
+                  src="/landing/influencers/kenji.jpg"
+                  alt=""
+                  fill
+                  sizes="144px"
+                  className="object-cover"
+                />
+              </div>
+
               <div className="relative z-10 max-w-2xl mx-auto">
                 <h2 className="text-3xl md:text-5xl font-bold text-white mb-6">
                   {t("ctaFinalTitle")}
                 </h2>
-                <p className="text-violet-200 text-lg mb-10">
+                <p className="text-violet-200 text-lg mb-8">
                   {t("ctaFinalSubtitle")}
                 </p>
 
-                <Link href="/sign-up">
-                  <Button
-                    size="lg"
-                    className="h-14 px-8 text-base bg-white text-indigo-950 hover:bg-zinc-100 transition-colors"
-                  >
-                    {t("ctaFinalButton")}
-                  </Button>
-                </Link>
+                <div className="max-w-md mx-auto">
+                  <WaitlistForm source="final-cta" variant="hero" />
+                </div>
+                <p className="text-violet-200/70 text-xs mt-4">
+                  {tw("subtitle")}
+                </p>
               </div>
             </div>
           </div>

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import { db } from "@/server/db";
+import { CREDIT_COSTS } from "@/lib/constants";
 
 const periodSchema = z.enum(["7d", "30d", "90d", "all"]);
 const metricSchema = z.enum(["followers", "engagement", "views", "likes"]);
@@ -563,7 +564,10 @@ export const analyticsRouter = createTRPCRouter({
       });
 
       // Cost model mirrors CREDIT_COSTS in src/lib/constants.ts.
-      const COST_PER_TYPE: Record<string, number> = { PHOTO: 1, REEL: 5 };
+      const COST_PER_TYPE: Record<string, number> = {
+        PHOTO: CREDIT_COSTS.PHOTO,
+        REEL: CREDIT_COSTS.REEL,
+      };
 
       return influencers
         .map((inf) => {

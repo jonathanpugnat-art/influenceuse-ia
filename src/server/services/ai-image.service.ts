@@ -13,6 +13,11 @@ import {
 import { uploadFromUrl } from "@/server/services/storage.service";
 import { checkCredits, deductCredits } from "@/server/services/credits.service";
 import { CREDIT_COSTS } from "@/lib/constants";
+import {
+  withReplicateRetry,
+  runWithConcurrency,
+  MAX_PARALLEL_PREDICTIONS_PER_CALL,
+} from "@/server/services/replicate-utils";
 
 // ──────────────────────────────────────────────
 // Types
@@ -73,8 +78,91 @@ const MODEL_SFW_KONTEXT = "black-forest-labs/flux-kontext-pro" as const;
 
 const MODEL_NSFW = "lucataco/flux-dev-uncensored" as const;
 
+/**
+ * Default SFW content engine — Google Gemini 2.5 Flash Image
+ * (`google/nano-banana` on Replicate). Picked after the 2026-05-15 A/B/C
+ * bench: fastest (avg 21s), best "iPhone TikTok" look, best context
+ * (real gym mirrors, real cafés, real props). Used for every SFW content
+ * photo where a face reference is sent — for any plan. Falls back to
+ * Flux Kontext Pro for borderline scenarios (Google blocks beach/lingerie).
+ */
+const MODEL_SFW_NANO = "google/nano-banana" as const;
+
+/** Default API shape for `google/nano-banana` (portrait / social). */
+const NANO_BANANA_DEFAULTS = {
+  aspect_ratio: "3:4",
+  output_format: "jpg",
+} as const;
+
 const NSFW_ERROR_MESSAGE =
   "La génération a été bloquée par le filtre de sécurité. Essaie avec des paramètres différents (style, tenue).";
+
+/**
+ * Scenarios that Google's safety filter on Nano Banana refuses to render
+ * (confirmed in the 2026-05-15 bench: Amani beach + leopard sarong → 100%
+ * blocked while Flux Kontext rendered it fine).
+ *
+ * We pre-route those to Flux Kontext Pro so the user gets a usable photo
+ * instead of an opaque "Failed to generate image" error. The matcher is
+ * intentionally lexical (single-pass over scene/outfit/customPrompt) — it
+ * trades one false-positive Kontext routing now and then for never
+ * surprising the user with a blocked generation.
+ */
+const BORDERLINE_KEYWORDS = [
+  // Beach / pool / water
+  "beach",
+  "plage",
+  "pool",
+  "piscine",
+  "poolside",
+  "ocean",
+  "shore",
+  "sand",
+  "sea",
+  // Swimwear / underwear / intimate
+  "bikini",
+  "swimsuit",
+  "swimwear",
+  "maillot de bain",
+  "lingerie",
+  "underwear",
+  "bra",
+  "thong",
+  "panties",
+  "boudoir",
+  "intimate",
+  // Bath / shower
+  "bathtub",
+  "shower",
+  "bathrobe",
+  "peignoir",
+  "towel only",
+  "wrapped in a towel",
+  // Suggestive look (still SFW but triggers Google)
+  "sarong",
+  "see-through",
+  "transparent",
+  "wet shirt",
+  "wet t-shirt",
+];
+
+/**
+ * Lexical check over the scene description + outfit + custom prompt to
+ * decide if we should pre-route to Flux Kontext (safer for "borderline
+ * but SFW" shots). NSFW is handled by `MODEL_NSFW` separately, never here.
+ */
+function isBorderlineSfw(input: ImageGenerationInput): boolean {
+  if (input.isNsfw) return false;
+  const haystack = [
+    input.scene,
+    input.outfit,
+    input.location ?? "",
+    input.customPrompt ?? "",
+  ]
+    .join(" ")
+    .toLowerCase();
+  return BORDERLINE_KEYWORDS.some((kw) => haystack.includes(kw));
+}
 
 let _replicate: Replicate | null = null;
 
@@ -134,11 +222,31 @@ function extractOutputUrls(output: unknown): string[] {
  *   `aspect_ratio` instead), no num_inference_steps, no guidance_scale, no
  *   negative_prompt, no num_outputs, no output_quality, no ip_adapter_scale.
  *   Sends `input_image` (renamed from `image`).
+ * - **google/nano-banana**: only `prompt`, `image_input`, `aspect_ratio`,
+ *   `output_format` (Gemini Flash Image schema on Replicate).
  */
 function sanitizeParamsForModel(
   model: string,
   params: Record<string, unknown>
 ): Record<string, unknown> {
+  if (model === MODEL_SFW_NANO) {
+    const imgs = params.image_input;
+    const image_input: string[] = Array.isArray(imgs)
+      ? imgs.filter((u): u is string => typeof u === "string" && u.startsWith("http"))
+      : typeof imgs === "string" && imgs.startsWith("http")
+        ? [imgs]
+        : [];
+    const out: Record<string, unknown> = {
+      prompt: String(params.prompt ?? ""),
+      image_input,
+    };
+    if (typeof params.aspect_ratio === "string")
+      out.aspect_ratio = params.aspect_ratio;
+    if (typeof params.output_format === "string")
+      out.output_format = params.output_format;
+    return out;
+  }
+
   if (model === MODEL_NSFW) {
     const {
       safety_tolerance: _st,
@@ -183,9 +291,13 @@ async function runReplicatePrediction(
   const cleanInput = sanitizeParamsForModel(model, input);
 
   try {
-    const output = await replicate.run(
-      model as `${string}/${string}` | `${string}/${string}:${string}`,
-      { input: cleanInput }
+    const output = await withReplicateRetry(
+      () =>
+        replicate.run(
+          model as `${string}/${string}` | `${string}/${string}:${string}`,
+          { input: cleanInput }
+        ),
+      `${model}`
     );
 
     const urls = extractOutputUrls(output);
@@ -228,14 +340,39 @@ async function runMultiplePredictions(
     return runReplicatePrediction(model, { ...input, num_outputs: count });
   }
 
-  // Parallel fan-out for Kontext / NSFW. Different seeds = different photos.
-  const tasks = Array.from({ length: count }, () =>
-    runReplicatePrediction(model, {
-      ...input,
-      seed: Math.floor(Math.random() * 2147483647),
-    })
+  // Build the per-image task list depending on the model branch.
+  const tasks: Array<() => Promise<string[]>> = [];
+  if (model === MODEL_SFW_NANO) {
+    // Nano Banana returns one image per prediction — fan out like Kontext,
+    // but rotate the prompt slightly so we don't get 4 near-identical
+    // outputs (Nano respects identical prompts more strictly than Flux).
+    for (let i = 0; i < count; i++) {
+      tasks.push(() =>
+        runReplicatePrediction(model, {
+          ...input,
+          prompt:
+            count > 1
+              ? `${String(input.prompt ?? "")}, distinct variation ${i + 1} of ${count}, different framing`
+              : input.prompt,
+        })
+      );
+    }
+  } else {
+    // Kontext / NSFW: different random seeds give different photos.
+    for (let i = 0; i < count; i++) {
+      tasks.push(() =>
+        runReplicatePrediction(model, {
+          ...input,
+          seed: Math.floor(Math.random() * 2147483647),
+        })
+      );
+    }
+  }
+
+  const settled = await runWithConcurrency(
+    tasks,
+    MAX_PARALLEL_PREDICTIONS_PER_CALL
   );
-  const settled = await Promise.allSettled(tasks);
   const results: string[] = [];
   const errors: unknown[] = [];
   for (const r of settled) {
@@ -280,6 +417,9 @@ export async function generateBaseImage(
 
   const negativePrompt = buildNegativePrompt(false, style.gender ?? "female");
 
+  // Wizard portrait: Flux 1.1 Pro on every plan. Bench (2026-05-15) showed
+  // T2I-without-reference is where Flux beats Nano (cleaner identity over 4
+  // variations, no Google safety blocks on edgy aesthetics).
   const params: Record<string, unknown> = {
     ...PORTRAIT_IMAGE_PARAMS,
     prompt,
@@ -289,8 +429,7 @@ export async function generateBaseImage(
   };
 
   try {
-    console.log("[ai-image] Generating base image...");
-
+    console.log("[ai-image] Generating base image (flux-1.1-pro)…");
     const outputUrls = await runMultiplePredictions(MODEL_SFW_T2I, params, 4);
 
     const storedUrls = await Promise.all(
@@ -364,43 +503,107 @@ export async function generateContentImage(
     lockFace: useIdentityPrompt,
   });
 
-  // ── Model routing (Sprint 11) ───────────────────────────────────────────
-  // SFW + reference image  → Flux Kontext Pro (true character reference)
-  // SFW without reference   → Flux 1.1 Pro    (T2I)
-  // NSFW                    → Flux Dev Uncensored
-  let model: string;
-  let params: Record<string, unknown>;
-  if (input.isNsfw) {
-    model = MODEL_NSFW;
-    params = {
-      ...DEFAULT_IMAGE_PARAMS,
-      prompt,
-      negative_prompt: negativePrompt,
-      num_outputs: numImages,
-      safety_tolerance: 6,
-    };
-  } else if (sendsRefImage && input.baseImageUrl) {
-    model = MODEL_SFW_KONTEXT;
-    params = {
+  // ── Optimal model routing (post 2026-05-15 A/B/C bench) ─────────────────
+  //   NSFW                                      → Flux Dev Uncensored
+  //   SFW + face ref + borderline scene         → Flux Kontext Pro
+  //   SFW + face ref + safe scene               → Google Nano Banana
+  //                                               (auto-fallback to Kontext
+  //                                                if Google's safety blocks)
+  //   SFW without face ref                      → Flux 1.1 Pro (T2I)
+  const borderline = isBorderlineSfw(input);
+
+  type ModelPlan = {
+    model: string;
+    params: Record<string, unknown>;
+    /** When the engine has a safety filter that may refuse, this is what we retry with. */
+    fallback?: { model: string; params: Record<string, unknown> };
+  };
+
+  const refs =
+    sendsRefImage && input.baseImageUrl?.trim()
+      ? [input.baseImageUrl.trim()]
+      : [];
+
+  const kontextPlan: ModelPlan = {
+    model: MODEL_SFW_KONTEXT,
+    params: {
       ...KONTEXT_IMAGE_PARAMS,
       prompt,
       input_image: input.baseImageUrl,
-    };
-  } else {
-    model = MODEL_SFW_T2I;
-    params = {
-      ...DEFAULT_IMAGE_PARAMS,
+    },
+  };
+
+  const nanoPlan: ModelPlan = {
+    model: MODEL_SFW_NANO,
+    params: {
+      ...NANO_BANANA_DEFAULTS,
       prompt,
-      negative_prompt: negativePrompt,
-      num_outputs: numImages,
-      safety_tolerance: 5,
+      image_input: refs,
+    },
+    fallback: sendsRefImage && input.baseImageUrl ? kontextPlan : undefined,
+  };
+
+  let plan: ModelPlan;
+  if (input.isNsfw) {
+    plan = {
+      model: MODEL_NSFW,
+      params: {
+        ...DEFAULT_IMAGE_PARAMS,
+        prompt,
+        negative_prompt: negativePrompt,
+        num_outputs: numImages,
+        safety_tolerance: 6,
+      },
+    };
+  } else if (sendsRefImage && input.baseImageUrl) {
+    plan = borderline ? kontextPlan : nanoPlan;
+  } else {
+    plan = {
+      model: MODEL_SFW_T2I,
+      params: {
+        ...DEFAULT_IMAGE_PARAMS,
+        prompt,
+        negative_prompt: negativePrompt,
+        num_outputs: numImages,
+        safety_tolerance: 5,
+      },
     };
   }
 
   try {
-    console.log("[ai-image] Generating content image with", model, sendsRefImage ? "(face-locked)" : "(no reference)");
+    console.log(
+      "[ai-image] Generating content image with",
+      plan.model,
+      sendsRefImage ? "(face-locked)" : "(no reference)",
+      borderline ? "(borderline → kontext)" : ""
+    );
 
-    const outputUrls = await runMultiplePredictions(model, params, numImages);
+    let outputUrls: string[];
+    let usedParams = plan.params;
+    try {
+      outputUrls = await runMultiplePredictions(
+        plan.model,
+        plan.params,
+        numImages
+      );
+    } catch (err) {
+      // Google Nano Banana sometimes returns a safety/content error on a
+      // shot that BORDERLINE_KEYWORDS didn't catch. Fall back to Kontext
+      // automatically so the user gets a photo instead of a hard failure.
+      if (plan.fallback && isNsfwFilterError(err)) {
+        console.warn(
+          `[ai-image] ${plan.model} blocked by safety filter, falling back to ${plan.fallback.model}…`
+        );
+        outputUrls = await runMultiplePredictions(
+          plan.fallback.model,
+          plan.fallback.params,
+          numImages
+        );
+        usedParams = plan.fallback.params;
+      } else {
+        throw err;
+      }
+    }
 
     const storedUrls = await Promise.all(
       outputUrls.map(async (url, i) => {
@@ -415,7 +618,7 @@ export async function generateContentImage(
       imageUrls: storedUrls,
       promptUsed: prompt,
       negativePrompt,
-      parameters: params,
+      parameters: usedParams,
     };
   } catch (error) {
     console.error("[ai-image] generateContentImage error:", error);

@@ -9,6 +9,7 @@ import {
   resolveLipSyncModel,
   type ReelStylePreset,
 } from "@/lib/prompts/video-prompts";
+import { withReplicateRetry } from "@/server/services/replicate-utils";
 
 // ──────────────────────────────────────────────
 // Types
@@ -68,9 +69,18 @@ async function runReplicatePrediction(
 ): Promise<string[]> {
   const replicate = getReplicate();
 
-  const output = await replicate.run(
-    model as `${string}/${string}` | `${string}/${string}:${string}`,
-    { input }
+  // Video generations take 30-120s and are the most expensive call in the
+  // app (a single Kling-2 reel ≈ $0.55). Hitting a 429 and surfacing it as
+  // a generic failure means re-billing the user. The shared retry helper
+  // absorbs transient 429/5xx with exponential backoff so the user sees
+  // one slightly slower generation instead of "Failed to generate".
+  const output = await withReplicateRetry(
+    () =>
+      replicate.run(
+        model as `${string}/${string}` | `${string}/${string}:${string}`,
+        { input }
+      ),
+    `${model}`
   );
 
   const urls = extractOutputUrls(output);

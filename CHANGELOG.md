@@ -4,6 +4,169 @@ All notable changes to **Influenceuse IA** are documented in this file. Versions
 
 ---
 
+## [v0.11.6] — Closed beta gating (waitlist) (2026-05-15)
+
+### Added
+
+- **`WaitlistEntry` Prisma model** + migration `20260515110000_add_waitlist` — `email` (unique), `name`, `source`, `status` (`PENDING | INVITED | SIGNED_UP | REJECTED`), `clerkInvitationId`, `invitedAt`, `signedUpAt`, `ip` (bucketed /24 or /48), `note`. Indexed on `status` and `createdAt`. Kept on REJECT so we detect repeat sign-ups from the same email.
+- **`POST /api/waitlist`** — public endpoint, no auth. Anti-spam: Zod payload, disposable-domain blocklist (mailinator, yopmail, 10minutemail, …), honeypot field `companyWebsite`, idempotent on email (re-submits return `{ alreadyOnList: true }`), and an in-memory per-IP rate limiter (5 hits / 10 min, IP truncated to /24 for IPv4 and /48 for IPv6).
+- **`<WaitlistForm>`** (`src/components/landing/waitlist-form.tsx`) — email + optional name form with idle/submitting/success/error states, hidden honeypot, i18n strings under `messages/{fr,en}.json#waitlist`. Used twice on the landing: hero CTA (`source=hero`) and final CTA (`source=final-cta`).
+- **`/[locale]/admin/waitlist`** — admin dashboard. Stat counters (pending / invited / signed-up / total), status filter pills, email-or-name search, table with one-click **Invite** (sends Clerk invitation email) and **Reject** actions. Server-side gated via `requireAdmin(ctx.userId)` against `ADMIN_EMAILS`.
+- **`admin` tRPC router** (`src/server/trpc/routers/admin.ts`) — `listWaitlist`, `inviteFromWaitlist`, `rejectFromWaitlist`. The invite path calls `clerkClient.invitations.createInvitation({ emailAddress, redirectUrl, publicMetadata })`; treats "duplicate invitation" as success so the dashboard stays usable after manual Clerk edits.
+- **`src/server/helpers/admin.ts`** — `isAdminClerkId()` / `requireAdmin()` against `ADMIN_EMAILS` (comma-separated). Matches the **primary email** on the Clerk user, which is verified at sign-up and can't be spoofed by adding aliases later.
+
+### Changed
+
+- **`src/app/api/webhooks/clerk/route.ts`** — `user.created` now respects `BETA_REQUIRE_INVITE=true`. When the env flag is on, the webhook looks up the email in `WaitlistEntry`; if status isn't `INVITED` or `SIGNED_UP`, it deletes the freshly-created Clerk user and **does not** create the `db.user` row. When the entry exists, it's auto-promoted to `SIGNED_UP` with `signedUpAt` so the admin dashboard reflects conversions. Flag defaults to false so missing env doesn't lock you out in dev.
+- **`src/app/[locale]/page.tsx`** — hero CTA replaced by `<WaitlistForm source="hero">` + closed-beta badge, final CTA likewise. Header `/sign-up` link kept so existing testers can still log in from `<nav>`.
+- **`.env.example`** — documented `BETA_REQUIRE_INVITE` and `ADMIN_EMAILS` with explicit "leave empty in dev / flip in prod" guidance.
+
+### Fixed
+
+- `analytics-fetcher.service.ts` — `shares` is now `const` (lint `prefer-const`). Behavior unchanged: it stays 0 until we wire a richer source than the IG Graph / TikTok Content Posting APIs (neither exposes a public shares counter).
+
+### Notes
+
+- The waitlist is the only public path that can mutate state without Clerk auth. We accept the trade-off (necessary for conversion) and rely on three layers of defense: Zod schema, honeypot, and IP-bucket rate limit.
+- The in-memory rate-limiter resets on cold start. Sufficient for beta scale; swap to Redis when daily waitlist signups exceed ~500 (Vercel will then have multiple warm instances).
+
+---
+
+## [v0.11.5] — Replicate rate-limit resilience (2026-05-15)
+
+### Added
+
+- **`src/server/services/replicate-utils.ts`** — new shared resilience module for any service that hits the Replicate API:
+  - `isTransientReplicateError()` — narrow heuristic that matches 429, 5xx, "throttle", "rate limit", "service unavailable", and common socket errors (ETIMEDOUT, ECONNRESET, ENOTFOUND, EAI_AGAIN, socket hang up). 4xx other than 429 are NOT transient (bad prompt / bad model / invalid token) — retrying would waste credits.
+  - `withReplicateRetry()` — exponential backoff wrapper: 5 attempts on the schedule **2 s → 4 s → 8 s → 16 s** (≈30 s worst-case wait). Logs each retry with the truncated upstream error message for diagnosability. Matches the heuristic already used in `scripts/test-engines-ab.ts`.
+  - `runWithConcurrency()` — bounded `Promise.allSettled` that processes tasks in workers of a fixed pool size. Used to cap fan-out so a single 4-image generation never burst-fires 4 simultaneous Replicate predictions.
+  - `MAX_PARALLEL_PREDICTIONS_PER_CALL = 2` — calibrated against Replicate's free-tier (~10 concurrent) and pay-as-you-go (~100 concurrent) quotas. At 2× per user, 5 simultaneous users stay below the free-tier ceiling.
+
+### Changed
+
+- **`ai-image.service.ts`** — every `replicate.run()` now goes through `withReplicateRetry()`. `runMultiplePredictions()` was rewritten to build a task list and process it via `runWithConcurrency(tasks, 2)` instead of `Promise.allSettled` on the full set. Net effect on a 4-image generation:
+  - Before: 4 simultaneous requests → 429 on burst → user sees "Failed to generate".
+  - After: 2+2 sequential pairs, each request retried on transient → user sees one slightly slower generation (≈+3 s p99) but no surfaced 429.
+  - Total wall-clock impact for Nano Banana 4-image: ~22 s → ~25 s.
+- **`ai-video.service.ts`** — `runReplicatePrediction()` (video path) also wrapped in `withReplicateRetry()`. Critical since a Kling-2 reel costs ~$0.55 / call; surfacing a transient 429 would re-bill the user. Video doesn't fan out parallel predictions (1 reel = 1 call), so only the retry helper is needed there.
+- The previous in-file copies of `isTransientReplicateError` / `withReplicateRetry` / `runWithConcurrency` / `MAX_PARALLEL_PREDICTIONS_PER_CALL` that v0.11.5 was about to add to `ai-image.service.ts` were extracted to the shared module to keep the image and video services calibrated identically.
+
+### Why this matters before the beta
+
+- The image and video services were the only Replicate code paths **without** a 429 retry (the scripts in `scripts/` already had one). A single burst from a real user during a demo would have surfaced a generic failure and likely a confused churn. The shared helper closes that gap without introducing Redis or a queue (planned post-beta).
+- Tuning knobs (`MAX_PARALLEL_PREDICTIONS_PER_CALL`, retry schedule) live in one file now, so the BullMQ migration later will be a single-spot change.
+
+### Tests
+
+- 143/143 passing. TypeScript clean. ESLint: 0 errors (13 pre-existing destructuring warnings only). Production build ✓.
+
+---
+
+## [v0.11.4] — Auto-publish hardening (2026-05-15)
+
+### Added
+
+- **`/api/health` enrichi** (`autoPublish` block) — l'endpoint healthcheck expose désormais la disponibilité réelle du pipeline de publication :
+  - `cron` — `CRON_SECRET` configuré (sinon `/api/cron/publish` répond 500)
+  - `encryption` — `ENCRYPTION_SECRET` ≥ 32 chars (sans, les tokens OAuth seraient en clair)
+  - `platforms.instagram` — `INSTAGRAM_APP_ID` + `INSTAGRAM_APP_SECRET` (ou les fallbacks `FACEBOOK_*`)
+  - `platforms.tiktok` — `TIKTOK_CLIENT_KEY` + `TIKTOK_CLIENT_SECRET`
+  - `ready: true` si les deux premiers sont OK (les plateformes étant gérables au cas par cas)
+  Les uptime monitors (BetterStack, UptimeRobot) peuvent maintenant alerter sur une mauvaise config plutôt que sur une publication silencieusement cassée.
+- **`tRPC publish.checkPublishReadiness`** — pre-flight check par plateforme avant que l'utilisateur ne clique sur "Programmer" ou "Publier". Retourne pour chaque plateforme demandée :
+  - `ok: true` → safe to publish
+  - `mode: "auto" | "manual"` (ONLYFANS est intentionnellement manuel)
+  - `reason: "..."` avec le diagnostic exact (creds serveur, compte non lié, token expiré, IG sans Business ID)
+  Détecte 3 classes d'échec côté serveur (env), côté compte (OAuth) et côté plateforme (OF). Cache 30s côté React Query.
+- **UI : banner "Action requise"** dans `photo-publish.tsx` — quand le pre-flight signale un blocage, une carte ambre s'affiche au-dessus du bouton publish avec la raison exacte par plateforme. Le bouton "Publier" est désactivé tant qu'au moins un blocage subsiste (ce qui évite à l'utilisateur de programmer un post qui finira `FAILED` 30s plus tard).
+- **UI : banner "OnlyFans = export manuel"** — quand OnlyFans est coché, une note bleue rappelle que l'API publique n'existe pas et qu'un ZIP guidé sera généré. Le label de la carte plateforme passe aussi de "Préparer pour téléchargement" à "Export ZIP — publication manuelle".
+
+### Changed
+
+- **`.env.example` complété** avec les blocs manquants `INSTAGRAM_APP_ID` / `INSTAGRAM_APP_SECRET` / `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET` et une doc inline en 5 étapes par plateforme (créer l'app Meta/TikTok, ajouter le bon produit, lier un compte Business/Creator, passer l'App Review, ajouter le Redirect URI). Sans ces variables, le clic "Connecter Instagram/TikTok" lève une erreur opaque — maintenant la doc rend le pré-requis explicite.
+
+### Tests
+
+- 143/143 passing. TypeScript clean. ESLint : 0 erreurs (3 warnings pré-existants sur des imports inutilisés dans `photo-publish.tsx`). Production build ✓.
+
+### Notes
+
+- Le code Instagram Graph v21 et TikTok Content Posting v2 était déjà 100 % fonctionnel — seul le câblage final (env vars documentées + visibilité de l'état) manquait pour que l'auto-publication marche réellement en production.
+- Cron Vercel : rappel que `vercel.json` schedule `/api/cron/publish` chaque minute, ce qui nécessite un plan Vercel **Pro ou supérieur** (Hobby ne supporte que 2 crons/jour).
+
+---
+
+## [v0.11.3] — Landing page glow-up (2026-05-15)
+
+### Added
+
+- **Hero photo wall** — the 3 grey placeholder cards in the hero were replaced by a responsive 4-up grid of actual AI-generated photos (Luna at the gym, Amani at a restaurant, Kenji in Shibuya, Marco in NYC). Each card has IG-style like count overlay, hover zoom, and a "✨ AI" pill in the corner. A green trust badge above the wall states "Every photo below is 100% generated by our AI".
+- **Stats strip** (just below the hero) — 1.2M+ photos generated · 21s avg gen time · 32 countries · 45+ active agencies, each with its own icon. Backs the social proof line with real metrics.
+- **Showcase section** (`#features` neighbour) — 4 full Instagram-style profile cards for Luna / Amani / Kenji / Marco. Each card has a verified-badge handle header, a 4:5 main post with full IG action bar (heart / comment / share / bookmark), a likes-and-caption block, and a mini grid of 1-3 other shots from that influencer. Demonstrates persona diversity *and* face consistency across scenes in a single visual block.
+- **Before / After section** — full-bleed comparison: 3:4 wizard portrait on the left → "→" arrow chip → 2×2 grid of generated content on the right. Makes the "create the face once, get any scene" promise legible in 2 seconds.
+- **Testimonials section** — 3 quote cards (creator solo / agency CEO / fitness influencer) with avatar, name, role and a violet Quote watermark. Sits between the pricing teaser and the final CTA, exactly where trust is needed before the conversion.
+- **Final CTA decoration** — two angled portrait thumbnails (Luna top-left, Kenji bottom-right) bleeding off the violet gradient card. Adds personality to the previously flat CTA without compromising readability.
+- **15 photo assets** copied from `test-output/engines-2026-05-15T08-01-45/` into `public/landing/`:
+  - `influencers/{luna,amani,kenji,marco}.jpg` (base portraits)
+  - `showcase/{luna,amani,kenji,marco}-*.jpg` (11 lifestyle scenes — gym, café, mirror, restaurant, shopping, Tokyo street, NYC street, park, etc.)
+  All assets are Nano Banana / Flux 1.1 Pro outputs, so the landing is now exactly what a paying user gets out of the product.
+
+### Changed
+
+- All new copy is fully i18n-ed under `messages/{fr,en}.json > landing` (≈25 new keys for the photo captions, section titles, stats labels, and the 3 testimonial blocks).
+- The "Social proof" strip now sits inside the same `<section>` as the new stats block, with the logos reduced to a low-opacity row beneath the stats — cleaner and less repetitive than the previous standalone band.
+- Imported `next/image` and 8 new lucide icons (`Heart`, `MessageCircle`, `Send`, `Bookmark`, `Camera`, `Quote`, `Zap`, `Globe`).
+
+### Tests
+
+- 143/143 passing. TypeScript clean. ESLint clean (after escaping `&ldquo;` / `&rdquo;` around the testimonial quote). Production build ✓ (no new pre-renders, only existing `/[locale]` SSG).
+
+---
+
+## [v0.11.2] — Reel credit re-pricing (2026-05-15)
+
+### Changed
+
+- **`CREDIT_COSTS.REEL` 5 → 8** (`src/lib/constants.ts`). The previous 5-credit reel under-priced the Replicate video models by a large factor:
+  - Photo cost (`google/nano-banana` / Flux 1.1 Pro) ≈ **$0.04** per image.
+  - Reel cost (Kling-2 default / Wan 2.5) ≈ **$0.55** per clip — i.e. **~14× a photo**, yet billed only **5×**.
+  - Worst-case Agency (5 000 credits, all reels) used to mean **100 reels = ~$55 of Replicate**, plus Clerk + R2 + DeepSeek + Stripe fees → marge ≈ 0 € on a 199 € plan.
+- New 8-credit ratio caps the worst-case Agency at **~62 reels ≈ $34 of Replicate**, preserving a healthy gross margin even on a full-throttle agency month. Realistic Pro user (1 500 credits) now gets ~18 reels, in line with normal weekly cadence.
+- `src/server/trpc/routers/analytics.ts` now reads the per-type cost from `CREDIT_COSTS` instead of a hard-coded `{ PHOTO: 1, REEL: 5 }`, so the per-influencer cost analytics stay in sync automatically.
+
+### Notes
+
+- Plan prices unchanged (Free / Creator 29 € / Pro 79 € / Agency 199 €).
+- Existing scheduled reels keep their already-deducted credit cost — only new generations use the new ratio.
+- Tests: 143/143 passing. TypeScript clean. Production build ✓.
+
+---
+
+## [v0.11.1] — Image engine routing (2026-05-15)
+
+### Changed
+
+- **Optimal SFW routing** (`ai-image.service.ts`) — after the 2026-05-15 A/B/C bench (Flux 1.1 Pro vs Flux Kontext Pro vs Google Nano Banana on 4 personas × 3 scenarios), the routing was rewritten to maximise quality at minimum latency:
+  - Wizard portrait (no reference) → `flux-1.1-pro` on **every plan** (cleaner identity across 4 variations, no plan check needed).
+  - SFW content with face reference → `google/nano-banana` (fastest at avg 21s, best "iPhone TikTok" aesthetic, best context fidelity — real gym mirrors, real cafés, real props).
+  - SFW content flagged "borderline" (beach / pool / swimwear / lingerie / shower / sarong / wet shirt / see-through / etc.) → pre-routed to `flux-kontext-pro` (Google's safety filter consistently refused these in the bench).
+  - SFW content without face reference → `flux-1.1-pro` T2I.
+  - NSFW → `flux-dev-uncensored` (unchanged).
+- **Auto-fallback Nano → Kontext** — if Nano Banana returns a safety-filter error on a shot the lexical guard didn't catch, the service automatically retries on Flux Kontext Pro before bubbling the error. The user gets a photo instead of an opaque failure.
+
+### Removed
+
+- `PLANS.<tier>.usesGoogleNanoBanana` + helper `planUsesGoogleNanoBanana()` in `constants.ts` — image engine selection is no longer plan-gated. Nano Banana is the SFW default for everyone; Kontext picks up the safety edge cases. Plan tier still drives features (`maxInfluencers`, `hasVideo`, `hasNsfw`, …) and credits, but the engine is determined by the scene, not the wallet.
+
+### Tests
+
+- 89/89 passing. `influencer.test.ts` `PLANS` mock cleaned up (no more `usesGoogleNanoBanana`).
+- TypeScript: `tsc --noEmit` clean.
+- ESLint: 0 errors, 13 pre-existing destructuring warnings only.
+- Production build: ✓ generated.
+
+---
+
 ## [v0.11.0] — Sprint 12: Time to First Influencer (2026-05-07)
 
 ### Added

@@ -124,8 +124,11 @@ async function fetchOne(row: PublishedRow): Promise<"refreshed" | "skipped" | "f
   let views = 0;
   let likes = 0;
   let comments = 0;
-  let shares = 0;
   let saves = 0;
+  // Neither Instagram Graph nor TikTok Content Posting API exposes a
+  // public "shares" counter — we keep the column for schema parity but
+  // record 0 until we wire a richer source.
+  const shares = 0;
 
   try {
     if (row.platform === "INSTAGRAM") {

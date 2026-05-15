@@ -51,3 +51,7 @@ next-env.d.ts
 # temp scripts
 prisma/add-credits.ts
 prisma/test-r2.ts
+
+# bench output (image quality / A-B-C engine tests)
+# kept locally for debugging but never committed (75+ heavy JPGs per run)
+/test-output/

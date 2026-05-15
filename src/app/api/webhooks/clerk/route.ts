@@ -1,9 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Webhook } from "svix";
+import { clerkClient } from "@clerk/nextjs/server";
 import { db } from "@/server/db";
 
 const WEBHOOK_SECRET =
   process.env.CLERK_WEBHOOK_SIGNING_SECRET ?? process.env.WEBHOOK_SECRET;
+
+/**
+ * When `BETA_REQUIRE_INVITE=true`, sign-ups are restricted to emails that
+ * an admin has explicitly promoted to "INVITED" on the waitlist. Anyone
+ * who slips past the Clerk sign-up form (e.g. by hitting /sign-up directly
+ * during the beta window) gets their freshly-created Clerk user deleted
+ * and we skip the `db.user` row creation.
+ *
+ * Disabled by default so a missing env var doesn't accidentally lock you
+ * out of your own app. Flip it on once the waitlist UX is wired in prod.
+ */
+const BETA_REQUIRE_INVITE =
+  (process.env.BETA_REQUIRE_INVITE ?? "").toLowerCase() === "true";
 
 interface ClerkWebhookEvent {
   type: string;
@@ -69,6 +83,46 @@ export async function POST(req: NextRequest) {
         if (!email) {
           console.warn("[clerk-webhook] No email in user.created event");
           break;
+        }
+
+        const normalized = email.toLowerCase().trim();
+
+        // Beta gate: only emails an admin has explicitly invited can land.
+        // We check the waitlist; the Clerk invitation flow auto-bumps the
+        // entry to "INVITED" so this matches the invited audience exactly.
+        if (BETA_REQUIRE_INVITE) {
+          const waitlistEntry = await db.waitlistEntry.findUnique({
+            where: { email: normalized },
+            select: { id: true, status: true },
+          });
+          const allowed =
+            waitlistEntry?.status === "INVITED" ||
+            waitlistEntry?.status === "SIGNED_UP";
+          if (!allowed) {
+            console.warn(
+              `[clerk-webhook] Rejecting non-invited sign-up: ${normalized} (waitlist status: ${waitlistEntry?.status ?? "none"})`
+            );
+            try {
+              const client = await clerkClient();
+              await client.users.deleteUser(clerkId);
+            } catch (err) {
+              console.error(
+                "[clerk-webhook] Failed to delete non-invited Clerk user:",
+                err
+              );
+            }
+            // Return 200 so Clerk doesn't retry — we handled the event by
+            // deleting the user.
+            return NextResponse.json({ received: true, rejected: true });
+          }
+          // Mark the waitlist entry as converted so admin dashboard
+          // reflects reality.
+          if (waitlistEntry) {
+            await db.waitlistEntry.update({
+              where: { id: waitlistEntry.id },
+              data: { status: "SIGNED_UP", signedUpAt: new Date() },
+            });
+          }
         }
 
         await db.user.upsert({

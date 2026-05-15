@@ -520,3 +520,41 @@ model WebhookDelivery {
   @@index([nextRetryAt])
   @@index([status, nextRetryAt])
 }
+
+// Waitlist (beta gating). Anyone can subscribe via /api/waitlist; the
+// owner promotes entries to "INVITED" from /admin/waitlist, which then
+// triggers a Clerk invitation email. Used during the v0.11 closed beta —
+// once the funnel is stable we either flip the flag and let signups in
+// freely, or keep the waitlist as an "early access" UX.
+model WaitlistEntry {
+  id        String              @id @default(cuid())
+  /// Stored lowercase + trimmed; unique to dedupe re-signups.
+  email     String              @unique
+  /// Free-form display name from the landing form. Optional.
+  name      String?
+  /// Marketing source: landing-hero, landing-cta, twitter, ph, etc.
+  source    String?
+  status    WaitlistEntryStatus @default(PENDING)
+  /// When an admin clicks "Invite", we store the Clerk invitation id so
+  /// we can match the eventual sign-up back to its waitlist entry.
+  clerkInvitationId String?
+  invitedAt DateTime?
+  signedUpAt DateTime?
+  /// IP captured at submission time, used by the rate-limiter and to
+  /// chase obvious spam waves. Truncated to /24 for IPv4 and /48 for IPv6.
+  ip        String?
+  /// Free-form note an admin can write next to an entry (priority, source).
+  note      String?            @db.Text
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum WaitlistEntryStatus {
+  PENDING
+  INVITED
+  SIGNED_UP
+  REJECTED
+}

@@ -9,6 +9,8 @@ import {
   Calendar,
   Clock,
   Package,
+  AlertTriangle,
+  Info,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -64,6 +66,23 @@ export function PhotoPublish() {
   const selectedInf = influencersQuery.data?.influencers?.find(
     (i) => i.id === params.influencerId
   );
+
+  // Pre-flight readiness check — fires once we have an influencer + a non-
+  // empty platform selection. Re-runs whenever either changes. Result is
+  // used to render a warning block above the publish button so the user
+  // never clicks "Publish" only to see it fail silently in the cron later.
+  const readinessQuery = trpc.publish.checkPublishReadiness.useQuery(
+    {
+      influencerId: params.influencerId ?? "",
+      platforms: platforms as ("INSTAGRAM" | "TIKTOK" | "ONLYFANS")[],
+    },
+    {
+      enabled: Boolean(params.influencerId) && platforms.length > 0,
+      staleTime: 30_000,
+    }
+  );
+  const failingChecks =
+    readinessQuery.data?.checks.filter((c) => !c.ok) ?? [];
 
   // Generate caption
   const handleGenCaption = useCallback(async () => {
@@ -350,9 +369,41 @@ export function PhotoPublish() {
               name="OnlyFans"
               selected={platforms.includes("ONLYFANS")}
               onToggle={() => togglePlatform("ONLYFANS")}
-              note="Préparer pour téléchargement"
+              note="Export ZIP — publication manuelle"
             />
           </div>
+
+          {/* OnlyFans honesty banner — surfaced as soon as OF is checked so
+              the user never thinks the bot will post for them. */}
+          {platforms.includes("ONLYFANS") && (
+            <div className="flex items-start gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 p-2.5 text-[11px] text-blue-200">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-400" />
+              <p className="leading-snug">
+                OnlyFans n&apos;a pas d&apos;API publique. Nous générons un ZIP
+                avec vos médias et un guide ; vous publierez manuellement sur
+                votre compte OF.
+              </p>
+            </div>
+          )}
+
+          {/* Pre-flight failures — shown only when a real blocker exists
+              (server creds missing, account not linked, token expired). */}
+          {failingChecks.length > 0 && (
+            <div className="space-y-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5">
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-amber-300">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Action requise avant publication
+              </div>
+              <ul className="space-y-1 text-[11px] text-amber-100/90">
+                {failingChecks.map((c) => (
+                  <li key={c.platform} className="flex gap-1.5">
+                    <span className="font-semibold">{c.platform}:</span>
+                    <span className="text-amber-100/80">{c.reason}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         {/* Schedule */}
@@ -417,7 +468,17 @@ export function PhotoPublish() {
           <button
             type="button"
             onClick={() => handleSave(true)}
-            disabled={!contentId || updateMutation.isPending || platforms.length === 0}
+            disabled={
+              !contentId ||
+              updateMutation.isPending ||
+              platforms.length === 0 ||
+              failingChecks.length > 0
+            }
+            title={
+              failingChecks.length > 0
+                ? "Corrigez les problèmes ci-dessus avant de publier."
+                : undefined
+            }
             className="w-full rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
           >
             {scheduleMode === "schedule" ? "Programmer" : "Publier"}

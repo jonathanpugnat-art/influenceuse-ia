@@ -10,6 +10,7 @@ import { apiKeysRouter } from "./routers/api-keys";
 import { workspaceRouter } from "./routers/workspace";
 import { mediaLibraryRouter } from "./routers/media-library";
 import { referralRouter } from "./routers/referral";
+import { adminRouter } from "./routers/admin";
 
 export const appRouter = createTRPCRouter({
   influencer: influencerRouter,
@@ -24,6 +25,8 @@ export const appRouter = createTRPCRouter({
   workspace: workspaceRouter,
   mediaLibrary: mediaLibraryRouter,
   referral: referralRouter,
+  // v0.11 — closed beta gating
+  admin: adminRouter,
 });
 
 export type AppRouter = typeof appRouter;

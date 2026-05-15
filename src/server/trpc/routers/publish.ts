@@ -251,6 +251,123 @@ export const publishRouter = createTRPCRouter({
     }),
 
   /**
+   * checkPublishReadiness — Pre-flight check before letting the user click
+   * "Schedule" or "Publish now". Returns, per requested platform:
+   *   - `ok: true`           → safe to publish
+   *   - `reason: "..."`      → why not (missing creds, expired token, etc.)
+   *
+   * The UI uses this to surface an actionable warning *before* the cron
+   * eventually fails silently. Three classes of failure are detected:
+   *   1. Server-side: env vars missing (Meta / TikTok app not configured).
+   *   2. Account-side: social account not linked or token expired.
+   *   3. Platform-side: OnlyFans is intentionally manual (ZIP bundle).
+   *
+   * Cheap: hits the DB once, then reads `process.env`. Safe to call from
+   * the publish dialog on every open.
+   */
+  checkPublishReadiness: protectedProcedure
+    .input(
+      z.object({
+        influencerId: z.string(),
+        platforms: z.array(z.enum(platformValues)).min(1),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      await verifyInfluencerOwnership(input.influencerId, ctx.userId);
+
+      const accounts = await db.socialAccount.findMany({
+        where: { influencerId: input.influencerId },
+        select: {
+          platform: true,
+          isConnected: true,
+          tokenExpiresAt: true,
+          accessToken: true,
+          platformUserId: true,
+        },
+      });
+
+      const serverHasInstagramCreds = Boolean(
+        (process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID) &&
+          (process.env.INSTAGRAM_APP_SECRET || process.env.FACEBOOK_APP_SECRET)
+      );
+      const serverHasTiktokCreds = Boolean(
+        process.env.TIKTOK_CLIENT_KEY && process.env.TIKTOK_CLIENT_SECRET
+      );
+
+      const now = new Date();
+      const platformChecks = input.platforms.map((platform) => {
+        if (platform === "ONLYFANS") {
+          return {
+            platform,
+            ok: true,
+            mode: "manual" as const,
+            reason:
+              "OnlyFans n'a pas d'API publique. Un ZIP avec les médias et un guide sera généré — vous publierez manuellement.",
+          };
+        }
+
+        if (platform === "INSTAGRAM" && !serverHasInstagramCreds) {
+          return {
+            platform,
+            ok: false,
+            mode: "auto" as const,
+            reason:
+              "Instagram non configuré côté serveur (INSTAGRAM_APP_ID manquant).",
+          };
+        }
+        if (platform === "TIKTOK" && !serverHasTiktokCreds) {
+          return {
+            platform,
+            ok: false,
+            mode: "auto" as const,
+            reason:
+              "TikTok non configuré côté serveur (TIKTOK_CLIENT_KEY manquant).",
+          };
+        }
+
+        const account = accounts.find((a) => a.platform === platform);
+        if (!account) {
+          return {
+            platform,
+            ok: false,
+            mode: "auto" as const,
+            reason: `Compte ${platform} non lié à cette influenceuse.`,
+          };
+        }
+        if (!account.isConnected || !account.accessToken) {
+          return {
+            platform,
+            ok: false,
+            mode: "auto" as const,
+            reason: "Compte déconnecté. Reconnectez via la page Réseaux sociaux.",
+          };
+        }
+        if (account.tokenExpiresAt && account.tokenExpiresAt <= now) {
+          return {
+            platform,
+            ok: false,
+            mode: "auto" as const,
+            reason: "Token OAuth expiré. Reconnectez le compte.",
+          };
+        }
+        if (platform === "INSTAGRAM" && !account.platformUserId) {
+          return {
+            platform,
+            ok: false,
+            mode: "auto" as const,
+            reason:
+              "Compte Instagram lié sans ID Business. Reconnectez en mode Business/Creator.",
+          };
+        }
+
+        return { platform, ok: true, mode: "auto" as const };
+      });
+
+      const allOk = platformChecks.every((p) => p.ok);
+      return { ready: allOk, checks: platformChecks };
+    }),
+
+  /**
    * getUpcoming — Next 5 scheduled contents, ordered by scheduledAt ASC (for dashboard)
    */
   getUpcoming: protectedProcedure.query(async ({ ctx }) => {

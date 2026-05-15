@@ -9,6 +9,15 @@
 //
 // Stripe is the source of truth for prices — change the Stripe Price and
 // update the `price` field below in the same PR.
+//
+// Image model routing (decided after the A/B/C bench of 2026-05-15):
+//   - All SFW content photos (any plan, with face reference)
+//                                  → Google Nano Banana (default)
+//   - SFW borderline scenarios (beach/lingerie/intimate)
+//                                  → Flux Kontext Pro   (Google safety blocks)
+//   - SFW content without face ref → Flux 1.1 Pro
+//   - NSFW                         → Flux Dev Uncensored
+//   - Wizard base portrait         → Flux 1.1 Pro
 export const PLANS = {
   FREE: {
     name: "Free",
@@ -72,9 +81,21 @@ export function getPlanDisplayName(plan: keyof typeof PLANS): string {
   return PLANS[plan].name;
 }
 
+// Credit costs are calibrated against real Replicate per-call cost so the
+// margin holds even on the heaviest plan (Agency 199 €). Reference (2026-05):
+//
+//   PHOTO   (Nano Banana / Flux 1.1 Pro)   ≈ $0.04   per image
+//   REEL    (Kling-2 default / Wan 2.5)    ≈ $0.55   per clip   →  ~14× a photo
+//   CAPTION (DeepSeek chat)                ≈ $0.001  per call
+//
+// The previous REEL=5 ratio (1 reel = 5 photos) let an Agency user burn
+// 100 reels × $0.55 ≈ $55 of Replicate on a $199 plan, which collapsed the
+// margin to ~0 once Clerk + R2 + Stripe fees were taken into account. The
+// new REEL=8 ratio brings the worst-case Agency to ~$34 of Replicate and
+// caps the credit budget to ~62 reels — a realistic ceiling for an agency.
 export const CREDIT_COSTS = {
   PHOTO: 1,
-  REEL: 5,
+  REEL: 8,
   CAPTION: 0.5,
   BASE_IMAGE: 2,
   HASHTAGS: 0.25,
