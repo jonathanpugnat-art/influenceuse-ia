@@ -7,7 +7,12 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // `directUrl` is only used by Prisma Migrate (build-time on Vercel).
+  // The app runtime keeps reading `DATABASE_URL` (pooled via PgBouncer).
+  // Falls back to DATABASE_URL when DIRECT_URL is not set (dev env).
+  directUrl = env("DIRECT_URL")
 }
 
 // ──────────────────────────────────────────────
