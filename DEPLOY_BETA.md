@@ -1,8 +1,15 @@
 # Déploiement bêta v0.11 sur Vercel
 
-Ce guide te permet de pousser la bêta en production en ~30 min. La bêta
-est **fermée** : seules les emails que tu invites depuis `/admin/waitlist`
-peuvent s'inscrire (grâce à `BETA_REQUIRE_INVITE=true`).
+Ce guide te permet de pousser l'app en production en ~30 min.
+
+**Mode par défaut : sign-up ouvert.** N'importe qui peut s'inscrire
+depuis `/sign-up`. Le système d'invitation/waitlist reste **disponible
+en réserve** : table `WaitlistEntry`, endpoint `POST /api/waitlist`,
+admin dashboard `/admin/waitlist`, garde webhook Clerk — tout ça reste
+inactif tant que tu ne flip pas `BETA_REQUIRE_INVITE=true`.
+
+Tu peux fermer la bêta en une variable d'env si jamais un Reddit/Twitter
+te ramène trop de monde d'un coup et que les coûts Replicate dérapent.
 
 ---
 
@@ -80,9 +87,11 @@ NEXT_PUBLIC_APP_URL=https://<TON-DOMAINE>
 ENCRYPTION_SECRET=<32-bytes-base64>     # openssl rand -base64 32
 CRON_SECRET=<random-32+chars>           # openssl rand -hex 32
 
-# Closed beta gating
-BETA_REQUIRE_INVITE=true
-ADMIN_EMAILS=jonathanpugnat@gmail.com   # ton email = admin
+# Beta gating (laisser false = sign-up ouvert à tous)
+# Flip à "true" si tu veux fermer la bêta aux seuls invités via
+# /admin/waitlist (utile en cas de pic de trafic non maîtrisé).
+BETA_REQUIRE_INVITE=false
+ADMIN_EMAILS=jonathanpugnat@gmail.com   # ton email = admin (accès /admin/*)
 
 # IA
 DEEPSEEK_API_KEY=sk-...
@@ -184,34 +193,57 @@ Configure ça dans **Settings → Build & Development Settings** :
 
 ---
 
-## 9. Workflow bêta (ce que tu vas faire ensuite)
+## 9. Workflow standard (mode ouvert, par défaut)
 
-1. **Visiteur arrive** sur ta landing → voit le hero "Bêta fermée" + formulaire
-2. **Visiteur s'inscrit** sur la waitlist → row `PENDING` dans la DB
-3. **Toi** : tu vas sur `/fr/admin/waitlist` (connecté avec ton compte
-   admin) → tu vois la liste
-4. Tu cliques **Inviter** sur un email → Clerk envoie l'invitation
-   email automatiquement → row passe à `INVITED`
-5. L'invité clique le lien dans son email → atterrit sur `/sign-up`
-   → se crée un compte
-6. Webhook `user.created` vérifie : email dans waitlist en `INVITED`
-   → autorisé → row passe à `SIGNED_UP`
-7. Si quelqu'un essaie de s'inscrire **sans invitation** : son compte
-   Clerk est immédiatement supprimé (silencieux), pas de row `User`
-   créée
+1. **Visiteur arrive** sur ta landing → clique "Démarrer gratuitement"
+2. Atterrit sur `/sign-up` (Clerk) → crée son compte (email ou social)
+3. Webhook `user.created` crée la row `User` en DB avec plan `FREE`
+   (50 crédits offerts) → arrive sur le dashboard
+
+C'est tout. Aucune action de ta part nécessaire.
 
 ---
 
-## 10. Quand tu seras prêt à ouvrir la bêta au public
+## 10. Si tu veux fermer la bêta (mode invitation seule)
 
-C'est juste **une variable d'environnement à changer** :
+À utiliser **uniquement si** :
+- Tu vois ton compteur Replicate dérailler (> 30 $/jour)
+- Tu reçois trop de signups d'un coup (effet Reddit/HN/Twitter)
+- Tu veux contrôler manuellement qui rentre pendant un sprint produit
+
+**3 étapes** :
 
 ```env
-BETA_REQUIRE_INVITE=false
+# 1. Sur Vercel, changer la var d'env :
+BETA_REQUIRE_INVITE=true
 ```
 
-Et tu remplaces le `<WaitlistForm>` sur la landing par un bouton
-`/sign-up` classique (1 ligne à éditer dans `src/app/[locale]/page.tsx`).
+```tsx
+// 2. (Optionnel) Remettre le formulaire waitlist sur la landing
+//    pour récolter les emails au lieu de les laisser tomber.
+//    Dans src/app/[locale]/page.tsx, remplacer le bouton
+//    /sign-up du hero par :
+import { WaitlistForm } from "@/components/landing/waitlist-form";
+// …
+<WaitlistForm source="hero" variant="hero" />
+```
+
+```
+# 3. Aller sur /fr/admin/waitlist pour inviter au compte-gouttes
+```
+
+Quand `BETA_REQUIRE_INVITE=true` :
+- Webhook `user.created` rejette toute signup dont l'email n'est pas
+  en statut `INVITED` dans la table waitlist (supprime le compte
+  Clerk créé, ne crée pas la row `User`)
+- Tu invites depuis `/admin/waitlist` → Clerk envoie un mail
+  d'invitation → l'invité clique → arrive sur `/sign-up` → s'inscrit
+  normalement → row waitlist passe à `SIGNED_UP`
+
+Pour rouvrir : flip `BETA_REQUIRE_INVITE=false`. C'est instantané, pas
+de redéploiement nécessaire (Vercel pick up les env vars au prochain
+cold-start, ou tu peux forcer un redeploy si tu veux que ce soit
+immédiat).
 
 ---
 
@@ -220,12 +252,14 @@ Et tu remplaces le `<WaitlistForm>` sur la landing par un bouton
 - [ ] `https://<TON-DOMAINE>` charge la landing
 - [ ] `https://<TON-DOMAINE>/api/health` renvoie `{ status: "ok",
        autoPublish: { ready: true } }`
-- [ ] `POST /api/waitlist` accepte un email de test
-- [ ] Connecté en admin, `/fr/admin/waitlist` affiche la liste
-- [ ] Le bouton "Inviter" envoie bien l'email Clerk de test
-- [ ] L'invité peut s'inscrire ; un non-invité voit "no such account"
+- [ ] Tu peux te sign-up depuis `/fr/sign-up` → tu arrives au dashboard
+       avec 50 crédits FREE
+- [ ] Connecté en admin, `/fr/admin/waitlist` est accessible (la liste
+       sera vide, c'est normal)
 - [ ] Webhook Stripe testé via `stripe trigger checkout.session.completed`
 - [ ] Crons Vercel listés dans Settings → Cron Jobs
+- [ ] (Si tu actives la gating plus tard) Un non-invité ne peut pas
+       s'inscrire quand `BETA_REQUIRE_INVITE=true`
 
 ---
 

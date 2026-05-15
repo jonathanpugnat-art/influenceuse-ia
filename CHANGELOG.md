@@ -4,6 +4,24 @@ All notable changes to **Influenceuse IA** are documented in this file. Versions
 
 ---
 
+## [v0.11.7] — Open sign-up (waitlist kept as fallback) (2026-05-15)
+
+### Changed
+
+- **Landing CTA reverted to direct `/sign-up`** — hero and final CTA now point to `/sign-up` again with the original "Démarrer gratuitement" / "Voir la démo" buttons. Realistic call: a closed beta only makes sense once there's actual organic traffic; we'd rather collect real signups than waitlist entries we have to manually triage. The whole waitlist infrastructure (table, `/api/waitlist`, `<WaitlistForm>`, `/admin/waitlist`, Clerk webhook gate) stays on disk and reachable — just dormant.
+- **`BETA_REQUIRE_INVITE` defaults to `false`** documented in `DEPLOY_BETA.md`. Flip to `true` (and re-import `<WaitlistForm>` on the landing — 1 line) if a traffic spike or runaway Replicate spend ever justifies closing sign-ups.
+
+### Removed (from landing only — code kept)
+
+- `<WaitlistForm>` import + usage in `src/app/[locale]/page.tsx`.
+- `useTranslations("waitlist")` hook + `Lock` icon import that were only used by the beta-locked CTA.
+
+### Why this matters
+
+The closed-beta gating is the kind of thing that's cheap to keep around but expensive to add under pressure. Keeping `WaitlistEntry` + `/admin/waitlist` + the Clerk webhook check live means we can re-close sign-ups in a single env var flip + a 1-line landing edit — no DB migration, no Clerk dashboard reconfig.
+
+---
+
 ## [v0.11.6] — Closed beta gating (waitlist) (2026-05-15)
 
 ### Added

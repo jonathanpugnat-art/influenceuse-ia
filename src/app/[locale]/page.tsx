@@ -29,9 +29,7 @@ import {
   Quote,
   Zap,
   Globe,
-  Lock,
 } from "lucide-react";
-import { WaitlistForm } from "@/components/landing/waitlist-form";
 
 /**
  * Public landing page.
@@ -47,7 +45,6 @@ export default function LandingPage() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const t = useTranslations("landing");
-  const tw = useTranslations("waitlist");
   const locale = useLocale();
   const pathname = usePathname();
 
@@ -356,23 +353,27 @@ export default function LandingPage() {
                 {t("heroSubtitle")}
               </motion.p>
 
-              {/* Closed-beta CTA — replaces the open sign-up button while
-                  invites are gated. The legacy /sign-up link stays in the
-                  header so existing testers can still log in. */}
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.3 }}
-                className="flex flex-col items-center gap-3"
+                className="flex flex-col sm:flex-row items-center justify-center gap-4"
               >
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs font-medium">
-                  <Lock className="size-3.5" />
-                  <span>{tw("badge")}</span>
-                </div>
-                <WaitlistForm source="hero" variant="hero" />
-                <p className="text-xs text-zinc-500 mt-1">
-                  {tw("subtitle")}
-                </p>
+                <Link href="/sign-up">
+                  <Button
+                    size="lg"
+                    className="w-full sm:w-auto h-14 px-8 text-base bg-white text-zinc-950 hover:bg-zinc-200 transition-colors"
+                  >
+                    {t("ctaPrimary")} <ArrowRight className="ml-2 size-4" />
+                  </Button>
+                </Link>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="w-full sm:w-auto h-14 px-8 text-base border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800 text-white"
+                >
+                  <Play className="mr-2 size-4" /> {t("ctaWatchDemo")}
+                </Button>
               </motion.div>
             </div>
 
@@ -1004,16 +1005,18 @@ export default function LandingPage() {
                 <h2 className="text-3xl md:text-5xl font-bold text-white mb-6">
                   {t("ctaFinalTitle")}
                 </h2>
-                <p className="text-violet-200 text-lg mb-8">
+                <p className="text-violet-200 text-lg mb-10">
                   {t("ctaFinalSubtitle")}
                 </p>
 
-                <div className="max-w-md mx-auto">
-                  <WaitlistForm source="final-cta" variant="hero" />
-                </div>
-                <p className="text-violet-200/70 text-xs mt-4">
-                  {tw("subtitle")}
-                </p>
+                <Link href="/sign-up">
+                  <Button
+                    size="lg"
+                    className="h-14 px-8 text-base bg-white text-indigo-950 hover:bg-zinc-100 transition-colors"
+                  >
+                    {t("ctaFinalButton")}
+                  </Button>
+                </Link>
               </div>
             </div>
           </div>
