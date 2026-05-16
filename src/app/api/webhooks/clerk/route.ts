@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Webhook } from "svix";
 import { clerkClient } from "@clerk/nextjs/server";
 import { db } from "@/server/db";
+import { PLANS } from "@/lib/constants";
 
 const WEBHOOK_SECRET =
   process.env.CLERK_WEBHOOK_SIGNING_SECRET ?? process.env.WEBHOOK_SECRET;
@@ -135,7 +136,11 @@ export async function POST(req: NextRequest) {
             imageUrl,
             plan: "FREE",
             creditsUsed: 0,
-            creditsLimit: 50,
+            // Reads from PLANS.FREE.credits so a single source of truth
+            // governs the free-tier credit grant. During the bêta this is
+            // 500 (cf. src/lib/constants.ts) — drops back to 50 when the
+            // free beta ends.
+            creditsLimit: PLANS.FREE.credits,
             locale: "fr",
           },
         });
