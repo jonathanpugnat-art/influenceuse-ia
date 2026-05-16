@@ -4,9 +4,9 @@ import { getTranslations } from "next-intl/server";
 import { Sparkles, Rocket, Wrench, ArrowLeft } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Changelog — Aura Influences",
+  title: "Changelog — Influenceuse IA",
   description:
-    "Toutes les nouveautés, améliorations et fixes d'Aura Influences, sprint après sprint.",
+    "Toutes les nouveautés, améliorations et fixes d'Influenceuse IA, sprint après sprint.",
 };
 
 interface Release {

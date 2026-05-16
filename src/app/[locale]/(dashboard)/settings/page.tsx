@@ -8,7 +8,6 @@ import {
   User,
   Globe,
   Bell,
-  Key,
   Trash2,
   AlertTriangle,
 } from "lucide-react";
@@ -78,7 +77,6 @@ export default function SettingsPage() {
     publishError: true,
     lowCredits: true,
   });
-  const [showKeys, setShowKeys] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState("");
 
   return (
@@ -189,44 +187,6 @@ export default function SettingsPage() {
               />
             </div>
           ))}
-        </CardContent>
-      </Card>
-
-      {/* API Keys */}
-      <Card className="border-slate-800/50 bg-slate-900/50">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-white">
-            <Key className="h-5 w-5" />
-            {t("apiKeys")}
-          </CardTitle>
-          <CardDescription className="text-slate-400">
-            Clés configurées via les variables d&apos;environnement (affichage masqué).
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label className="text-slate-400">Replicate / OpenAI</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                type={showKeys ? "text" : "password"}
-                value={showKeys ? "sk-••••••••••••" : "••••••••••••••••"}
-                readOnly
-                className="max-w-md border-slate-700 bg-slate-800/50 font-mono text-slate-400"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="border-slate-700"
-                onClick={() => setShowKeys((v) => !v)}
-              >
-                {showKeys ? t("hide") : t("show")}
-              </Button>
-            </div>
-          </div>
-          <p className="text-xs text-slate-500">
-            Pour modifier les clés, mettez à jour les variables d&apos;environnement du projet.
-          </p>
         </CardContent>
       </Card>
 
