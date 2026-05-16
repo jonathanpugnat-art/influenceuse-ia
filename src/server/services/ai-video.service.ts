@@ -7,6 +7,7 @@ import {
   buildVideoPrompt,
   resolveReplicateVideoModel,
   resolveLipSyncModel,
+  buildVideoModelInputs,
   type ReelStylePreset,
 } from "@/lib/prompts/video-prompts";
 import { withReplicateRetry } from "@/server/services/replicate-utils";
@@ -151,8 +152,15 @@ export async function generateVideo(
     reelStylePreset: preset,
   });
 
-  const subjectRef = (input.subjectReferenceUrl?.trim() || firstFrame).trim();
-  const hasReferenceImage = Boolean(subjectRef);
+  // Caller may pass a separate avatarUrl as `subjectReferenceUrl`. When it's
+  // omitted OR equals the first frame, we treat it as "no extra subject ref"
+  // — important because MiniMax rejects identical refs (E006). The field
+  // mapping itself is handled by `buildVideoModelInputs` so two providers
+  // can disagree on naming without leaking into this caller.
+  const subjectRefRaw = input.subjectReferenceUrl?.trim();
+  const subjectRef =
+    subjectRefRaw && subjectRefRaw !== firstFrame ? subjectRefRaw : undefined;
+  const hasReferenceImage = Boolean(firstFrame);
 
   // Sprint 7 — pick the best model for this preset, given whether we have a
   // reference image (some models like Runway Gen-4 don't accept one).
@@ -160,11 +168,10 @@ export async function generateVideo(
   const model = modelDesc.id;
   const usePromptOptimizer = preset === "creative" && modelDesc.internalPromptOptimizer;
 
-  const params: Record<string, unknown> = { prompt };
-  if (modelDesc.supportsImageRef && firstFrame) {
-    params.first_frame_image = firstFrame;
-    if (subjectRef) params.subject_reference = subjectRef;
-  }
+  const params: Record<string, unknown> = {
+    prompt,
+    ...buildVideoModelInputs(modelDesc, firstFrame, subjectRef),
+  };
   if (modelDesc.internalPromptOptimizer) {
     params.prompt_optimizer = usePromptOptimizer;
   }

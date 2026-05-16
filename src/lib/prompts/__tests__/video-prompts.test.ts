@@ -3,6 +3,8 @@ import {
   buildVideoPrompt,
   resolveReplicateVideoModel,
   resolveLipSyncModel,
+  buildVideoModelInputs,
+  VIDEO_MODELS,
   VIDEO_MODEL_ALLOWLIST,
 } from "@/lib/prompts/video-prompts";
 
@@ -150,6 +152,73 @@ describe("video-prompts", () => {
 
     it("includes sync/sync-1.6.0 in the allowlist", () => {
       expect(VIDEO_MODEL_ALLOWLIST).toContain("sync/sync-1.6.0");
+    });
+  });
+
+  describe("buildVideoModelInputs (provider-specific image field mapping)", () => {
+    // Regression test for the 2026-05-16 production failure: the first beta
+    // reel generation crashed with MiniMax error E006 ("You cannot use both
+    // first_frame_image and subject_reference at the same time"). Root cause
+    // was a) MiniMax rejecting identical first/subject refs and b) the wrong
+    // field name being sent to Kling/Wan. These tests lock the contract.
+
+    it("MiniMax: sends first_frame_image and DROPS subject_reference when refs are identical", () => {
+      const url = "https://r2.example.com/avatar.jpg";
+      const inputs = buildVideoModelInputs(VIDEO_MODELS["minimax/video-01"], url, url);
+      expect(inputs.first_frame_image).toBe(url);
+      expect(inputs.subject_reference).toBeUndefined();
+    });
+
+    it("MiniMax: sends BOTH fields when subject ref is genuinely different", () => {
+      const frame = "https://r2.example.com/frame.jpg";
+      const subj = "https://r2.example.com/subject.jpg";
+      const inputs = buildVideoModelInputs(VIDEO_MODELS["minimax/video-01"], frame, subj);
+      expect(inputs.first_frame_image).toBe(frame);
+      expect(inputs.subject_reference).toBe(subj);
+    });
+
+    it("Kling 2.0: uses start_image (NOT first_frame_image) and ignores subject ref", () => {
+      const frame = "https://r2.example.com/frame.jpg";
+      const subj = "https://r2.example.com/subject.jpg";
+      const inputs = buildVideoModelInputs(VIDEO_MODELS["kwaivgi/kling-v2.0"], frame, subj);
+      expect(inputs.start_image).toBe(frame);
+      expect(inputs.first_frame_image).toBeUndefined();
+      expect(inputs.subject_reference).toBeUndefined();
+    });
+
+    it("Wan 2.5: uses image and ignores subject ref", () => {
+      const frame = "https://r2.example.com/frame.jpg";
+      const inputs = buildVideoModelInputs(VIDEO_MODELS["wan-video/wan-2.5-i2v"], frame, undefined);
+      expect(inputs.image).toBe(frame);
+      expect(inputs.first_frame_image).toBeUndefined();
+      expect(inputs.start_image).toBeUndefined();
+    });
+
+    it("Runway Gen-4: returns empty inputs (no image ref support)", () => {
+      const inputs = buildVideoModelInputs(
+        VIDEO_MODELS["runwayml/gen4-aleph"],
+        "https://r2.example.com/x.jpg",
+        "https://r2.example.com/y.jpg"
+      );
+      expect(inputs).toEqual({});
+    });
+
+    it("returns empty when no firstFrame is provided", () => {
+      const inputs = buildVideoModelInputs(
+        VIDEO_MODELS["kwaivgi/kling-v2.0"],
+        undefined,
+        "https://r2.example.com/x.jpg"
+      );
+      expect(inputs).toEqual({});
+    });
+
+    it("trims whitespace from URLs (defensive against editor-pasted refs)", () => {
+      const inputs = buildVideoModelInputs(
+        VIDEO_MODELS["wan-video/wan-2.5-i2v"],
+        "  https://r2.example.com/x.jpg  ",
+        undefined
+      );
+      expect(inputs.image).toBe("https://r2.example.com/x.jpg");
     });
   });
 });
