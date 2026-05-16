@@ -199,6 +199,23 @@ export const influencerRouter = createTRPCRouter({
         isNsfw: z.boolean().default(false),
         baseImageUrl: z.string().min(1).optional().nullable(),
         avatarUrl: z.string().min(1).optional().nullable(),
+        // Sprint 13 — appearance uniqueness guard. The wizard's
+        // `generateBaseImage` mutation returns these alongside imageUrls;
+        // the client forwards them here so we can persist + index them.
+        // Both are optional: the wizard may not have called generateBaseImage
+        // (e.g. user uploaded their own portrait) in which case they remain
+        // NULL and just won't participate in the duplicate-detection index.
+        appearanceVariations: z
+          .object({
+            faceShape: z.number().int().min(0),
+            eyeShape: z.number().int().min(0),
+            eyeColor: z.number().int().min(0),
+            nose: z.number().int().min(0),
+            distinctiveFeature: z.number().int().min(0),
+            expression: z.number().int().min(0),
+          })
+          .optional(),
+        appearanceFingerprint: z.string().length(8).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -238,6 +255,10 @@ export const influencerRouter = createTRPCRouter({
           isNsfw: input.isNsfw,
           baseImageUrl: input.baseImageUrl ?? undefined,
           avatarUrl: input.avatarUrl ?? input.baseImageUrl ?? undefined,
+          appearanceVariations: input.appearanceVariations
+            ? (input.appearanceVariations as object)
+            : undefined,
+          appearanceFingerprint: input.appearanceFingerprint ?? undefined,
         },
         include: {
           socialAccounts: true,
@@ -270,10 +291,26 @@ export const influencerRouter = createTRPCRouter({
         isNsfw: z.boolean().optional(),
         avatarUrl: z.string().min(1).optional().nullable(),
         baseImageUrl: z.string().min(1).optional().nullable(),
+        // Sprint 13 — when the user regenerates the base image from the edit
+        // page, the new portrait carries fresh appearance variations and a
+        // new fingerprint. Persist them so the duplicate-detection index
+        // tracks the live identity, not the original wizard one.
+        appearanceVariations: z
+          .object({
+            faceShape: z.number().int().min(0),
+            eyeShape: z.number().int().min(0),
+            eyeColor: z.number().int().min(0),
+            nose: z.number().int().min(0),
+            distinctiveFeature: z.number().int().min(0),
+            expression: z.number().int().min(0),
+          })
+          .optional(),
+        appearanceFingerprint: z.string().length(8).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { id, ...data } = input;
+      const { id, appearanceVariations, ...rest } = input;
+      const data = rest;
       await verifyOwnership(id, ctx.userId);
 
       const influencer = await db.influencer.update({
@@ -282,6 +319,9 @@ export const influencerRouter = createTRPCRouter({
           ...data,
           ...(data.style
             ? { style: data.style as object }
+            : {}),
+          ...(appearanceVariations
+            ? { appearanceVariations: appearanceVariations as object }
             : {}),
         },
         include: {
@@ -328,5 +368,33 @@ export const influencerRouter = createTRPCRouter({
       });
 
       return influencer;
+    }),
+
+  /**
+   * checkAppearanceCollision — Sprint 13 uniqueness guard.
+   *
+   * Given a fingerprint (returned by `content.generateBaseImage`), counts
+   * how many OTHER active influencers across the platform share the same
+   * visual identity tuple. Used by the wizard's summary step to surface
+   * a soft warning ("Hey, 2 other creators picked these exact traits, want
+   * to regenerate for a more unique look?") without blocking creation.
+   *
+   * Returns a count rather than the actual rows so we never leak other
+   * users' influencer data — privacy-by-design.
+   */
+  checkAppearanceCollision: protectedProcedure
+    .input(z.object({ fingerprint: z.string().length(8) }))
+    .query(async ({ ctx, input }) => {
+      const user = await getDbUser(ctx.userId);
+      const count = await db.influencer.count({
+        where: {
+          appearanceFingerprint: input.fingerprint,
+          status: { not: "ARCHIVED" },
+          // Don't count the user's OWN influencers (they may have intentionally
+          // regenerated and we don't want to scare them off their own draft).
+          NOT: { userId: user.id },
+        },
+      });
+      return { count, hasCollision: count > 0 };
     }),
 });

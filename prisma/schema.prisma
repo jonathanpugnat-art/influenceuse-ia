@@ -143,6 +143,13 @@ model Influencer {
   avatarUrl    String?
   isNsfw       Boolean          @default(false)
   status       InfluencerStatus @default(ACTIVE)
+  /// Indices into APPEARANCE_VARIATIONS (image-prompts.ts) — random subtle
+  /// traits (face shape, eye color, expression…) baked into the base prompt
+  /// so two users with identical style/age never get the same influencer.
+  appearanceVariations Json?
+  /// 8-char FNV-1a hash of (style + age + appearanceVariations). Indexed so
+  /// we can detect near-duplicate influencers across users in O(1).
+  appearanceFingerprint String?
 
   user           User                 @relation(fields: [userId], references: [id])
   socialAccounts SocialAccount[]
@@ -159,6 +166,7 @@ model Influencer {
   @@index([niche])
   @@index([slug])
   @@index([userId, status])
+  @@index([appearanceFingerprint])
 }
 
 /// Compte social connecté à une influenceuse

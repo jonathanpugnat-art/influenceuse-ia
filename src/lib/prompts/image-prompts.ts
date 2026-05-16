@@ -13,16 +13,179 @@ export function genderLabel(gender: Gender): string {
   }
 }
 
-/** Base portrait template — high quality for face reference (wizard only) */
+/** Base portrait template — high quality for face reference (wizard only).
+ *
+ * Identity disambiguation note: the template intentionally leaves room for a
+ * `{distinct_traits}` slot. This slot is filled at build-time by
+ * `pickAppearanceVariations()` with a random combination of face shape, eye
+ * shape, eye color, nose, distinctive feature, and expression. Without it,
+ * two users picking the same {age, ethnicity, hairColor, hairStyle, bodyType,
+ * fashionStyle} would receive the SAME prompt byte-for-byte and the same
+ * Flux 1.1 Pro seed → indistinguishable influencers.
+ *
+ * With ~6 axes × ~6 values each we get ~6^6 = ~46k visually distinct
+ * combinations BEFORE the random seed kicks in. Combined with a random seed
+ * per output, the collision probability drops below 1 in millions.
+ */
 export const BASE_PORTRAIT_TEMPLATE =
   "ultra photorealistic RAW photo, shot on Canon EOS R5, 85mm f/1.2 lens, " +
   "portrait of a {age} year old {ethnicity} {gender}, " +
   "{hair_color} {hair_style} hair, {body_type} build, {fashion_style} fashion, " +
+  "{distinct_traits}, " +
   "flawless skin with realistic texture and subtle pores, " +
   "sharp detailed eyes with catchlight, " +
   "professional studio lighting, soft key light, cinematic lighting, " +
   "8k, hyperrealistic, national geographic quality, " +
   "kodak portra 400 film emulation, natural color grading, vogue beauty editorial";
+
+/**
+ * Pools of subtle but visually meaningful traits we randomly mix into the
+ * portrait prompt so every influencer ends up unique even when the wizard
+ * inputs are identical. Each pool has ~5-8 entries chosen to keep the look
+ * realistic (we don't want "purple eyes" or other fantasy traits that would
+ * break the iPhone-photo aesthetic).
+ *
+ * Don't reorder these arrays — `pickAppearanceVariations` uses index-based
+ * indices stored in the influencer's `appearanceFingerprint`. Adding new
+ * entries at the END is safe.
+ */
+export const APPEARANCE_VARIATIONS = {
+  faceShape: [
+    "oval face shape",
+    "heart-shaped face",
+    "round face shape",
+    "square jawline",
+    "diamond face shape",
+    "long oval face",
+  ],
+  eyeShape: [
+    "almond-shaped eyes",
+    "round expressive eyes",
+    "hooded eyes",
+    "deep-set eyes",
+    "wide-set eyes",
+    "monolid eyes",
+  ],
+  eyeColor: [
+    "hazel eyes",
+    "deep brown eyes",
+    "light brown eyes",
+    "green eyes",
+    "blue eyes",
+    "grey-blue eyes",
+    "amber eyes",
+  ],
+  nose: [
+    "delicate nose",
+    "subtle button nose",
+    "refined straight nose",
+    "soft Roman nose profile",
+    "slightly upturned nose",
+    "narrow bridged nose",
+  ],
+  distinctiveFeature: [
+    "very subtle freckles across the nose bridge",
+    "soft dimples when relaxed",
+    "small beauty mark near the lip",
+    "high defined cheekbones",
+    "slightly fuller lips",
+    "thin arched eyebrows",
+    "thicker natural eyebrows",
+    "small gap between front teeth",
+  ],
+  expression: [
+    "warm gentle smile",
+    "confident neutral gaze",
+    "soft thoughtful expression",
+    "subtle playful smirk",
+    "calm serene expression",
+    "natural relaxed look",
+  ],
+} as const;
+
+export type AppearanceVariation = {
+  faceShape: number;
+  eyeShape: number;
+  eyeColor: number;
+  nose: number;
+  distinctiveFeature: number;
+  expression: number;
+};
+
+/**
+ * Pick a random set of indices into APPEARANCE_VARIATIONS — deterministic if
+ * a `random` function is provided (useful for tests + reproducible mock
+ * influencers). Returns the indices so the caller can persist them on the
+ * Influencer row and reproduce the same look later.
+ */
+export function pickAppearanceVariations(
+  random: () => number = Math.random
+): AppearanceVariation {
+  const pickIdx = (len: number) => Math.floor(random() * len);
+  return {
+    faceShape: pickIdx(APPEARANCE_VARIATIONS.faceShape.length),
+    eyeShape: pickIdx(APPEARANCE_VARIATIONS.eyeShape.length),
+    eyeColor: pickIdx(APPEARANCE_VARIATIONS.eyeColor.length),
+    nose: pickIdx(APPEARANCE_VARIATIONS.nose.length),
+    distinctiveFeature: pickIdx(APPEARANCE_VARIATIONS.distinctiveFeature.length),
+    expression: pickIdx(APPEARANCE_VARIATIONS.expression.length),
+  };
+}
+
+/** Render the indices back into the comma-separated string the prompt expects. */
+export function renderAppearanceVariations(v: AppearanceVariation): string {
+  return [
+    APPEARANCE_VARIATIONS.faceShape[v.faceShape],
+    APPEARANCE_VARIATIONS.eyeShape[v.eyeShape],
+    APPEARANCE_VARIATIONS.eyeColor[v.eyeColor],
+    APPEARANCE_VARIATIONS.nose[v.nose],
+    APPEARANCE_VARIATIONS.distinctiveFeature[v.distinctiveFeature],
+    APPEARANCE_VARIATIONS.expression[v.expression],
+  ].join(", ");
+}
+
+/**
+ * Stable fingerprint of an influencer's visual identity — combines the
+ * deterministic style fields with the random variations. Two influencers
+ * sharing the same fingerprint will look almost identical (modulo seed).
+ * We use a short SHA-256 prefix to keep the column small and human-scanable.
+ */
+export function appearanceFingerprint(
+  style: {
+    gender?: string;
+    ethnicity?: string;
+    hairColor?: string;
+    hairStyle?: string;
+    bodyType?: string;
+    fashionStyle?: string;
+  },
+  age: number,
+  variations: AppearanceVariation
+): string {
+  const payload = [
+    age,
+    style.gender ?? "female",
+    style.ethnicity ?? "caucasian",
+    style.hairColor ?? "brown",
+    style.hairStyle ?? "long straight",
+    style.bodyType ?? "average",
+    style.fashionStyle ?? "casual",
+    variations.faceShape,
+    variations.eyeShape,
+    variations.eyeColor,
+    variations.nose,
+    variations.distinctiveFeature,
+    variations.expression,
+  ].join("|");
+  // Inline FNV-1a 32-bit — keeps us dependency-free (no crypto import for
+  // such a low-stakes fingerprint). Returns 8 hex chars, e.g. "a3f1d20c".
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < payload.length; i++) {
+    hash ^= payload.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
 
 /** Templates per scene — casual real-life locations */
 export const SCENE_TEMPLATES: Record<string, string> = {
@@ -355,14 +518,23 @@ export function buildBasePortraitPrompt(input: {
   bodyType: string;
   fashionStyle: string;
   gender?: Gender;
+  /**
+   * Random visual traits that make every influencer unique even when the
+   * wizard inputs are identical. If omitted, we pick a fresh random set —
+   * but callers should usually generate them upstream so they can be
+   * persisted on the Influencer row (for fingerprinting + reproducibility).
+   */
+  variations?: AppearanceVariation;
 }): string {
+  const variations = input.variations ?? pickAppearanceVariations();
   return BASE_PORTRAIT_TEMPLATE.replace("{age}", String(input.age))
     .replace("{ethnicity}", input.ethnicity.toLowerCase())
     .replace("{gender}", genderLabel(input.gender ?? "female"))
     .replace("{hair_color}", input.hairColor.toLowerCase())
     .replace("{hair_style}", input.hairStyle.toLowerCase())
     .replace("{body_type}", input.bodyType.toLowerCase())
-    .replace("{fashion_style}", input.fashionStyle.toLowerCase());
+    .replace("{fashion_style}", input.fashionStyle.toLowerCase())
+    .replace("{distinct_traits}", renderAppearanceVariations(variations));
 }
 
 /**

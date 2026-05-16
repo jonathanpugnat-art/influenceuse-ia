@@ -4,11 +4,14 @@ import {
   buildBasePortraitPrompt,
   buildFullPrompt,
   buildNegativePrompt,
+  pickAppearanceVariations,
+  appearanceFingerprint,
   DEFAULT_IMAGE_PARAMS,
   PORTRAIT_IMAGE_PARAMS,
   KONTEXT_IMAGE_PARAMS,
   type PromptBuildInput,
   type Gender,
+  type AppearanceVariation,
 } from "@/lib/prompts/image-prompts";
 import { uploadFromUrl } from "@/server/services/storage.service";
 import { checkCredits, deductCredits } from "@/server/services/credits.service";
@@ -55,6 +58,15 @@ export interface ImageGenerationOutput {
   promptUsed: string;
   negativePrompt: string;
   parameters: Record<string, unknown>;
+  /**
+   * Only populated by `generateBaseImage`. Identifies the random visual
+   * variations applied to the wizard prompt + an 8-char fingerprint of
+   * the full (style + variations + age) tuple. Callers should persist
+   * these on the `Influencer` row so a) the wizard can be reproduced and
+   * b) we can detect identity collisions across users later.
+   */
+  appearanceVariations?: AppearanceVariation;
+  appearanceFingerprint?: string;
 }
 
 // ──────────────────────────────────────────────
@@ -327,18 +339,21 @@ async function runReplicatePrediction(
 
 /**
  * Generate multiple images. Strategy depends on the model:
- *  - flux-1.1-pro: native `num_outputs` support, single API call.
+ *  - flux-1.1-pro: native `num_outputs` support — but we still fan out into
+ *    N parallel calls with distinct random seeds, otherwise two users with
+ *    identical wizard inputs would receive the SAME 4 portraits (Flux is
+ *    deterministic for a given prompt+seed pair). The extra seed per call
+ *    guarantees ~2^31 visually distinct outputs even on identical prompts.
  *  - flux-kontext-pro / flux-dev-uncensored: no num_outputs → fan out in
  *    parallel with different seeds.
+ *  - google/nano-banana: same fan-out + a prompt rotation suffix because
+ *    Nano respects identical prompts more strictly than Flux.
  */
 async function runMultiplePredictions(
   model: string,
   input: Record<string, unknown>,
   count: number
 ): Promise<string[]> {
-  if (model === MODEL_SFW_T2I) {
-    return runReplicatePrediction(model, { ...input, num_outputs: count });
-  }
 
   // Build the per-image task list depending on the model branch.
   const tasks: Array<() => Promise<string[]>> = [];
@@ -358,7 +373,10 @@ async function runMultiplePredictions(
       );
     }
   } else {
-    // Kontext / NSFW: different random seeds give different photos.
+    // Flux 1.1 Pro / Kontext / NSFW: different random seeds give different
+    // photos. We always pass an explicit seed (even on Flux 1.1 Pro which
+    // accepts num_outputs natively) so two users with identical wizard
+    // inputs cannot collide on the same default seed.
     for (let i = 0; i < count; i++) {
       tasks.push(() =>
         runReplicatePrediction(model, {
@@ -405,6 +423,13 @@ export async function generateBaseImage(
     );
   }
 
+  // Pick a random set of subtle distinctive traits (face shape, eye color,
+  // expression, etc.) so two users with identical wizard inputs produce
+  // visually different influencers. See `pickAppearanceVariations` in
+  // image-prompts.ts for the full picker logic.
+  const variations = pickAppearanceVariations();
+  const fingerprint = appearanceFingerprint(style, influencerAge, variations);
+
   const prompt = buildBasePortraitPrompt({
     age: influencerAge,
     gender: style.gender,
@@ -413,6 +438,7 @@ export async function generateBaseImage(
     hairStyle: style.hairStyle ?? (style.gender === "male" ? "short" : "long straight"),
     bodyType: style.bodyType ?? "average",
     fashionStyle: style.fashionStyle ?? "casual",
+    variations,
   });
 
   const negativePrompt = buildNegativePrompt(false, style.gender ?? "female");
@@ -420,16 +446,20 @@ export async function generateBaseImage(
   // Wizard portrait: Flux 1.1 Pro on every plan. Bench (2026-05-15) showed
   // T2I-without-reference is where Flux beats Nano (cleaner identity over 4
   // variations, no Google safety blocks on edgy aesthetics).
+  // Note: we no longer rely on `num_outputs` here — runMultiplePredictions
+  // fans out into 4 parallel calls with distinct random seeds so two users
+  // with identical wizard inputs cannot collide on the default Flux seed.
   const params: Record<string, unknown> = {
     ...PORTRAIT_IMAGE_PARAMS,
     prompt,
     negative_prompt: negativePrompt,
-    num_outputs: 4,
     safety_tolerance: 5,
   };
 
   try {
-    console.log("[ai-image] Generating base image (flux-1.1-pro)…");
+    console.log(
+      `[ai-image] Generating base image (flux-1.1-pro, fingerprint=${fingerprint})…`
+    );
     const outputUrls = await runMultiplePredictions(MODEL_SFW_T2I, params, 4);
 
     const storedUrls = await Promise.all(
@@ -446,6 +476,8 @@ export async function generateBaseImage(
       promptUsed: prompt,
       negativePrompt,
       parameters: params,
+      appearanceVariations: variations,
+      appearanceFingerprint: fingerprint,
     };
   } catch (error) {
     console.error("[ai-image] generateBaseImage error:", error);

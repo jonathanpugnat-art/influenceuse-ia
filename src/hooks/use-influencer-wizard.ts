@@ -21,6 +21,21 @@ export interface WizardData {
   fashionStyles: string[];
   /** URL de l'image de base sélectionnée (parmi les 4 variantes générées) */
   baseImageUrl: string;
+  /**
+   * Sprint 13 — uniqueness guard. Returned by the `generateBaseImage`
+   * mutation alongside the image URLs. Forwarded to `influencer.create`
+   * so the row knows which random visual variations were baked in (lets
+   * us detect duplicate identities across users via an indexed lookup).
+   */
+  appearanceVariations?: {
+    faceShape: number;
+    eyeShape: number;
+    eyeColor: number;
+    nose: number;
+    distinctiveFeature: number;
+    expression: number;
+  };
+  appearanceFingerprint?: string;
   // Step 3 — Social
   instagramEnabled: boolean;
   instagramUsername: string;

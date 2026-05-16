@@ -91,9 +91,18 @@ export function WizardStepAppearance({
     onSuccess: (result) => {
       setGeneratedImages(result.imageUrls);
       setSelectedImageIndex(0);
+      // Persist the appearance variations + fingerprint alongside the URL
+      // so step 4 (`influencer.create`) can forward them to the DB. Without
+      // this, the influencer row would have NULL fingerprint and we'd lose
+      // the uniqueness signal even though the image itself was unique.
+      const updates: Parameters<typeof updateData>[0] = {
+        appearanceVariations: result.appearanceVariations,
+        appearanceFingerprint: result.appearanceFingerprint,
+      };
       if (result.imageUrls[0]) {
-        updateData({ baseImageUrl: result.imageUrls[0] });
+        updates.baseImageUrl = result.imageUrls[0];
       }
+      updateData(updates);
       setIsGenerating(false);
       toast.success("4 variantes générées. Choisis celle que tu préfères.");
     },

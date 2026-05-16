@@ -3,6 +3,10 @@ import {
   buildFullPrompt,
   buildNegativePrompt,
   buildBasePortraitPrompt,
+  pickAppearanceVariations,
+  renderAppearanceVariations,
+  appearanceFingerprint,
+  APPEARANCE_VARIATIONS,
   NEGATIVE_PROMPT_SFW,
   NEGATIVE_PROMPT_NSFW,
 } from "@/lib/prompts/image-prompts";
@@ -238,6 +242,77 @@ describe("image-prompts", () => {
         gender: "male",
       });
       expect(male).toContain("man");
+    });
+  });
+
+  describe("appearance variations (Sprint 13 uniqueness guard)", () => {
+    it("pickAppearanceVariations returns valid indices into every pool", () => {
+      // Drive 50 picks through Math.random to make sure every pool boundary
+      // holds — protects against off-by-one in the picker.
+      for (let i = 0; i < 50; i++) {
+        const v = pickAppearanceVariations();
+        expect(v.faceShape).toBeGreaterThanOrEqual(0);
+        expect(v.faceShape).toBeLessThan(APPEARANCE_VARIATIONS.faceShape.length);
+        expect(v.eyeShape).toBeLessThan(APPEARANCE_VARIATIONS.eyeShape.length);
+        expect(v.eyeColor).toBeLessThan(APPEARANCE_VARIATIONS.eyeColor.length);
+        expect(v.nose).toBeLessThan(APPEARANCE_VARIATIONS.nose.length);
+        expect(v.distinctiveFeature).toBeLessThan(APPEARANCE_VARIATIONS.distinctiveFeature.length);
+        expect(v.expression).toBeLessThan(APPEARANCE_VARIATIONS.expression.length);
+      }
+    });
+
+    it("two prompts with identical style + age but no shared variations differ", () => {
+      // This is THE invariant the whole Sprint 13 fix exists for.
+      const style = {
+        age: 25,
+        ethnicity: "caucasian",
+        hairColor: "brown",
+        hairStyle: "long straight",
+        bodyType: "average",
+        fashionStyle: "casual",
+        gender: "female" as const,
+      };
+      const promptA = buildBasePortraitPrompt({
+        ...style,
+        variations: { faceShape: 0, eyeShape: 0, eyeColor: 0, nose: 0, distinctiveFeature: 0, expression: 0 },
+      });
+      const promptB = buildBasePortraitPrompt({
+        ...style,
+        variations: { faceShape: 5, eyeShape: 5, eyeColor: 5, nose: 5, distinctiveFeature: 5, expression: 5 },
+      });
+      expect(promptA).not.toBe(promptB);
+    });
+
+    it("renderAppearanceVariations injects all 6 axes into the prompt", () => {
+      const v = { faceShape: 0, eyeShape: 0, eyeColor: 2, nose: 1, distinctiveFeature: 3, expression: 4 };
+      const rendered = renderAppearanceVariations(v);
+      expect(rendered).toContain(APPEARANCE_VARIATIONS.faceShape[0]);
+      expect(rendered).toContain(APPEARANCE_VARIATIONS.eyeColor[2]);
+      expect(rendered).toContain(APPEARANCE_VARIATIONS.distinctiveFeature[3]);
+      expect(rendered).toContain(APPEARANCE_VARIATIONS.expression[4]);
+    });
+
+    it("appearanceFingerprint is deterministic and 8 hex chars", () => {
+      const v = { faceShape: 1, eyeShape: 2, eyeColor: 3, nose: 0, distinctiveFeature: 1, expression: 2 };
+      const style = { gender: "female", ethnicity: "caucasian", hairColor: "brown", hairStyle: "long", bodyType: "slim", fashionStyle: "casual" };
+      const fp1 = appearanceFingerprint(style, 25, v);
+      const fp2 = appearanceFingerprint(style, 25, v);
+      expect(fp1).toBe(fp2);
+      expect(fp1).toMatch(/^[0-9a-f]{8}$/);
+    });
+
+    it("appearanceFingerprint differs when ANY visual axis changes", () => {
+      const baseStyle = { gender: "female", ethnicity: "caucasian", hairColor: "brown", hairStyle: "long", bodyType: "slim", fashionStyle: "casual" };
+      const baseV = { faceShape: 0, eyeShape: 0, eyeColor: 0, nose: 0, distinctiveFeature: 0, expression: 0 };
+      const fpBase = appearanceFingerprint(baseStyle, 25, baseV);
+
+      // Each of these tweaks must produce a different fingerprint, otherwise
+      // the duplicate-detection index would mis-report siblings as identical.
+      expect(appearanceFingerprint(baseStyle, 26, baseV)).not.toBe(fpBase);
+      expect(appearanceFingerprint({ ...baseStyle, hairColor: "blonde" }, 25, baseV)).not.toBe(fpBase);
+      expect(appearanceFingerprint(baseStyle, 25, { ...baseV, faceShape: 1 })).not.toBe(fpBase);
+      expect(appearanceFingerprint(baseStyle, 25, { ...baseV, eyeColor: 1 })).not.toBe(fpBase);
+      expect(appearanceFingerprint(baseStyle, 25, { ...baseV, expression: 1 })).not.toBe(fpBase);
     });
   });
 });

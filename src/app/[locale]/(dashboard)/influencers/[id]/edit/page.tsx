@@ -52,6 +52,19 @@ export default function EditInfluencerPage({
   const [regenerating, setRegenerating] = useState(false);
   const [regeneratedUrls, setRegeneratedUrls] = useState<string[]>([]);
   const [selectedRegenIndex, setSelectedRegenIndex] = useState(0);
+  // Sprint 13 — keep the new fingerprint+variations in sync with the new
+  // base image so update() can refresh the duplicate-detection index.
+  const [regeneratedVariations, setRegeneratedVariations] = useState<{
+    faceShape: number;
+    eyeShape: number;
+    eyeColor: number;
+    nose: number;
+    distinctiveFeature: number;
+    expression: number;
+  } | null>(null);
+  const [regeneratedFingerprint, setRegeneratedFingerprint] = useState<
+    string | null
+  >(null);
 
   const { data: influencer, isLoading } = trpc.influencer.getById.useQuery({ id });
   const { data: creditsData } = trpc.billing.getCurrentPlan.useQuery();
@@ -69,6 +82,10 @@ export default function EditInfluencerPage({
     onSuccess: (result) => {
       setRegeneratedUrls(result.imageUrls);
       setSelectedRegenIndex(0);
+      // Sprint 13 — capture the new appearance variations + fingerprint so
+      // the next "Sauvegarder" can persist them along with the new image.
+      setRegeneratedVariations(result.appearanceVariations ?? null);
+      setRegeneratedFingerprint(result.appearanceFingerprint ?? null);
       setRegenerating(false);
       toast.success("4 variantes générées. Choisis une image puis clique Sauvegarder.");
     },
@@ -146,8 +163,18 @@ export default function EditInfluencerPage({
       age: formData.age,
       isNsfw: formData.isNsfw,
       ...(baseImageUrl ? { baseImageUrl, avatarUrl: baseImageUrl } : {}),
+      ...(baseImageUrl && regeneratedVariations
+        ? { appearanceVariations: regeneratedVariations }
+        : {}),
+      ...(baseImageUrl && regeneratedFingerprint
+        ? { appearanceFingerprint: regeneratedFingerprint }
+        : {}),
     });
-    if (baseImageUrl) setRegeneratedUrls([]);
+    if (baseImageUrl) {
+      setRegeneratedUrls([]);
+      setRegeneratedVariations(null);
+      setRegeneratedFingerprint(null);
+    }
   });
 
   if (isLoading || !influencer) {

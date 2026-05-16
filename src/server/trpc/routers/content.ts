@@ -78,6 +78,9 @@ export const contentRouter = createTRPCRouter({
         bodyType: input.style.bodyType,
         fashionStyle: input.style.fashionStyle,
       });
+      // The wizard surfaces `appearanceVariations` + `appearanceFingerprint`
+      // back to the client so the create-influencer mutation can persist
+      // them on the same Influencer row that ends up with this baseImageUrl.
       return result;
     }),
 
@@ -296,8 +299,14 @@ export const contentRouter = createTRPCRouter({
 
       const baseImage = influencer.baseImageUrl.trim();
       const avatarImage = influencer.avatarUrl?.trim();
+      // Only forward the avatar as a *separate* subject reference when it
+      // actually differs from the base image. The previous fallback
+      // (`avatarImage ?? baseImage`) caused the MiniMax E006 error
+      // ("cannot use both first_frame_image and subject_reference") whenever
+      // the wizard had set avatarUrl = baseImageUrl, which is the default
+      // path. The video service ignores it correctly when undefined.
       const subjectReferenceUrl =
-        avatarImage && avatarImage !== baseImage ? avatarImage : baseImage;
+        avatarImage && avatarImage !== baseImage ? avatarImage : undefined;
 
       const initialReelParams = {
         duration: input.duration,

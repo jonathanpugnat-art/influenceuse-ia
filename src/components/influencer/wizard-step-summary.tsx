@@ -81,6 +81,10 @@ export function WizardStepSummary({ onPrev }: { onPrev: () => void }) {
       isNsfw: data.isNsfw,
       baseImageUrl: selectedImageUrl || undefined,
       avatarUrl: selectedImageUrl || undefined,
+      // Forward the appearance variations + fingerprint captured during
+      // step 2 so the influencer row can be indexed for duplicate detection.
+      appearanceVariations: data.appearanceVariations,
+      appearanceFingerprint: data.appearanceFingerprint,
     });
   };
 
