@@ -633,6 +633,23 @@ model TrendItem {
   growthScore   Float?
   /// Where the trend lives publicly (TikTok discover URL, IG explore tag…).
   sourceUrl     String?
+  /// Visual preview URL — used as the hero image of the TrendCard.
+  /// Stored separately from sourceUrl so providers without a thumbnail
+  /// (e.g. raw Apify hashtag rows) can still ship a card; the UI falls
+  /// back to a niche-coloured gradient when this is null.
+  thumbnailUrl  String?
+  /// Optional second representative thumbnail for hover-swap on the card.
+  /// Curated trends ship 1-2 thumbnails; Apify will populate this from the
+  /// top engagement post when available.
+  thumbnailUrlAlt String?
+  /// When set and the platform is TIKTOK or INSTAGRAM, the UI can render
+  /// an embedded video player in the modal (TikTok oEmbed iframe / IG embed
+  /// iframe). NULL means we link out to sourceUrl instead.
+  embedUrl      String?
+  /// Author / creator handle for attribution (e.g. "@charlidamelio") when
+  /// the trend points to a specific public creator profile or post.
+  /// Optional — most curated/aggregated trends don't have a single author.
+  authorHandle  String?
   /// Coarse niche tag inferred at fetch time, used for filtering.
   /// We don't FK to the Niche enum because some trends are cross-niche.
   /// Valid values: Niche enum keys ("FASHION", "FITNESS"…) + "GENERAL".

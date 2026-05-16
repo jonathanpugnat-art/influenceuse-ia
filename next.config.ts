@@ -23,6 +23,11 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "*.replicate.delivery",
       },
+      {
+        // Sprint 13.2 — Unsplash hero images for the curated Trends provider.
+        protocol: "https",
+        hostname: "images.unsplash.com",
+      },
     ],
   },
 };

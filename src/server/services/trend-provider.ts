@@ -45,6 +45,21 @@ export interface RawTrendItem {
   /** Generic "how hot is this" score, 0..100. */
   growthScore?: number;
   sourceUrl?: string;
+  /**
+   * Visual preview for the card. Curated trends ship Unsplash photos that
+   * represent the format; Apify will populate this from the top engagement
+   * post when it has one.
+   */
+  thumbnailUrl?: string;
+  /** Optional second thumbnail for hover-swap on the card. */
+  thumbnailUrlAlt?: string;
+  /**
+   * TikTok / Instagram canonical post URL the modal can embed in an iframe.
+   * Optional — when missing, the card just links out to sourceUrl.
+   */
+  embedUrl?: string;
+  /** "@username" attribution when the trend points at a specific creator. */
+  authorHandle?: string;
   /** Loose niche tags ("FASHION", "FITNESS", "GENERAL", …). */
   nicheTags?: string[];
   isNsfw?: boolean;
@@ -97,7 +112,38 @@ interface CuratedItem {
   soundName?: string;
   growthScore: number;
   nicheTags: string[];
+  /**
+   * Hero image for the card. We use Unsplash photos that visually represent
+   * the format (mirror selfie, gym mirror, café terrace…). High quality, free
+   * to use, stable URLs.
+   * Add `?auto=format&fit=crop&w=800&q=80` so we get a fixed-size optimized
+   * preview from Unsplash's CDN.
+   */
+  thumbnailUrl: string;
+  /** Optional 2nd thumbnail shown on hover for visual variety. */
+  thumbnailUrlAlt?: string;
+  /**
+   * Hashtag we open on the platform when the user clicks "See on TikTok/IG".
+   * Always points at the explore/tag page (never disappears, always live
+   * trending content) — NOT a specific post URL that could 404 next month.
+   */
+  primaryHashtag: string;
 }
+
+/**
+ * Build the public explore-page URL for a given hashtag on TikTok or Instagram.
+ * Both URLs are stable and always show the freshest top videos — perfect for
+ * a "see real trending content" CTA.
+ */
+function explorePageUrl(platform: Platform, hashtag: string): string {
+  const tag = hashtag.replace(/^#/, "").toLowerCase();
+  if (platform === "TIKTOK") return `https://www.tiktok.com/tag/${tag}`;
+  if (platform === "INSTAGRAM") return `https://www.instagram.com/explore/tags/${tag}/`;
+  return `https://www.google.com/search?q=%23${tag}`;
+}
+
+const UNSPLASH = (id: string) =>
+  `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=800&q=80`;
 
 const CURATED_TRENDS: CuratedItem[] = [
   // ── FASHION (4) ──────────────────────────────────────────────────
@@ -115,6 +161,9 @@ const CURATED_TRENDS: CuratedItem[] = [
     hashtags: ["outfit", "ootd", "transition", "fashionreel", "stylereel"],
     growthScore: 82,
     nicheTags: ["FASHION", "LIFESTYLE"],
+    thumbnailUrl: UNSPLASH("1490481651871-ab68de25d43d"),
+    thumbnailUrlAlt: UNSPLASH("1483985988355-763728e1935b"),
+    primaryHashtag: "outfit",
   },
   {
     externalId: "curated-mirror-selfie-fit",
@@ -130,6 +179,9 @@ const CURATED_TRENDS: CuratedItem[] = [
     hashtags: ["mirrorselfie", "ootd", "goldenhour", "fashionista"],
     growthScore: 71,
     nicheTags: ["FASHION", "LIFESTYLE"],
+    thumbnailUrl: UNSPLASH("1469334031218-e382a71b716b"),
+    thumbnailUrlAlt: UNSPLASH("1515886657613-9f3515b0c78f"),
+    primaryHashtag: "ootd",
   },
   {
     externalId: "curated-haul-fashion-unbox",
@@ -145,6 +197,9 @@ const CURATED_TRENDS: CuratedItem[] = [
     hashtags: ["haul", "fashionhaul", "unboxing", "tryon"],
     growthScore: 76,
     nicheTags: ["FASHION"],
+    thumbnailUrl: UNSPLASH("1483985988355-763728e1935b"),
+    thumbnailUrlAlt: UNSPLASH("1485518882345-15568b007407"),
+    primaryHashtag: "fashionhaul",
   },
   {
     externalId: "curated-streetstyle-pov",
@@ -161,6 +216,9 @@ const CURATED_TRENDS: CuratedItem[] = [
     soundName: "Trending TikTok beat — fashion edit",
     growthScore: 68,
     nicheTags: ["FASHION", "LIFESTYLE"],
+    thumbnailUrl: UNSPLASH("1485462537746-965f33f7f6a7"),
+    thumbnailUrlAlt: UNSPLASH("1542838132-92c53300491e"),
+    primaryHashtag: "streetstyle",
   },
 
   // ── FITNESS (3) ──────────────────────────────────────────────────
@@ -178,6 +236,9 @@ const CURATED_TRENDS: CuratedItem[] = [
     hashtags: ["grwm", "running", "morningroutine", "fitnessgirl"],
     growthScore: 79,
     nicheTags: ["FITNESS", "LIFESTYLE"],
+    thumbnailUrl: UNSPLASH("1571019613454-1cb2f99b2d8b"),
+    thumbnailUrlAlt: UNSPLASH("1538805060514-97d9cc17730c"),
+    primaryHashtag: "grwm",
   },
   {
     externalId: "curated-gym-day-vlog",
@@ -193,6 +254,9 @@ const CURATED_TRENDS: CuratedItem[] = [
     hashtags: ["gymday", "legday", "fitnessmotivation", "gymgirl"],
     growthScore: 74,
     nicheTags: ["FITNESS"],
+    thumbnailUrl: UNSPLASH("1534438327276-14e5300c3a48"),
+    thumbnailUrlAlt: UNSPLASH("1574680096145-d05b474e2155"),
+    primaryHashtag: "gymgirl",
   },
   {
     externalId: "curated-progress-comparison",
@@ -208,6 +272,9 @@ const CURATED_TRENDS: CuratedItem[] = [
     hashtags: ["transformation", "fitnessjourney", "progress", "gymgirl"],
     growthScore: 65,
     nicheTags: ["FITNESS"],
+    thumbnailUrl: UNSPLASH("1518611012118-696072aa579a"),
+    thumbnailUrlAlt: UNSPLASH("1540575467063-178a50c2df87"),
+    primaryHashtag: "transformation",
   },
 
   // ── LIFESTYLE (3) ────────────────────────────────────────────────
@@ -225,6 +292,9 @@ const CURATED_TRENDS: CuratedItem[] = [
     hashtags: ["pov", "morning", "cafe", "slowliving"],
     growthScore: 61,
     nicheTags: ["LIFESTYLE", "FOOD"],
+    thumbnailUrl: UNSPLASH("1495474472287-4d71bcdd2085"),
+    thumbnailUrlAlt: UNSPLASH("1509042239860-f550ce710b93"),
+    primaryHashtag: "slowliving",
   },
   {
     externalId: "curated-day-in-life",
@@ -240,6 +310,9 @@ const CURATED_TRENDS: CuratedItem[] = [
     hashtags: ["dayinmylife", "vlog", "aesthetic", "dailylife"],
     growthScore: 77,
     nicheTags: ["LIFESTYLE"],
+    thumbnailUrl: UNSPLASH("1506748686214-e9df14d4d9d0"),
+    thumbnailUrlAlt: UNSPLASH("1499744937866-d7e566a20a61"),
+    primaryHashtag: "dayinmylife",
   },
   {
     externalId: "curated-aesthetic-room-tour",
@@ -255,6 +328,9 @@ const CURATED_TRENDS: CuratedItem[] = [
     hashtags: ["roomtour", "aesthetic", "bedroom", "cozyhome"],
     growthScore: 58,
     nicheTags: ["LIFESTYLE"],
+    thumbnailUrl: UNSPLASH("1505691938895-1758d7feb511"),
+    thumbnailUrlAlt: UNSPLASH("1522708323590-d24dbb6b0267"),
+    primaryHashtag: "roomtour",
   },
 
   // ── TRAVEL (3) ───────────────────────────────────────────────────
@@ -272,6 +348,9 @@ const CURATED_TRENDS: CuratedItem[] = [
     hashtags: ["travel", "airport", "vacation", "wanderlust"],
     growthScore: 73,
     nicheTags: ["TRAVEL", "LIFESTYLE"],
+    thumbnailUrl: UNSPLASH("1436491865332-7a61a109cc05"),
+    thumbnailUrlAlt: UNSPLASH("1542296332-2e4473faf563"),
+    primaryHashtag: "travel",
   },
   {
     externalId: "curated-hotel-room-tour",
@@ -287,6 +366,9 @@ const CURATED_TRENDS: CuratedItem[] = [
     hashtags: ["hotelroom", "travel", "hoteltour", "vacation"],
     growthScore: 64,
     nicheTags: ["TRAVEL"],
+    thumbnailUrl: UNSPLASH("1566073771259-6a8506099945"),
+    thumbnailUrlAlt: UNSPLASH("1578683010236-d716f9a3f461"),
+    primaryHashtag: "hotelroom",
   },
   {
     externalId: "curated-restaurant-aesthetic",
@@ -302,6 +384,9 @@ const CURATED_TRENDS: CuratedItem[] = [
     hashtags: ["restaurant", "foodie", "aesthetic", "dinner"],
     growthScore: 60,
     nicheTags: ["FOOD", "TRAVEL", "LIFESTYLE"],
+    thumbnailUrl: UNSPLASH("1517248135467-4c7edcad34c4"),
+    thumbnailUrlAlt: UNSPLASH("1414235077428-338989a2e8c0"),
+    primaryHashtag: "foodie",
   },
 
   // ── FOOD (2) ─────────────────────────────────────────────────────
@@ -319,6 +404,9 @@ const CURATED_TRENDS: CuratedItem[] = [
     hashtags: ["recipe", "foodtok", "healthyfood", "proteinbowl"],
     growthScore: 70,
     nicheTags: ["FOOD", "FITNESS"],
+    thumbnailUrl: UNSPLASH("1546069901-ba9599a7e63c"),
+    thumbnailUrlAlt: UNSPLASH("1490645935967-10de6ba17061"),
+    primaryHashtag: "foodtok",
   },
   {
     externalId: "curated-coffee-routine",
@@ -334,6 +422,9 @@ const CURATED_TRENDS: CuratedItem[] = [
     hashtags: ["coffee", "espresso", "morningroutine", "barista"],
     growthScore: 56,
     nicheTags: ["FOOD", "LIFESTYLE"],
+    thumbnailUrl: UNSPLASH("1495474472287-4d71bcdd2085"),
+    thumbnailUrlAlt: UNSPLASH("1509042239860-f550ce710b93"),
+    primaryHashtag: "coffee",
   },
 
   // ── TECH (1) ─────────────────────────────────────────────────────
@@ -351,6 +442,9 @@ const CURATED_TRENDS: CuratedItem[] = [
     hashtags: ["desksetup", "productivity", "workspace", "tech"],
     growthScore: 53,
     nicheTags: ["TECH", "LIFESTYLE"],
+    thumbnailUrl: UNSPLASH("1593642632823-8f785ba67e45"),
+    thumbnailUrlAlt: UNSPLASH("1496181133206-80ce9b88a853"),
+    primaryHashtag: "desksetup",
   },
 
   // ── GAMING (1) ───────────────────────────────────────────────────
@@ -368,6 +462,9 @@ const CURATED_TRENDS: CuratedItem[] = [
     hashtags: ["gamingsetup", "rgb", "gamerlife", "tech"],
     growthScore: 67,
     nicheTags: ["GAMING", "TECH"],
+    thumbnailUrl: UNSPLASH("1542751371-adc38448a05e"),
+    thumbnailUrlAlt: UNSPLASH("1511512578047-dfb367046420"),
+    primaryHashtag: "gamingsetup",
   },
 
   // ── GENERAL (1) — works for everyone ─────────────────────────────
@@ -385,6 +482,9 @@ const CURATED_TRENDS: CuratedItem[] = [
     hashtags: ["portrait", "editorial", "aesthetic", "selfportrait"],
     growthScore: 50,
     nicheTags: ["GENERAL", "FASHION"],
+    thumbnailUrl: UNSPLASH("1531746020798-e6953c6e8e04"),
+    thumbnailUrlAlt: UNSPLASH("1494790108377-be9c29b29330"),
+    primaryHashtag: "portrait",
   },
 ];
 
@@ -412,25 +512,39 @@ export class CuratedTrendsProvider implements TrendsProvider {
 
   async fetchRawTrends(ctx?: ProviderContext): Promise<RawTrendItem[]> {
     const locale: "fr" | "en" = ctx?.locale === "fr" ? "fr" : "en";
-    const items: RawTrendItem[] = CURATED_TRENDS.map((c) => ({
-      externalId: c.externalId,
-      platform: c.platform,
-      title: c.title[locale],
-      description: c.description[locale],
-      hashtags: c.hashtags,
-      soundName: c.soundName,
-      // Add a small per-locale jitter so two locales don't return the same
-      // exact ranking — feels more alive in the UI.
-      growthScore:
-        c.growthScore +
-        (locale === "fr" ? -1 : 1) +
-        Math.floor(Math.random() * 3 - 1),
-      sourceUrl: undefined,
-      nicheTags: c.nicheTags,
-      isNsfw: false,
-      locale,
-      region: ctx?.region,
-    }));
+    const items: RawTrendItem[] = CURATED_TRENDS.map((c) => {
+      // sourceUrl points at the LIVE hashtag explore page on the platform.
+      // Clicking the card opens the real, ever-fresh top videos for that
+      // hashtag — which is what the user actually wants ("real trending
+      // videos from TikTok / Instagram"). We never hardcode individual
+      // video URLs because they go private/deleted within weeks.
+      const sourceUrl = explorePageUrl(c.platform, c.primaryHashtag);
+      return {
+        externalId: c.externalId,
+        platform: c.platform,
+        title: c.title[locale],
+        description: c.description[locale],
+        hashtags: c.hashtags,
+        soundName: c.soundName,
+        // Add a small per-locale jitter so two locales don't return the same
+        // exact ranking — feels more alive in the UI.
+        growthScore:
+          c.growthScore +
+          (locale === "fr" ? -1 : 1) +
+          Math.floor(Math.random() * 3 - 1),
+        sourceUrl,
+        thumbnailUrl: c.thumbnailUrl,
+        thumbnailUrlAlt: c.thumbnailUrlAlt,
+        // No embed for curated (we link to the explore page, not a single
+        // post). Apify rows will populate this when they have a real post.
+        embedUrl: undefined,
+        authorHandle: undefined,
+        nicheTags: c.nicheTags,
+        isNsfw: false,
+        locale,
+        region: ctx?.region,
+      };
+    });
 
     // Optional region pass-through. The curated dataset is region-agnostic
     // (real lifestyle formats work everywhere) so we don't filter — we just

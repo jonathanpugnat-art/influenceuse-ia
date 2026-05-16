@@ -268,6 +268,38 @@ describe("trend-provider", () => {
         expect(allNiches.has(niche)).toBe(true);
       }
     });
+    // Sprint 13.2 — every curated trend ships a hero thumbnail + a real
+    // explore-page sourceUrl. Without these the new TrendCard renders a
+    // gradient placeholder and the "see real videos" CTA is dead.
+    it("ships a thumbnailUrl on every curated trend", async () => {
+      const items = await new CuratedTrendsProvider().fetchRawTrends();
+      for (const item of items) {
+        expect(item.thumbnailUrl).toBeTruthy();
+        expect(item.thumbnailUrl).toMatch(/^https:\/\/images\.unsplash\.com\//);
+      }
+    });
+    it("ships a sourceUrl that points to the live hashtag explore page", async () => {
+      const items = await new CuratedTrendsProvider().fetchRawTrends();
+      for (const item of items) {
+        expect(item.sourceUrl).toBeTruthy();
+        // Must be the platform's official hashtag page so the CTA opens the
+        // FRESHEST top videos for that tag (TikTok /tag/<x>, IG /explore/tags/<x>/).
+        if (item.platform === "TIKTOK") {
+          expect(item.sourceUrl).toMatch(/^https:\/\/www\.tiktok\.com\/tag\/[a-z0-9]+$/);
+        } else if (item.platform === "INSTAGRAM") {
+          expect(item.sourceUrl).toMatch(
+            /^https:\/\/www\.instagram\.com\/explore\/tags\/[a-z0-9]+\/$/
+          );
+        }
+      }
+    });
+    it("ships an alt thumbnail on every curated trend (for hover-swap)", async () => {
+      const items = await new CuratedTrendsProvider().fetchRawTrends();
+      for (const item of items) {
+        expect(item.thumbnailUrlAlt).toBeTruthy();
+        expect(item.thumbnailUrlAlt).not.toBe(item.thumbnailUrl);
+      }
+    });
   });
 
   describe("resolveTrendsProvider", () => {
