@@ -9,10 +9,6 @@ import {
   Trash2,
   Sparkles,
   Coins,
-  Brain,
-  Palette,
-  Save,
-  CheckCircle2,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,18 +23,10 @@ import { toast } from "sonner";
 export function PhotoPreview() {
   const t = useTranslations("content");
 
-  const generationSteps = [
-    { key: "prompt", icon: Brain, label: t("stepPrompt") },
-    { key: "generate", icon: Palette, label: t("stepGenerate") },
-    { key: "save", icon: Save, label: t("stepSave") },
-    { key: "done", icon: CheckCircle2, label: t("stepDone") },
-  ];
-
   const {
     params,
     contentId,
     isGenerating,
-    generationStep,
     generatedUrls,
     selectedImageIndex,
     setContentId,
@@ -155,31 +143,8 @@ export function PhotoPreview() {
             >
               <div className="relative aspect-[3/4] overflow-hidden rounded-2xl border border-slate-800/50 bg-slate-800/30">
                 <Skeleton className="h-full w-full bg-slate-700/30" />
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-                  <RefreshCw className="h-8 w-8 animate-spin text-violet-400" />
-                  <div className="space-y-2">
-                    {generationSteps.map((step) => {
-                      const Icon = step.icon;
-                      const isActive = generationStep === step.key;
-                      const isPast =
-                        generationSteps.findIndex((s) => s.key === generationStep) >
-                        generationSteps.findIndex((s) => s.key === step.key);
-                      return (
-                        <div
-                          key={step.key}
-                          className={cn(
-                            "flex items-center gap-2 text-sm transition-all",
-                            isActive && "text-violet-400 font-medium",
-                            isPast && "text-emerald-400",
-                            !isActive && !isPast && "text-slate-600"
-                          )}
-                        >
-                          <Icon className="h-4 w-4" />
-                          {step.label}
-                        </div>
-                      );
-                    })}
-                  </div>
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                  <RefreshCw className="h-10 w-10 animate-spin text-violet-400" />
                   <p className="text-xs text-slate-500">
                     {t("estimatedTime")}
                   </p>

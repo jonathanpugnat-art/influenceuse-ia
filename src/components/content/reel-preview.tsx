@@ -14,12 +14,6 @@ import {
   Volume2,
   VolumeX,
   Maximize,
-  Brain,
-  Film,
-  Clapperboard,
-  Music,
-  Save,
-  CheckCircle2,
   AlertTriangle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -32,13 +26,17 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useUpgradeOnLimitError } from "@/hooks/use-upgrade-on-limit-error";
 
+// We no longer expose the per-step labels to the user (they were too verbose
+// and gave away implementation details like "frames generation" vs "audio").
+// We still drive the progress bar via these stages so the % advances
+// smoothly even though the user only sees the spinner + estimation.
 const generationSteps = [
-  { key: "analyze", icon: Brain, label: "Analyse du scénario...", pct: 5 },
-  { key: "frames", icon: Film, label: "Génération des frames...", pct: 35 },
-  { key: "assemble", icon: Clapperboard, label: "Assemblage de la vidéo...", pct: 70 },
-  { key: "audio", icon: Music, label: "Ajout audio...", pct: 85 },
-  { key: "render", icon: Save, label: "Rendu final...", pct: 95 },
-  { key: "done", icon: CheckCircle2, label: "Terminé !", pct: 100 },
+  { key: "analyze", pct: 5 },
+  { key: "frames", pct: 35 },
+  { key: "assemble", pct: 70 },
+  { key: "audio", pct: 85 },
+  { key: "render", pct: 95 },
+  { key: "done", pct: 100 },
 ];
 
 function VideoPlayer({ url, format }: { url: string; format: string }) {
@@ -275,42 +273,18 @@ export function ReelPreview() {
               )}>
                 <Skeleton className="h-full w-full bg-slate-700/30" />
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6">
-                  <Video className="h-10 w-10 animate-pulse text-violet-400" />
+                  <Video className="h-12 w-12 animate-pulse text-violet-400" />
 
-                  {/* Step indicators */}
-                  <div className="w-full max-w-[200px] space-y-2">
-                    {generationSteps.map((step) => {
-                      const Icon = step.icon;
-                      const isActive = generationStep === step.key;
-                      const stepIdx = generationSteps.findIndex((s) => s.key === step.key);
-                      const currentIdx = generationSteps.findIndex((s) => s.key === generationStep);
-                      const isPast = currentIdx > stepIdx;
-                      return (
-                        <div
-                          key={step.key}
-                          className={cn(
-                            "flex items-center gap-2 text-xs transition-all",
-                            isActive && "text-violet-400 font-medium",
-                            isPast && "text-emerald-400",
-                            !isActive && !isPast && "text-slate-600"
-                          )}
-                        >
-                          <Icon className="h-3.5 w-3.5 shrink-0" />
-                          <span>{step.label}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Progress bar */}
                   <div className="w-full max-w-[200px]">
                     <Progress value={generationProgress} className="h-1.5 bg-slate-700" />
                   </div>
 
-                  <p className="text-xs text-slate-500">Estimation : ~2-5 minutes</p>
-                  <p className="text-xs text-slate-600">
-                    Tu peux quitter cette page, tu seras notifié
-                  </p>
+                  <div className="text-center space-y-1">
+                    <p className="text-xs text-slate-500">Estimation : ~2-5 minutes</p>
+                    <p className="text-xs text-slate-600">
+                      Tu peux quitter cette page, tu seras notifié
+                    </p>
+                  </div>
                 </div>
               </div>
             </motion.div>
