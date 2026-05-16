@@ -11,6 +11,7 @@ import {
   Wand2,
   Image as ImageIcon,
   Video as VideoIcon,
+  Loader2,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
@@ -40,8 +41,18 @@ export interface TrendCardProps {
   needsPersonalization: boolean;
   onApply: (recommendationId: string) => void;
   onDismiss: (recommendationId: string) => void;
+  /**
+   * Sprint 13.1 — per-card personalization. When passed, clicking
+   * "Personalize" on a card triggers the cheap single-trend mutation
+   * (~0.1 cr) instead of forcing the user through the full bulk pass.
+   */
+  onPersonalize?: (trendItemId: string) => void;
   /** Disabled state during a mutation. */
   isBusy?: boolean;
+  /** Spinner state for THIS specific card while it's being personalized. */
+  isPersonalizing?: boolean;
+  /** Cost shown on the per-card "Personalize" CTA (defaults to 0.1). */
+  personalizeOneCost?: number;
 }
 
 function platformBadgeColor(p: TrendCardProps["trend"]["platform"]): string {
@@ -74,7 +85,10 @@ export function TrendCard({
   needsPersonalization,
   onApply,
   onDismiss,
+  onPersonalize,
   isBusy,
+  isPersonalizing,
+  personalizeOneCost = 0.1,
 }: TrendCardProps) {
   const t = useTranslations("trends");
   const fields = readFields(trend.recommendation?.generatedFields);
@@ -204,12 +218,29 @@ export function TrendCard({
             size="sm"
             variant="outline"
             className="flex-1"
-            disabled={isBusy || !needsPersonalization}
-            // Personalization is triggered at the page level (one LLM call
-            // for all cards); we just leave the user a hint here.
-            onClick={(e) => e.preventDefault()}
+            disabled={
+              isBusy ||
+              isPersonalizing ||
+              !needsPersonalization ||
+              !onPersonalize
+            }
+            onClick={() => onPersonalize?.(trend.id)}
           >
-            {needsPersonalization ? t("awaitingPersonalization") : t("noRecYet")}
+            {isPersonalizing ? (
+              <>
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                {t("personalizingThis")}
+              </>
+            ) : needsPersonalization && onPersonalize ? (
+              <>
+                <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                {t("personalizeOneCta", {
+                  cost: personalizeOneCost.toString(),
+                })}
+              </>
+            ) : (
+              t("noRecYet")
+            )}
           </Button>
         )}
         {trend.sourceUrl && (

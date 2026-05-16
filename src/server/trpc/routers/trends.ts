@@ -8,11 +8,14 @@ import { PLANS } from "@/lib/constants";
 import {
   getFeedForInfluencer,
   personalizeFeedForInfluencer,
+  personalizeSingleTrendForInfluencer,
   recommendationToPhotoParams,
+  runTrendsFetch,
   trendAnalysisCost,
+  trendAnalysisOneCost,
 } from "@/server/services/trends.service";
 import { resolveTrendsProvider } from "@/server/services/trend-provider";
-import type { Plan } from "@/generated/prisma/client";
+import type { Plan, TrendItem } from "@/generated/prisma/client";
 
 // ──────────────────────────────────────────────
 // Helpers
@@ -51,6 +54,7 @@ export const trendsRouter = createTRPCRouter({
       planMaxFeed: planCfg.trendsMaxFeed,
       planName: planCfg.name,
       analysisCost: trendAnalysisCost(),
+      analysisOneCost: trendAnalysisOneCost(),
     };
   }),
 
@@ -117,20 +121,20 @@ export const trendsRouter = createTRPCRouter({
           planLocked: !planCfg.hasTrends,
           planName: planCfg.name,
         },
-        items: items.map((t) => ({
-          id: t.id,
-          platform: t.platform,
-          title: t.title,
-          description: t.description,
-          hashtags: t.hashtags,
-          soundName: t.soundName,
-          growthScore: t.growthScore,
-          sourceUrl: t.sourceUrl,
-          nicheTags: t.nicheTags,
-          locale: t.locale,
-          region: t.region,
-          fetchedAt: t.fetchedAt,
-          recommendation: byTrendId.get(t.id) ?? null,
+        items: items.map((trendItem) => ({
+          id: trendItem.id,
+          platform: trendItem.platform,
+          title: trendItem.title,
+          description: trendItem.description,
+          hashtags: trendItem.hashtags,
+          soundName: trendItem.soundName,
+          growthScore: trendItem.growthScore,
+          sourceUrl: trendItem.sourceUrl,
+          nicheTags: trendItem.nicheTags,
+          locale: trendItem.locale,
+          region: trendItem.region,
+          fetchedAt: trendItem.fetchedAt,
+          recommendation: byTrendId.get(trendItem.id) ?? null,
         })),
         nextCursor,
       };
@@ -279,5 +283,116 @@ export const trendsRouter = createTRPCRouter({
         data: { userDismissed: true },
       });
       return { ok: true };
+    }),
+
+  /**
+   * personalizeOne — Generate a recommendation for ONE trend card. Cheaper
+   * than the bulk `refreshForInfluencer` path (0.1 cr vs 0.5 cr) so users
+   * can explore the feed and only spend credits on cards they like.
+   */
+  personalizeOne: protectedProcedure
+    .input(
+      z.object({
+        influencerId: z.string(),
+        trendItemId: z.string(),
+        language: z.enum(["fr", "en"]).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { user, influencer } = await loadOwnedInfluencer(
+        ctx.userId,
+        input.influencerId
+      );
+      const planCfg = PLANS[user.plan as Plan];
+
+      if (!planCfg.hasTrends) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "UPGRADE_REQUIRED:feature:trends_personalize_one — passe au plan Creator pour personnaliser les tendances.",
+        });
+      }
+
+      const trendItem = await db.trendItem.findUnique({
+        where: { id: input.trendItemId },
+      });
+      if (!trendItem) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Trend not found (it may have expired from the feed).",
+        });
+      }
+
+      const cost = trendAnalysisOneCost();
+      const hasCredits = await checkCredits(user.id, cost);
+      if (!hasCredits) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: `Crédits insuffisants. Coût : ${cost} crédit.`,
+        });
+      }
+
+      const language: "fr" | "en" =
+        input.language ?? (user.locale === "en" ? "en" : "fr");
+
+      try {
+        const result = await personalizeSingleTrendForInfluencer(
+          influencer,
+          trendItem,
+          language
+        );
+        if (cost > 0) await deductCredits(user.id, cost);
+        return { recommendationId: result.recommendationId, cost };
+      } catch (error) {
+        console.error("[trends.personalizeOne] LLM error:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message:
+            "La personnalisation de cette tendance a échoué. Réessaie dans un instant.",
+        });
+      }
+    }),
+
+  /**
+   * triggerInitialFetch — Bootstrap the trend cache the first time a user
+   * lands on an empty Trends page. Cheap (the curated provider has no
+   * external cost) and idempotent (the service-level cache prevents abuse).
+   *
+   * Surfaced as a button in the empty state — the cron also runs daily but
+   * a user shouldn't have to wait 24h for their first feed.
+   */
+  triggerInitialFetch: protectedProcedure
+    .input(
+      z
+        .object({ force: z.boolean().optional() })
+        .optional()
+    )
+    .mutation(async ({ ctx, input }) => {
+      const user = await getDbUser(ctx.userId);
+      // Even though the curated provider is free, we still gate this behind
+      // a basic "is the feed actually empty?" check so we don't hammer the
+      // service when the user spam-clicks the button.
+      const existing = await db.trendItem.count({
+        where: {
+          fetchedAt: {
+            gte: new Date(Date.now() - 24 * 3600 * 1000),
+          },
+        },
+      });
+      if (existing > 0 && !input?.force) {
+        return {
+          ok: true,
+          provider: null,
+          snapshotsCreated: 0,
+          itemsCreated: 0,
+          skipped: "already-have-fresh-trends",
+        };
+      }
+
+      const result = await runTrendsFetch({
+        force: input?.force ?? false,
+        locale: user.locale,
+      });
+      return result;
     }),
 });

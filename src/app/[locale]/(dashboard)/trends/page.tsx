@@ -3,7 +3,16 @@
 import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { useTranslations } from "next-intl";
-import { TrendingUp, Sparkles, Loader2, AlertCircle, Lock } from "lucide-react";
+import {
+  TrendingUp,
+  Sparkles,
+  Loader2,
+  AlertCircle,
+  Lock,
+  ArrowDown,
+  Plus,
+  Filter,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { trpc } from "@/lib/trpc";
@@ -23,6 +32,22 @@ import { TrendCard } from "@/components/trends/trend-card";
 import { usePhotoCreator } from "@/hooks/use-photo-creator";
 
 type PlatformFilter = "ALL" | "TIKTOK" | "INSTAGRAM";
+type SortMode = "growth" | "fresh";
+
+// Niches the curated/Apify providers tag trends with. Matches the Niche enum
+// in the Prisma schema + the cross-niche "GENERAL" catch-all the service
+// uses when a trend doesn't fit any single niche.
+const NICHE_OPTIONS = [
+  "ALL",
+  "FASHION",
+  "FITNESS",
+  "LIFESTYLE",
+  "TRAVEL",
+  "FOOD",
+  "TECH",
+  "GAMING",
+] as const;
+type NicheFilter = (typeof NICHE_OPTIONS)[number];
 
 export default function TrendsPage() {
   const t = useTranslations("trends");
@@ -31,6 +56,14 @@ export default function TrendsPage() {
 
   const [selectedInfluencerId, setSelectedInfluencerId] = useState<string>("");
   const [platform, setPlatform] = useState<PlatformFilter>("ALL");
+  const [niche, setNiche] = useState<NicheFilter>("ALL");
+  const [sortMode, setSortMode] = useState<SortMode>("growth");
+  // Local "show more" cursor — we accumulate items page by page rather than
+  // relying on infinite-scroll, simpler UX for ~30-90 cards total.
+  const [pageSize, setPageSize] = useState<number>(30);
+  // Track which single card is being personalized so we can show a per-card
+  // spinner instead of disabling the whole grid.
+  const [personalizingTrendId, setPersonalizingTrendId] = useState<string | null>(null);
 
   const config = trpc.trends.config.useQuery();
   const influencersQuery = trpc.influencer.getAll.useQuery({ limit: 50 });
@@ -48,7 +81,7 @@ export default function TrendsPage() {
     {
       influencerId: selectedInfluencerId,
       platform: platform === "ALL" ? undefined : platform,
-      limit: 30,
+      limit: pageSize,
     },
     { enabled: Boolean(selectedInfluencerId) }
   );
@@ -66,6 +99,34 @@ export default function TrendsPage() {
     onError: (e) => toast.error(e.message),
   });
 
+  const personalizeOneMut = trpc.trends.personalizeOne.useMutation({
+    onSuccess: (_r, vars) => {
+      toast.success(t("personalizeOneSuccess"));
+      utils.trends.getFeed.invalidate();
+      utils.billing.getCurrentPlan.invalidate();
+      setPersonalizingTrendId(null);
+      void vars;
+    },
+    onError: (e) => {
+      toast.error(e.message);
+      setPersonalizingTrendId(null);
+    },
+  });
+
+  const triggerInitialMut = trpc.trends.triggerInitialFetch.useMutation({
+    onSuccess: (r) => {
+      if (r.itemsCreated > 0) {
+        toast.success(
+          t("initialFetchSuccess", { count: r.itemsCreated.toString() })
+        );
+      } else {
+        toast.info(t("initialFetchSkipped"));
+      }
+      utils.trends.getFeed.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   const dismissMut = trpc.trends.dismiss.useMutation({
     onSuccess: () => utils.trends.getFeed.invalidate(),
     onError: (e) => toast.error(e.message),
@@ -73,7 +134,6 @@ export default function TrendsPage() {
 
   const applyMut = trpc.trends.applyToPhotoParams.useMutation({
     onSuccess: (blob) => {
-      // Prime the photo creator and navigate.
       applySeed({
         influencerId: blob.influencerId,
         scene: blob.scene,
@@ -97,13 +157,46 @@ export default function TrendsPage() {
   const onDismiss = (recommendationId: string) => {
     dismissMut.mutate({ recommendationId });
   };
+  const onPersonalizeOne = (trendItemId: string) => {
+    if (!selectedInfluencerId) return;
+    setPersonalizingTrendId(trendItemId);
+    personalizeOneMut.mutate({
+      influencerId: selectedInfluencerId,
+      trendItemId,
+    });
+  };
 
-  const items = feed.data?.items ?? [];
+  // ── Apply local filters + sort ──────────────────────────────────────────
+  // We do this client-side so the user can flip filters without re-fetching
+  // (the entire feed for an influencer is already in memory and small).
+  const allItems = feed.data?.items ?? [];
+  const filteredItems = useMemo(() => {
+    let list = allItems;
+    if (niche !== "ALL") {
+      // The trend's nicheTags array is normalized to upper-case enum keys
+      // by `normalizeNicheTags()` in trends.service.ts. GENERAL trends
+      // always pass any niche filter (they're cross-niche by design).
+      list = list.filter(
+        (item) =>
+          item.nicheTags.includes(niche) || item.nicheTags.includes("GENERAL")
+      );
+    }
+    if (sortMode === "fresh") {
+      list = [...list].sort((a, b) => {
+        const ta = new Date(a.fetchedAt).getTime();
+        const tb = new Date(b.fetchedAt).getTime();
+        return tb - ta;
+      });
+    }
+    return list;
+  }, [allItems, niche, sortMode]);
+
   const planLocked = feed.data?.feature.planLocked ?? false;
   const planName = feed.data?.feature.planName ?? "Free";
   const providerConfigured = config.data?.providerConfigured ?? true;
   const analysisCost = config.data?.analysisCost ?? 0.5;
-  const recsMissingCount = items.filter((i) => !i.recommendation).length;
+  const analysisOneCost = config.data?.analysisOneCost ?? 0.1;
+  const recsMissingCount = filteredItems.filter((i) => !i.recommendation).length;
 
   return (
     <motion.div
@@ -127,7 +220,7 @@ export default function TrendsPage() {
           <p className="text-sm text-slate-400">{t("subtitle")}</p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Select
             value={selectedInfluencerId}
             onValueChange={(v) => setSelectedInfluencerId(v)}
@@ -156,7 +249,7 @@ export default function TrendsPage() {
               !selectedInfluencerId ||
               planLocked ||
               refreshMut.isPending ||
-              items.length === 0
+              filteredItems.length === 0
             }
             className="bg-violet-500 hover:bg-violet-600"
           >
@@ -170,7 +263,9 @@ export default function TrendsPage() {
         </div>
       </header>
 
-      {/* Configuration banner */}
+      {/* Configuration banner — only shown when EVERY provider (incl. curated)
+          is unavailable. With the curated fallback this should ~never trigger
+          in production, but we keep the UX so admins notice misconfig. */}
       {!config.isLoading && !providerConfigured && (
         <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
           <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
@@ -195,17 +290,44 @@ export default function TrendsPage() {
         </div>
       )}
 
-      {/* Platform tabs */}
-      <Tabs
-        value={platform}
-        onValueChange={(v) => setPlatform(v as PlatformFilter)}
-      >
-        <TabsList>
-          <TabsTrigger value="ALL">{t("allPlatforms")}</TabsTrigger>
-          <TabsTrigger value="TIKTOK">TikTok</TabsTrigger>
-          <TabsTrigger value="INSTAGRAM">Instagram</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {/* Filter bar — platform tabs + niche + sort */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <Tabs
+          value={platform}
+          onValueChange={(v) => setPlatform(v as PlatformFilter)}
+        >
+          <TabsList>
+            <TabsTrigger value="ALL">{t("allPlatforms")}</TabsTrigger>
+            <TabsTrigger value="TIKTOK">TikTok</TabsTrigger>
+            <TabsTrigger value="INSTAGRAM">Instagram</TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+          <Filter className="h-3.5 w-3.5" />
+          <Select value={niche} onValueChange={(v) => setNiche(v as NicheFilter)}>
+            <SelectTrigger className="h-8 w-[150px] text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {NICHE_OPTIONS.map((n) => (
+                <SelectItem key={n} value={n} className="text-xs">
+                  {n === "ALL" ? t("nicheAll") : t(`niches.${n}` as never)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={sortMode} onValueChange={(v) => setSortMode(v as SortMode)}>
+            <SelectTrigger className="h-8 w-[160px] text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="growth" className="text-xs">{t("sortGrowth")}</SelectItem>
+              <SelectItem value="fresh" className="text-xs">{t("sortFresh")}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
       {/* Feed */}
       {feed.isLoading ? (
@@ -214,31 +336,83 @@ export default function TrendsPage() {
             <Skeleton key={i} className="h-64 w-full rounded-2xl" />
           ))}
         </div>
-      ) : items.length === 0 ? (
+      ) : filteredItems.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-900/30 p-12 text-center">
           <TrendingUp className="mx-auto mb-3 h-8 w-8 text-slate-600" />
-          <p className="text-slate-400">{t("emptyFeed")}</p>
-          <p className="mt-1 text-xs text-slate-500">{t("emptyFeedHint")}</p>
+          <p className="text-slate-300 font-medium">
+            {allItems.length === 0 ? t("emptyFeed") : t("emptyFiltered")}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            {allItems.length === 0 ? t("emptyFeedHint") : t("emptyFilteredHint")}
+          </p>
+          {allItems.length === 0 && (
+            <Button
+              size="sm"
+              className="mt-4 bg-emerald-500 hover:bg-emerald-600"
+              disabled={triggerInitialMut.isPending}
+              onClick={() => triggerInitialMut.mutate({ force: false })}
+            >
+              {triggerInitialMut.isPending ? (
+                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="mr-2 h-3.5 w-3.5" />
+              )}
+              {t("triggerInitialCta")}
+            </Button>
+          )}
         </div>
       ) : (
         <>
           {recsMissingCount > 0 && !planLocked && (
             <p className="text-sm text-slate-400">
-              {t("recsMissing", { count: recsMissingCount })}
+              {t("recsMissingV2", {
+                count: recsMissingCount,
+                cost: analysisOneCost.toString(),
+              })}
             </p>
           )}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {items.map((trend) => (
+            {filteredItems.map((trend) => (
               <TrendCard
                 key={trend.id}
                 trend={trend}
                 needsPersonalization={!planLocked}
                 onApply={onApply}
                 onDismiss={onDismiss}
+                onPersonalize={onPersonalizeOne}
                 isBusy={applyMut.isPending || dismissMut.isPending}
+                isPersonalizing={personalizingTrendId === trend.id}
+                personalizeOneCost={analysisOneCost}
               />
             ))}
           </div>
+
+          {/* Load more — only show when we got at least pageSize items
+              (heuristic: there might be more in the cache). The router
+              caps at planMaxFeed so this stops naturally. */}
+          {allItems.length >= pageSize && (
+            <div className="flex justify-center pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPageSize((s) => s + 30)}
+                disabled={feed.isFetching}
+              >
+                {feed.isFetching ? (
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Plus className="mr-2 h-3.5 w-3.5" />
+                )}
+                {t("loadMore")}
+              </Button>
+            </div>
+          )}
+          {allItems.length < pageSize && pageSize > 30 && (
+            <p className="flex items-center justify-center gap-1 pt-2 text-xs text-slate-500">
+              <ArrowDown className="h-3 w-3" />
+              {t("endOfFeed")}
+            </p>
+          )}
         </>
       )}
     </motion.div>

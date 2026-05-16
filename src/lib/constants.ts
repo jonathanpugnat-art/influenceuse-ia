@@ -127,4 +127,11 @@ export const CREDIT_COSTS = {
    */
   TREND_FEED: 0,
   TREND_ANALYSIS: 0.5,
+  /**
+   * v0.13 — Per-card personalization. The user picks ONE trend they like
+   * and gets a tailored hook. Cheaper than the bulk path because it's a
+   * single tiny LLM call (~200 tokens). Lets users explore the feed
+   * without committing to the full 0.5-credit bulk pass.
+   */
+  TREND_ANALYSIS_ONE: 0.1,
 } as const;

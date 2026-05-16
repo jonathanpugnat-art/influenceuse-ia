@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import {
+  CuratedTrendsProvider,
   DevStubProvider,
   ApifyTrendsProvider,
   GenericHttpProvider,
@@ -221,10 +222,62 @@ describe("trend-provider", () => {
     });
   });
 
+  describe("CuratedTrendsProvider", () => {
+    it("is always configured (no env keys required)", () => {
+      expect(new CuratedTrendsProvider().isConfigured()).toBe(true);
+    });
+    it("returns 18 evergreen trends localized in EN by default", async () => {
+      const items = await new CuratedTrendsProvider().fetchRawTrends();
+      expect(items.length).toBeGreaterThanOrEqual(15);
+      // Catalogue must always include the headline LIFESTYLE trend (used as
+      // a smoke test — if this disappears the curator broke the catalog).
+      expect(items.some((i) => i.externalId === "curated-day-in-life")).toBe(true);
+      // Every item must be a valid RawTrendItem shape.
+      for (const item of items) {
+        expect(item.externalId).toMatch(/^curated-/);
+        expect(item.title).toBeTruthy();
+        expect(["TIKTOK", "INSTAGRAM"]).toContain(item.platform);
+        expect(item.hashtags.length).toBeGreaterThan(0);
+        expect(item.nicheTags?.length).toBeGreaterThan(0);
+        expect(item.isNsfw).toBe(false);
+      }
+    });
+    it("localizes titles when ctx.locale=fr", async () => {
+      const items = await new CuratedTrendsProvider().fetchRawTrends({
+        locale: "fr",
+      });
+      const grwm = items.find((i) => i.externalId === "curated-grwm-running");
+      expect(grwm?.title).toContain("matinale");
+    });
+    it("honors limit ctx", async () => {
+      const items = await new CuratedTrendsProvider().fetchRawTrends({
+        limit: 5,
+      });
+      expect(items.length).toBe(5);
+    });
+    it("covers every Niche enum value across the catalog", async () => {
+      const items = await new CuratedTrendsProvider().fetchRawTrends();
+      const allNiches = new Set<string>();
+      for (const item of items) {
+        for (const n of item.nicheTags ?? []) allNiches.add(n);
+      }
+      // The catalog must cover the 6 main niches users will filter by.
+      // ADULT is intentionally absent from the curated set (NSFW handling
+      // belongs elsewhere) — GENERAL is always present as a catch-all.
+      for (const niche of ["FASHION", "FITNESS", "LIFESTYLE", "TRAVEL", "FOOD", "TECH", "GAMING"]) {
+        expect(allNiches.has(niche)).toBe(true);
+      }
+    });
+  });
+
   describe("resolveTrendsProvider", () => {
-    it("prefers stub when nothing else is configured (dev)", () => {
+    it("prefers curated over stub when nothing else is configured (real-world default)", () => {
+      // After the v0.13 fallback chain change: Curated beats Stub because
+      // it ships a real evergreen catalog vs. 3 demo items. This is the
+      // contract the production deployment relies on when APIFY_TOKEN is
+      // not yet purchased.
       const p = resolveTrendsProvider();
-      expect(p?.id).toBe("stub");
+      expect(p?.id).toBe("curated");
     });
     it("picks Apify when APIFY_TOKEN is set", () => {
       process.env.APIFY_TOKEN = "tk";
@@ -236,6 +289,11 @@ describe("trend-provider", () => {
       process.env.TRENDS_HTTP_URL = "https://example.com/feed";
       const p = resolveTrendsProvider();
       expect(p?.id).toBe("http");
+    });
+    it("honors explicit TRENDS_PROVIDER=curated", () => {
+      process.env.TRENDS_PROVIDER = "curated";
+      const p = resolveTrendsProvider();
+      expect(p?.id).toBe("curated");
     });
     it("returns null when forced http but URL is missing", () => {
       process.env.TRENDS_PROVIDER = "http";

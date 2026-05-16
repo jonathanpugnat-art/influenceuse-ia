@@ -514,6 +514,105 @@ export async function personalizeFeedForInfluencer(
   return { created: ids.length, recommendationIds: ids, llmModel };
 }
 
+/**
+ * Generate a recommendation for a SINGLE trend item. Same LLM contract as
+ * `personalizeFeedForInfluencer` but optimized for the "user clicks
+ * Personalize on one card" path: smaller prompt, smaller token budget,
+ * one DB upsert. Caller still does the credit check / deduct (router-side).
+ */
+export async function personalizeSingleTrendForInfluencer(
+  influencer: Pick<
+    Influencer,
+    "id" | "name" | "gender" | "niche" | "personality" | "bio" | "isNsfw"
+  >,
+  trendItem: TrendItem,
+  language: "fr" | "en"
+): Promise<{ recommendationId: string; llmModel: string }> {
+  const payload: TrendForPrompt[] = [
+    {
+      trendId: trendItem.id,
+      platform: trendItem.platform,
+      title: trendItem.title,
+      description: trendItem.description ?? undefined,
+      hashtags: trendItem.hashtags,
+      soundName: trendItem.soundName ?? undefined,
+      growthScore: trendItem.growthScore ?? undefined,
+    },
+  ];
+
+  const { systemPrompt, userPrompt } = buildTrendPersonalizationPrompt(
+    {
+      influencerName: influencer.name,
+      influencerGender:
+        (influencer.gender as "female" | "male" | "nonbinary") ?? "female",
+      niche: influencer.niche,
+      personality: influencer.personality,
+      bio: influencer.bio,
+      isNsfw: influencer.isNsfw,
+      language,
+    },
+    payload
+  );
+
+  // Smaller token budget (1500 vs 3500) since we expect at most 1 record.
+  const recs = await callJsonLLM<TrendRecommendationFields[]>({
+    systemPrompt,
+    userPrompt,
+    maxTokens: 1500,
+    temperature: 0.7,
+    repairInstruction: JSON_REPAIR_INSTRUCTION,
+    validate: (raw) => llmOutputSchema.parse(raw),
+  });
+
+  // The prompt asks the LLM to keep `trendId` stable, but it occasionally
+  // hallucinates. We always treat the FIRST record as the answer for this
+  // single-trend call — the LLM has no other trend to reference anyway.
+  const rec = recs[0];
+  if (!rec) {
+    throw new Error("LLM returned no recommendation for the trend");
+  }
+
+  const cleaned: TrendRecommendationFields = {
+    ...rec,
+    trendId: trendItem.id,
+    scene: clampScene(rec.scene),
+    pose: clampPose(rec.pose),
+    expression: influencer.isNsfw
+      ? clampExpression(rec.expression)
+      : rec.expression === "seductive"
+        ? "playful"
+        : clampExpression(rec.expression),
+    type: clampContentType(rec.type),
+    platform: clampPlatform(rec.platform),
+  };
+
+  const llmModel = resolveTextProvider();
+  const upserted = await db.trendRecommendation.upsert({
+    where: {
+      influencerId_trendItemId: {
+        influencerId: influencer.id,
+        trendItemId: trendItem.id,
+      },
+    },
+    create: {
+      influencerId: influencer.id,
+      trendItemId: trendItem.id,
+      generatedHook: cleaned.hook,
+      generatedFields: cleaned as unknown as object,
+      llmModel,
+    },
+    update: {
+      generatedHook: cleaned.hook,
+      generatedFields: cleaned as unknown as object,
+      llmModel,
+      userDismissed: false,
+    },
+    select: { id: true },
+  });
+
+  return { recommendationId: upserted.id, llmModel };
+}
+
 // ──────────────────────────────────────────────
 // Apply → PhotoParams blob
 // ──────────────────────────────────────────────
@@ -597,4 +696,9 @@ export function recommendationToPhotoParams(
 /** Cost reminder helper for the router. Single source of truth. */
 export function trendAnalysisCost(): number {
   return CREDIT_COSTS.TREND_ANALYSIS;
+}
+
+/** Cost of personalizing a single trend card (cheaper than the bulk path). */
+export function trendAnalysisOneCost(): number {
+  return CREDIT_COSTS.TREND_ANALYSIS_ONE;
 }
