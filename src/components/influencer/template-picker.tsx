@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { Sparkles, ChevronDown } from "lucide-react";
 import { useInfluencerWizard } from "@/hooks/use-influencer-wizard";
 import {
+  diversifyTemplate,
   filterTemplates,
   type InfluencerTemplate,
 } from "@/lib/templates/influencer-templates";
@@ -31,9 +32,14 @@ export function TemplatePicker() {
   const templates = filterTemplates({ allowNsfw });
 
   const apply = (tpl: InfluencerTemplate) => {
-    updateData(tpl.defaults);
+    // Sprint 14 — diversify ethnicity + hair color on every pick so two
+    // users clicking the same template don't end up with identical-looking
+    // influencers. Always keeps a 35% chance of returning the original
+    // (curated) defaults so intentional looks like "Streetwear Girl"
+    // staying asian are preserved often enough.
+    const diversified = diversifyTemplate(tpl);
+    updateData(diversified.defaults);
     setSelectedId(tpl.id);
-    // Smooth-scroll to the form below so the user sees the auto-fill.
     requestAnimationFrame(() => {
       window.scrollTo({ top: window.scrollY + 240, behavior: "smooth" });
     });

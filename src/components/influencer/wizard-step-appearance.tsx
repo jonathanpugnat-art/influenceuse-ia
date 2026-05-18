@@ -1,9 +1,15 @@
 "use client";
 
-import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Sparkles, User, RefreshCw, Coins, AlertCircle } from "lucide-react";
+import {
+  Sparkles,
+  User,
+  RefreshCw,
+  Coins,
+  AlertCircle,
+  Dice5,
+} from "lucide-react";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -14,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useInfluencerWizard } from "@/hooks/use-influencer-wizard";
+import { explodeAppearanceVariations } from "@/lib/prompts/image-prompts";
 import { trpc } from "@/lib/trpc";
 import { CREDIT_COSTS } from "@/lib/constants";
 import { toast } from "sonner";
@@ -405,6 +412,62 @@ export function WizardStepAppearance({
                   </button>
                 ))}
               </div>
+
+              {/* Sprint 14 — surface the random "visual signature" so users
+                  see WHY each portrait is unique (was previously hidden).
+                  Lists the 6 facial trait variations randomised on the
+                  server. "Re-roll" simply triggers another generate. */}
+              {data.appearanceVariations && (
+                <div className="space-y-2 rounded-xl border border-violet-500/20 bg-violet-500/5 p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-violet-300">
+                      Sa signature visuelle
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => handleGenerate()}
+                      disabled={isGenerating || !hasEnoughCredits}
+                      className="flex items-center gap-1 rounded-md border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-200 transition-colors hover:bg-violet-500/20 disabled:opacity-40"
+                      title="Re-tirer les traits + relancer la génération"
+                    >
+                      <Dice5 className="h-3 w-3" />
+                      Surprends-moi
+                    </button>
+                  </div>
+                  <ul className="grid grid-cols-1 gap-x-3 gap-y-1 text-[11px] text-slate-300 sm:grid-cols-2">
+                    {(() => {
+                      const traits = explodeAppearanceVariations(
+                        data.appearanceVariations
+                      );
+                      const items: Array<{ label: string; value: string }> = [
+                        { label: "Visage", value: traits.faceShape },
+                        { label: "Yeux", value: traits.eyeShape },
+                        { label: "Couleur", value: traits.eyeColor },
+                        { label: "Nez", value: traits.nose },
+                        { label: "Détail", value: traits.distinctiveFeature },
+                        { label: "Expression", value: traits.expression },
+                      ];
+                      return items
+                        .filter((t) => t.value)
+                        .map((t) => (
+                          <li key={t.label} className="flex gap-1.5">
+                            <span className="shrink-0 text-slate-500">
+                              {t.label}
+                            </span>
+                            <span className="text-slate-300">
+                              · {t.value}
+                            </span>
+                          </li>
+                        ));
+                    })()}
+                  </ul>
+                  <p className="text-[10px] text-slate-500">
+                    Ces traits sont injectés dans toutes les photos générées —
+                    elle ressemblera toujours à elle-même.
+                  </p>
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={() => handleGenerate()}

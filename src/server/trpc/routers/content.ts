@@ -4,6 +4,7 @@ import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import { db } from "@/server/db";
 import { CREDIT_COSTS } from "@/lib/constants";
 import { generateBaseImage as genBaseImage, generateContentImage } from "@/server/services/ai-image.service";
+import type { AppearanceVariation } from "@/lib/prompts/image-prompts";
 import { generateVideo } from "@/server/services/ai-video.service";
 import { generateCaption as genCaption, generateHashtags as genHashtags, generateContentPlan as genContentPlan, generateIdeas as genIdeas } from "@/server/services/ai-text.service";
 import { processNextBatchSlice, getBatchStatus } from "@/server/services/batch.service";
@@ -179,6 +180,12 @@ export const contentRouter = createTRPCRouter({
 
       // Start async generation (fire and forget — status will be polled)
       const style = influencer.style as Record<string, string> | null;
+      // Sprint 14 — read the per-influencer visual DNA (Sprint 13 row) and
+      // forward it so the content prompt re-uses the same facial trait
+      // keywords as the portrait wizard. NULL on legacy rows is fine —
+      // buildFullPrompt just skips the trait block.
+      const appearanceVariations =
+        (influencer.appearanceVariations as AppearanceVariation | null) ?? undefined;
       generateContentImage(user.id, influencer.age, {
         gender: (influencer.gender as "female" | "male" | "nonbinary") ?? "female",
         ethnicity: style?.ethnicity,
@@ -201,6 +208,7 @@ export const contentRouter = createTRPCRouter({
         nsfwLevel: input.nsfwLevel,
         customPrompt: input.customPrompt,
         numberOfImages: input.numberOfImages,
+        appearanceVariations,
       })
         .then(async (result) => {
           // Update content with results

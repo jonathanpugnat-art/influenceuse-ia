@@ -5,6 +5,7 @@ import {
   buildBasePortraitPrompt,
   pickAppearanceVariations,
   renderAppearanceVariations,
+  explodeAppearanceVariations,
   appearanceFingerprint,
   APPEARANCE_VARIATIONS,
   NEGATIVE_PROMPT_SFW,
@@ -313,6 +314,50 @@ describe("image-prompts", () => {
       expect(appearanceFingerprint(baseStyle, 25, { ...baseV, faceShape: 1 })).not.toBe(fpBase);
       expect(appearanceFingerprint(baseStyle, 25, { ...baseV, eyeColor: 1 })).not.toBe(fpBase);
       expect(appearanceFingerprint(baseStyle, 25, { ...baseV, expression: 1 })).not.toBe(fpBase);
+    });
+
+    // ── Sprint 14 — explodeAppearanceVariations + DNA in content prompt ──
+    it("explodeAppearanceVariations returns each trait labelled separately", () => {
+      const v = { faceShape: 0, eyeShape: 1, eyeColor: 2, nose: 0, distinctiveFeature: 3, expression: 4 };
+      const out = explodeAppearanceVariations(v);
+      expect(out.faceShape).toBe(APPEARANCE_VARIATIONS.faceShape[0]);
+      expect(out.eyeShape).toBe(APPEARANCE_VARIATIONS.eyeShape[1]);
+      expect(out.eyeColor).toBe(APPEARANCE_VARIATIONS.eyeColor[2]);
+      expect(out.distinctiveFeature).toBe(APPEARANCE_VARIATIONS.distinctiveFeature[3]);
+      expect(out.expression).toBe(APPEARANCE_VARIATIONS.expression[4]);
+    });
+
+    it("buildFullPrompt injects appearanceVariations as a facial details block", () => {
+      // Without variations → no facial details block in the prompt.
+      const without = buildFullPrompt({
+        gender: "female",
+        age: 25,
+        ethnicity: "caucasian",
+        hairColor: "brown",
+        hairStyle: "long",
+        bodyType: "slim",
+        scene: "studio",
+      });
+      expect(without).not.toContain("facial details:");
+
+      // With variations → the same render() string the wizard portrait
+      // used appears in the content prompt as well. This is the key
+      // assertion: it's what guarantees feed photos look like the same
+      // person as the base portrait.
+      const v = { faceShape: 0, eyeShape: 1, eyeColor: 2, nose: 0, distinctiveFeature: 0, expression: 0 };
+      const withV = buildFullPrompt({
+        gender: "female",
+        age: 25,
+        ethnicity: "caucasian",
+        hairColor: "brown",
+        hairStyle: "long",
+        bodyType: "slim",
+        scene: "studio",
+        appearanceVariations: v,
+      });
+      expect(withV).toContain("facial details:");
+      expect(withV).toContain(APPEARANCE_VARIATIONS.eyeColor[2]);
+      expect(withV).toContain(APPEARANCE_VARIATIONS.eyeShape[1]);
     });
   });
 });

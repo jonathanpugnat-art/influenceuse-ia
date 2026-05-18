@@ -51,6 +51,13 @@ export interface ImageGenerationInput {
   nsfwLevel?: string;
   customPrompt?: string;
   numberOfImages: number;
+  /**
+   * Sprint 14 — shared visual DNA passed from the influencer row. We use it
+   * to re-inject the same facial trait keywords in the content prompt so
+   * Kontext / Nano / Flux produce a consistent face across base portrait
+   * and feed posts.
+   */
+  appearanceVariations?: AppearanceVariation;
 }
 
 export interface ImageGenerationOutput {
@@ -528,6 +535,10 @@ export async function generateContentImage(
     isNsfw: input.isNsfw,
     nsfwLevel: input.nsfwLevel,
     customPrompt: input.customPrompt,
+    // Sprint 14 — propagate the shared visual DNA so the content prompt
+    // re-states the same eyes/nose/freckles as the portrait wizard. Big
+    // win on multi-photo coherence inside one influencer's feed.
+    appearanceVariations: input.appearanceVariations,
   };
 
   const prompt = buildFullPrompt(promptInput);

@@ -533,3 +533,70 @@ export function filterTemplates(opts: {
     (t) => opts.allowNsfw || t.niche !== "ADULT"
   );
 }
+
+// ──────────────────────────────────────────────
+// Sprint 14 — Template diversification
+//
+// Problem: 55% of templates were ethnicity:"caucasian", 27% hairColor:"blonde"
+// or "brown", because of an unconscious bias when we wrote the seed catalog.
+// Result: most users clicking "Fitness Girl" got the same blonde caucasian
+// athletic look — exactly Grok's clone complaint.
+//
+// Solution: when the user picks a template, we randomly remap the ethnicity
+// + matching hair color with a probability of 65%. The user still sees the
+// SAME label ("Fitness Girl") but the underlying defaults are diversified.
+// Anyone who actually cares about the look can override every field on
+// step 2 — the wizard is just trying to escape the blank-page problem.
+//
+// We rotate across a curated mapping rather than picking pure-random so
+// (e.g.) we never pair "blonde" with "asian" — combinations that would
+// confuse the image model. Each ethnicity maps to its plausible hair set.
+// ──────────────────────────────────────────────
+
+interface PlausibleLook {
+  ethnicity: string;
+  hairColors: string[];
+}
+
+const PLAUSIBLE_LOOKS: PlausibleLook[] = [
+  { ethnicity: "caucasian", hairColors: ["blonde", "brown", "black", "red"] },
+  { ethnicity: "asian", hairColors: ["black", "brown"] },
+  { ethnicity: "black", hairColors: ["black", "brown"] },
+  { ethnicity: "latina", hairColors: ["black", "brown"] },
+  { ethnicity: "latino", hairColors: ["black", "brown"] },
+  { ethnicity: "mixed", hairColors: ["black", "brown", "blonde"] },
+  { ethnicity: "middle-eastern", hairColors: ["black", "brown"] },
+  { ethnicity: "indian", hairColors: ["black", "brown"] },
+];
+
+/**
+ * Diversify a template's defaults. When `random()` rolls below
+ * `probability` (default 0.65), the ethnicity + hair are swapped to a
+ * different plausible combo. Otherwise the template's original defaults
+ * are returned untouched so curated cases (e.g. "Streetwear Girl" being
+ * intentionally asian) keep their identity often enough.
+ *
+ * The function is pure + injects random for testability — pass a seeded
+ * RNG in tests to assert specific outcomes.
+ */
+export function diversifyTemplate(
+  tpl: InfluencerTemplate,
+  random: () => number = Math.random,
+  probability = 0.65
+): InfluencerTemplate {
+  if (random() >= probability) return tpl;
+
+  const pick = PLAUSIBLE_LOOKS[Math.floor(random() * PLAUSIBLE_LOOKS.length)];
+  if (!pick) return tpl;
+  const hairColor =
+    pick.hairColors[Math.floor(random() * pick.hairColors.length)] ?? "brown";
+
+  return {
+    ...tpl,
+    defaults: {
+      ...tpl.defaults,
+      ethnicity: pick.ethnicity,
+      hairColor,
+    },
+  };
+}

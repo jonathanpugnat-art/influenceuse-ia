@@ -145,6 +145,38 @@ export function renderAppearanceVariations(v: AppearanceVariation): string {
 }
 
 /**
+ * Sprint 14 — UI-friendly breakdown of an AppearanceVariation. Returns each
+ * trait individually so the wizard can render a labelled grid like:
+ *   Visage   · oval face shape
+ *   Yeux     · hazel eyes
+ *   …
+ * Used by `wizard-step-appearance.tsx` to surface the random traits to the
+ * user (previously hidden) and let them re-roll a subset if they don't like.
+ */
+export interface AppearanceTraits {
+  faceShape: string;
+  eyeShape: string;
+  eyeColor: string;
+  nose: string;
+  distinctiveFeature: string;
+  expression: string;
+}
+
+export function explodeAppearanceVariations(
+  v: AppearanceVariation
+): AppearanceTraits {
+  return {
+    faceShape: APPEARANCE_VARIATIONS.faceShape[v.faceShape] ?? "",
+    eyeShape: APPEARANCE_VARIATIONS.eyeShape[v.eyeShape] ?? "",
+    eyeColor: APPEARANCE_VARIATIONS.eyeColor[v.eyeColor] ?? "",
+    nose: APPEARANCE_VARIATIONS.nose[v.nose] ?? "",
+    distinctiveFeature:
+      APPEARANCE_VARIATIONS.distinctiveFeature[v.distinctiveFeature] ?? "",
+    expression: APPEARANCE_VARIATIONS.expression[v.expression] ?? "",
+  };
+}
+
+/**
  * Stable fingerprint of an influencer's visual identity — combines the
  * deterministic style fields with the random variations. Two influencers
  * sharing the same fingerprint will look almost identical (modulo seed).
@@ -441,10 +473,13 @@ export const NSFW_TEMPLATES: Record<string, string> = {
  * Default Replicate generation parameters for **Flux 1.1 Pro** (legacy SFW
  * path) and **Flux Dev Uncensored** (NSFW). Used when the model accepts
  * width/height/guidance_scale/etc.
+ *
+ * Sprint 14 — bumped from 1024x1024 to 1024x1280 (3:4) to match Kontext +
+ * Nano Banana + portrait wizard. See KONTEXT_IMAGE_PARAMS comment.
  */
 export const DEFAULT_IMAGE_PARAMS = {
   width: 1024,
-  height: 1024,
+  height: 1280,
   num_inference_steps: 35,
   guidance_scale: 3.5,
   output_format: "jpg" as const,
@@ -466,9 +501,16 @@ export const PORTRAIT_IMAGE_PARAMS = {
  * Schema is intentionally minimal: this model has NO negative_prompt, NO
  * guidance_scale, NO num_inference_steps. The prompt itself drives quality.
  * Safety tolerance is capped to 2 by Black Forest when input_image is sent.
+ *
+ * Sprint 14 — aspect ratio bumped from 1:1 to 3:4 (Grok feedback): the
+ * portrait wizard ships in 3:4 (1024x1280) but content used to render in
+ * 1:1 (1024x1024). The mismatch made every influencer look like "two
+ * different people" between her base portrait and her feed posts. Going
+ * 3:4 across the board also matches Instagram Reels / Stories / TikTok's
+ * native vertical canvas — better engagement, no cropping.
  */
 export const KONTEXT_IMAGE_PARAMS = {
-  aspect_ratio: "1:1" as const,
+  aspect_ratio: "3:4" as const,
   output_format: "jpg" as const,
   prompt_upsampling: false as const,
   safety_tolerance: 2 as const,
@@ -505,6 +547,15 @@ export interface PromptBuildInput {
   isNsfw?: boolean;
   nsfwLevel?: string;
   customPrompt?: string;
+  /**
+   * Sprint 14 — shared visual DNA between the portrait wizard and the
+   * content pipeline. When the influencer row has appearanceVariations
+   * persisted (from Sprint 13), we re-inject them here so Kontext / Nano /
+   * Flux all reproduce the same eyes, nose, freckles, cheekbones etc.
+   * Without this, the base portrait and the feed posts can look like
+   * "two different people" — Grok flagged this in the 2026-05-18 audit.
+   */
+  appearanceVariations?: AppearanceVariation;
 }
 
 /**
@@ -597,6 +648,18 @@ export function buildFullPrompt(input: PromptBuildInput): string {
   }
   if (input.bodyType) personParts.push(`${input.bodyType.toLowerCase()} build`);
   parts.push(personParts.join(", "));
+
+  // ── 3b. Shared visual DNA (Sprint 14) ────────────────────────────────────
+  // Inject the same 6 facial traits that were tied to the portrait so the
+  // feed photos look like the same person across base + content. Without
+  // this Kontext only sees the reference image bytes (which it sometimes
+  // re-interprets loosely) — the explicit trait words give it a textual
+  // anchor too. The cost is ~30 extra tokens; well under any model limit.
+  if (input.appearanceVariations) {
+    parts.push(
+      `facial details: ${renderAppearanceVariations(input.appearanceVariations)}`
+    );
+  }
 
   // ── 4. Gender reinforcement (anti cross-gender clothing) ─────────────────
   if (gender === "male") {
