@@ -210,7 +210,7 @@ export default function InfluencerDetailPage({
             {/* Action buttons */}
             <div className="flex shrink-0 items-center gap-2">
               <Link
-                href={`/content?influencer=${id}`}
+                href={`/content/photo?influencer=${id}`}
                 className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-4 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
               >
                 <ImagePlus className="h-4 w-4" />

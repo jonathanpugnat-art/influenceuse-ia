@@ -31,8 +31,10 @@ export default function DashboardLayout({
         {/* Header */}
         <Header />
 
-        {/* Page content */}
-        <main className="flex-1 px-4 py-6 pb-24 md:px-6 md:pb-6 lg:px-8">
+        {/* Page content — pb-28 on mobile leaves 112px under the last
+            element so the fixed bottom nav (≈60px) + iOS safe area never
+            overlap CTAs at the page footer. md+ resets to pb-6. */}
+        <main className="flex-1 px-4 py-6 pb-28 md:px-6 md:pb-6 lg:px-8">
           <div className="mb-4">
             <LowBalanceBanner />
           </div>

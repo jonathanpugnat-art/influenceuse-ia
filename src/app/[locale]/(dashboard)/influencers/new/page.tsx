@@ -65,7 +65,9 @@ export default function NewInfluencerPage() {
   const info = stepTitles[step];
 
   return (
-    <div className="mx-auto max-w-4xl space-y-8">
+    // Sprint 14 — bugfix: extra pb on mobile so the bottom nav (h≈60px)
+    // never overlaps the wizard's "Next/Create" submit button.
+    <div className="mx-auto max-w-4xl space-y-8 pb-16 md:pb-0">
       {/* Back link */}
       <Link
         href="/influencers"

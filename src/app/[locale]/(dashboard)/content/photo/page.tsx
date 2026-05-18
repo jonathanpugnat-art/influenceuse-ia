@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronDown, ChevronUp, Settings2 } from "lucide-react";
 import {
@@ -17,9 +18,26 @@ import { cn } from "@/lib/utils";
 
 export default function PhotoCreatorPage() {
   const t = useTranslations("content");
-  const { generatedUrls, isGenerating } = usePhotoCreator();
+  const searchParams = useSearchParams();
+  const { generatedUrls, isGenerating, params, updateParams } =
+    usePhotoCreator();
   const showPublish = generatedUrls.length > 0 && !isGenerating;
   const [paramsOpen, setParamsOpen] = useState(false);
+
+  // Sprint 14 — bugfix: pre-select the influencer from the query string.
+  // The profile page links here with `?influencer=<id>` after the user
+  // clicks "Create content" on an influencer profile. Without this hook
+  // the dropdown stayed empty and the user had to pick again manually.
+  // We only set it when (a) the param exists, (b) it's different from
+  // the currently selected one — otherwise we'd stomp on the user's
+  // manual choice mid-session.
+  useEffect(() => {
+    const id = searchParams.get("influencer");
+    if (id && id !== params.influencerId) {
+      updateParams({ influencerId: id });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   return (
     <div className="-mx-4 -my-6 flex h-[calc(100vh-4rem)] flex-col md:-mx-6 md:flex-row lg:-mx-8">

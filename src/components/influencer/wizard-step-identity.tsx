@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { useInfluencerWizard } from "@/hooks/use-influencer-wizard";
 import { TemplatePicker } from "@/components/influencer/template-picker";
+import { pickRandomInfluencerName } from "@/lib/influencer-name-suggestions";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -64,6 +65,11 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
   const tInfluencer = useTranslations("influencer");
   const { data, updateData } = useInfluencerWizard();
 
+  // Sprint 14 — rotate the name placeholder per mount so we don't all end
+  // up with "Luna Fit" influencers. Memoised so it doesn't jitter on every
+  // re-render but does refresh when the user opens the wizard again.
+  const namePlaceholder = useMemo(() => pickRandomInfluencerName(), []);
+
   const schema = useMemo(
     () =>
       z.object({
@@ -100,10 +106,17 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
     watch,
     setValue,
     reset,
+    trigger,
     formState: { errors, isValid },
   } = useForm<FormData>({
     resolver: zodResolver(schema) as never,
     mode: "onChange",
+    // Sprint 14 — bugfix: with mode:"onChange" alone, isValid stays false on
+    // mount even when defaultValues are all valid (the case when arriving
+    // from a Template). We force a validation pass on mount + after every
+    // template-driven reset() below so the "Next" button isn't stuck.
+    reValidateMode: "onChange",
+    criteriaMode: "all",
     defaultValues: {
       name: data.name,
       gender: data.gender ?? "female",
@@ -115,8 +128,16 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
     },
   });
 
+  // Sprint 14 — bugfix #1: trigger() on mount so isValid reflects defaults.
+  useEffect(() => {
+    void trigger();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Sync form values when a template applies updates to the zustand store
-  // from outside this component (e.g. TemplatePicker).
+  // from outside this component (e.g. TemplatePicker). After resetting we
+  // re-run validation so the "Next" button enables immediately if the
+  // template filled every required field.
   useEffect(() => {
     reset({
       name: data.name,
@@ -127,6 +148,7 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
       age: data.age || 24,
       isNsfw: data.isNsfw,
     });
+    void trigger();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.bio, data.personality, data.niche, data.gender, data.age, data.isNsfw]);
 
@@ -201,7 +223,7 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
         <Label className="text-slate-300">{t("influencerName")}</Label>
         <Input
           {...register("name")}
-          placeholder={t("namePlaceholder")}
+          placeholder={t("namePlaceholderRotating", { name: namePlaceholder })}
           className="h-11 border-slate-800/50 bg-slate-800/30 text-white placeholder:text-slate-500 focus:border-violet-500"
         />
         {errors.name && (

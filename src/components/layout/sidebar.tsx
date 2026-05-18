@@ -128,10 +128,33 @@ function NavItem({
 
 function CreditsSection({ isCollapsed }: { isCollapsed: boolean }) {
   const t = useTranslations("common");
-  const { data } = trpc.billing.getCurrentPlan.useQuery();
-  const creditsUsed = data?.creditsUsed ?? 0;
-  const creditsLimit = data?.creditsLimit ?? 50;
-  const creditsRemaining = data?.creditsRemaining ?? Math.max(0, creditsLimit - creditsUsed);
+  const { data, isLoading } = trpc.billing.getCurrentPlan.useQuery();
+
+  // Sprint 14 — bugfix: show a skeleton during load instead of "0 / 50",
+  // which was flashing for ~1s before the real ENTERPRISE/5000 numbers
+  // hydrated. New users on FREE plan briefly saw "0 / 50 utilisés" too,
+  // making the app feel less generous than it is.
+  if (isLoading || !data) {
+    if (isCollapsed) {
+      return (
+        <div className="flex items-center justify-center px-3 py-2">
+          <div className="h-8 w-8 animate-pulse rounded-full bg-slate-800/60" />
+        </div>
+      );
+    }
+    return (
+      <div className="rounded-xl bg-slate-800/30 p-3">
+        <div className="mb-2 h-3 w-2/3 animate-pulse rounded bg-slate-700/60" />
+        <div className="h-1.5 w-full animate-pulse rounded bg-slate-700/60" />
+        <div className="mt-1.5 h-2.5 w-1/2 animate-pulse rounded bg-slate-700/60" />
+      </div>
+    );
+  }
+
+  const creditsUsed = data.creditsUsed;
+  const creditsLimit = data.creditsLimit;
+  const creditsRemaining =
+    data.creditsRemaining ?? Math.max(0, creditsLimit - creditsUsed);
   const progressPercent = creditsLimit > 0 ? (creditsUsed / creditsLimit) * 100 : 0;
 
   if (isCollapsed) {
