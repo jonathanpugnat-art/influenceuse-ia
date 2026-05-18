@@ -216,6 +216,21 @@ export const influencerRouter = createTRPCRouter({
           })
           .optional(),
         appearanceFingerprint: z.string().length(8).optional(),
+        // Sprint 14 — Grok flagged that the wizard "Réseaux" step had no
+        // backend wiring: toggles + handles lived only in the Zustand
+        // store and were silently dropped on submit. We now accept an
+        // optional list of social accounts and persist them as
+        // SocialAccount rows so they appear on the influencer profile
+        // immediately. Empty/blank handles are filtered out before insert.
+        socialAccounts: z
+          .array(
+            z.object({
+              platform: z.enum(["INSTAGRAM", "TIKTOK", "ONLYFANS"]),
+              username: z.string().trim().min(1).max(60),
+            })
+          )
+          .max(3)
+          .optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -240,7 +255,16 @@ export const influencerRouter = createTRPCRouter({
       const baseSlug = slugify(input.name, { lower: true, strict: true });
       const slug = `${baseSlug}-${nanoid(6)}`;
 
-      // Create influencer + analytics in transaction
+      // Sprint 14 — de-dupe social accounts (the @@unique [influencerId,
+      // platform] index would throw otherwise) and normalize the handle by
+      // stripping the optional leading '@'.
+      const dedupedSocials = new Map<string, string>();
+      for (const acc of input.socialAccounts ?? []) {
+        const handle = acc.username.replace(/^@+/, "").trim();
+        if (handle) dedupedSocials.set(acc.platform, handle);
+      }
+
+      // Create influencer + nested socials in a single roundtrip
       const influencer = await db.influencer.create({
         data: {
           userId: user.id,
@@ -259,6 +283,21 @@ export const influencerRouter = createTRPCRouter({
             ? (input.appearanceVariations as object)
             : undefined,
           appearanceFingerprint: input.appearanceFingerprint ?? undefined,
+          ...(dedupedSocials.size > 0
+            ? {
+                socialAccounts: {
+                  create: Array.from(dedupedSocials.entries()).map(
+                    ([platform, username]) => ({
+                      platform: platform as "INSTAGRAM" | "TIKTOK" | "ONLYFANS",
+                      username,
+                      // isConnected stays false — these are just declared
+                      // handles, not actual OAuth-connected accounts.
+                      isConnected: false,
+                    })
+                  ),
+                },
+              }
+            : {}),
         },
         include: {
           socialAccounts: true,

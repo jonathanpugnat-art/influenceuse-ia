@@ -140,6 +140,128 @@ describe("influencer router", () => {
       expect(result.name).toBe("New Inf");
       expect(result.id).toBe("inf-1");
     });
+
+    // ── Sprint 14 — social accounts wiring ──────────────────────────────
+    it("persists social accounts nested when handles are provided", async () => {
+      mockDb.influencer.count.mockResolvedValue(0);
+      mockDb.influencer.create.mockResolvedValue({
+        ...sampleInfluencer,
+        name: "With Socials",
+      });
+
+      const caller = createCaller({ userId: "clerk-123" });
+      await caller.influencer.create({
+        name: "With Socials",
+        bio: "A short bio for tests that is long enough.",
+        personality: "Friendly and creative personality for tests.",
+        niche: "LIFESTYLE",
+        age: 25,
+        style: {},
+        isNsfw: false,
+        socialAccounts: [
+          { platform: "INSTAGRAM", username: "@luna.fit" },
+          { platform: "TIKTOK", username: "luna_fit_official" },
+        ],
+      });
+
+      const createCall = mockDb.influencer.create.mock.calls[0]?.[0];
+      const nested = createCall?.data?.socialAccounts?.create as Array<{
+        platform: string;
+        username: string;
+        isConnected: boolean;
+      }>;
+      expect(nested).toHaveLength(2);
+      // Leading "@" is stripped before insert
+      const ig = nested.find((a) => a.platform === "INSTAGRAM");
+      expect(ig?.username).toBe("luna.fit");
+      // Non-prefixed handles pass through untouched
+      const tk = nested.find((a) => a.platform === "TIKTOK");
+      expect(tk?.username).toBe("luna_fit_official");
+      // Wizard handles are always declared, never OAuth-connected
+      expect(nested.every((a) => a.isConnected === false)).toBe(true);
+    });
+
+    it("skips socialAccounts.create when the array is empty or absent", async () => {
+      mockDb.influencer.count.mockResolvedValue(0);
+      mockDb.influencer.create.mockResolvedValue(sampleInfluencer);
+
+      const caller = createCaller({ userId: "clerk-123" });
+      await caller.influencer.create({
+        name: "No Socials",
+        bio: "A short bio for tests that is long enough.",
+        personality: "Friendly and creative personality for tests.",
+        niche: "LIFESTYLE",
+        age: 25,
+        style: {},
+        isNsfw: false,
+      });
+
+      const createCall = mockDb.influencer.create.mock.calls[0]?.[0];
+      expect(createCall?.data?.socialAccounts).toBeUndefined();
+    });
+
+    it("de-dupes when the same platform appears twice (keeps last)", async () => {
+      mockDb.influencer.count.mockResolvedValue(0);
+      mockDb.influencer.create.mockResolvedValue(sampleInfluencer);
+
+      const caller = createCaller({ userId: "clerk-123" });
+      await caller.influencer.create({
+        name: "Dup Socials",
+        bio: "A short bio for tests that is long enough.",
+        personality: "Friendly and creative personality for tests.",
+        niche: "LIFESTYLE",
+        age: 25,
+        style: {},
+        isNsfw: false,
+        socialAccounts: [
+          { platform: "INSTAGRAM", username: "first" },
+          { platform: "INSTAGRAM", username: "second" },
+        ],
+      });
+
+      const createCall = mockDb.influencer.create.mock.calls[0]?.[0];
+      const nested = createCall?.data?.socialAccounts?.create as Array<{
+        username: string;
+      }>;
+      expect(nested).toHaveLength(1);
+      expect(nested[0]?.username).toBe("second");
+    });
+  });
+
+  // ── Sprint 14 — appearance collision guard ───────────────────────────
+  describe("checkAppearanceCollision", () => {
+    it("excludes the caller's own influencers from the count", async () => {
+      mockDb.influencer.count.mockResolvedValue(2);
+
+      const caller = createCaller({ userId: "clerk-123" });
+      const result = await caller.influencer.checkAppearanceCollision({
+        fingerprint: "a3f1d20c",
+      });
+
+      expect(mockDb.influencer.count).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            appearanceFingerprint: "a3f1d20c",
+            status: { not: "ARCHIVED" },
+            NOT: { userId: "user-db-1" },
+          }),
+        })
+      );
+      expect(result.count).toBe(2);
+      expect(result.hasCollision).toBe(true);
+    });
+
+    it("reports hasCollision=false when count is 0", async () => {
+      mockDb.influencer.count.mockResolvedValue(0);
+
+      const caller = createCaller({ userId: "clerk-123" });
+      const result = await caller.influencer.checkAppearanceCollision({
+        fingerprint: "deadbeef",
+      });
+
+      expect(result.count).toBe(0);
+      expect(result.hasCollision).toBe(false);
+    });
   });
 
   describe("delete", () => {
