@@ -599,6 +599,23 @@
     "planCancel": "Annuler",
     "planSuccess": "{count} posts ajoutés au calendrier",
     "planError": "La génération du plan a échoué",
+    "schedule": {
+      "title": "Programmer pour ce jour",
+      "pickContent": "Choisis un contenu prêt à publier",
+      "pickTime": "Heure de publication",
+      "pickPlatforms": "Plateformes",
+      "emptyTitle": "Aucun contenu prêt",
+      "emptyDescription": "Crée d'abord une photo ou un reel, il pourra ensuite être programmé d'un clic.",
+      "createContentCta": "Créer un contenu",
+      "warnPast": "Cette date/heure est déjà passée. Choisis un moment dans le futur.",
+      "confirmAt": "Programmer à {time}",
+      "scheduling": "Programmation…",
+      "cancel": "Annuler",
+      "toastSuccess": "Contenu programmé !",
+      "errorNoContent": "Sélectionne un contenu à programmer.",
+      "errorPast": "La date doit être dans le futur.",
+      "errorNoPlatform": "Sélectionne au moins une plateforme."
+    },
     "batch": {
       "title": "Plans en cours de génération",
       "subtitle": "Mise à jour automatique",

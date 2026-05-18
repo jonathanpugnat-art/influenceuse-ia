@@ -408,6 +408,54 @@ export const publishRouter = createTRPCRouter({
   }),
 
   /**
+   * listReadyForScheduling — Slim list of contents that are READY (already
+   * generated, captioned, awaiting a publish window) and NOT yet scheduled.
+   *
+   * Powers the "Schedule for this day" picker on the calendar. We keep the
+   * payload tiny on purpose — the picker only needs thumbnail + caption
+   * preview + platforms hint; the full content can be fetched via getById
+   * if/when the user dives deeper. Capped at 50 to keep the dialog snappy.
+   */
+  listReadyForScheduling: protectedProcedure
+    .input(
+      z
+        .object({
+          influencerId: z.string().optional(),
+          limit: z.number().int().min(1).max(50).optional(),
+        })
+        .optional()
+    )
+    .query(async ({ ctx, input }) => {
+      const user = await getDbUser(ctx.userId);
+      const contents = await db.content.findMany({
+        where: {
+          influencer: { userId: user.id },
+          status: "READY",
+          // A content can be "READY" but already have a scheduledAt if the
+          // user reset a SCHEDULED back to READY without clearing the date.
+          // We're permissive here — the schedule mutation will overwrite it.
+          ...(input?.influencerId ? { influencerId: input.influencerId } : {}),
+        },
+        select: {
+          id: true,
+          type: true,
+          thumbnailUrl: true,
+          caption: true,
+          platforms: true,
+          hashtags: true,
+          mediaUrls: true,
+          createdAt: true,
+          influencer: {
+            select: { id: true, name: true, slug: true, avatarUrl: true },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        take: input?.limit ?? 30,
+      });
+      return contents;
+    }),
+
+  /**
    * getCalendarEvents — Content for a date range (for calendar view)
    */
   getCalendarEvents: protectedProcedure

@@ -599,6 +599,23 @@
     "planCancel": "Cancel",
     "planSuccess": "{count} posts added to the calendar",
     "planError": "Plan generation failed",
+    "schedule": {
+      "title": "Schedule for this day",
+      "pickContent": "Pick a content ready to publish",
+      "pickTime": "Publish time",
+      "pickPlatforms": "Platforms",
+      "emptyTitle": "No ready content",
+      "emptyDescription": "Create a photo or reel first, then you can schedule it in one click.",
+      "createContentCta": "Create content",
+      "warnPast": "This date/time is in the past. Pick a future moment.",
+      "confirmAt": "Schedule at {time}",
+      "scheduling": "Scheduling…",
+      "cancel": "Cancel",
+      "toastSuccess": "Content scheduled!",
+      "errorNoContent": "Select a content to schedule.",
+      "errorPast": "Date must be in the future.",
+      "errorNoPlatform": "Select at least one platform."
+    },
     "batch": {
       "title": "Plans being generated",
       "subtitle": "Auto-refresh",

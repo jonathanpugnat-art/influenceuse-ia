@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
 import { motion, type Variants } from "framer-motion";
 import {
   addMonths,
@@ -35,6 +34,7 @@ import { WeekView } from "@/components/calendar/week-view";
 import { ListView } from "@/components/calendar/list-view";
 import { ContentDetailModal } from "@/components/calendar/content-detail-modal";
 import { ContentPlanDialog } from "@/components/calendar/content-plan-dialog";
+import { ScheduleForDayDialog } from "@/components/calendar/schedule-for-day-dialog";
 import { BatchProgressPanel } from "@/components/calendar/batch-progress-panel";
 import { RecyclePanel } from "@/components/calendar/recycle-panel";
 import { trpc } from "@/lib/trpc";
@@ -52,7 +52,6 @@ const sectionVariants: Variants = {
 };
 
 export default function CalendarPage() {
-  const router = useRouter();
   const t = useTranslations("calendar");
   const tCommon = useTranslations("common");
   const tDashboard = useTranslations("dashboard");
@@ -62,6 +61,10 @@ export default function CalendarPage() {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
+  // Sprint 14 — schedule-for-day flow: clicking an empty day opens a picker
+  // that lets the user assign one of their READY contents to that day.
+  const [scheduleDay, setScheduleDay] = useState<Date | null>(null);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
 
   const hasSetMobileView = useRef(false);
   useEffect(() => {
@@ -130,8 +133,13 @@ export default function CalendarPage() {
     setModalOpen(true);
   };
 
+  // Sprint 14 — open the schedule picker instead of jumping to the creator.
+  // The user can then assign an existing READY content to that day, OR
+  // bail out and click "Create content" from inside the modal (which DOES
+  // route to /content). This keeps the calendar focused on scheduling.
   const handleDayClick = (date: Date) => {
-    router.push(`/content/photo`);
+    setScheduleDay(date);
+    setScheduleOpen(true);
   };
 
   const handlePublishNow = (event: CalendarEvent) => {
@@ -310,6 +318,14 @@ export default function CalendarPage() {
 
       {/* Content plan dialog (Phase 3 — agent contenu) */}
       <ContentPlanDialog open={planOpen} onClose={() => setPlanOpen(false)} />
+
+      {/* Sprint 14 — schedule existing READY content for the clicked day */}
+      <ScheduleForDayDialog
+        open={scheduleOpen}
+        onClose={() => setScheduleOpen(false)}
+        day={scheduleDay}
+        onScheduled={() => utils.publish.getCalendarEvents.invalidate()}
+      />
     </motion.div>
   );
 }
