@@ -16,6 +16,18 @@ function isPublicPath(pathname: string): boolean {
   if (/^\/(fr|en)\/sign-(in|up)/.test(pathname)) return true;
   if (/^\/(fr|en)\/changelog\b/.test(pathname)) return true;
   if (/^\/(fr|en)\/pricing\b/.test(pathname)) return true;
+  // Sprint 14 — legal pages must be reachable without auth so Meta /
+  // Stripe / Clerk can scrape them during App Review and so any user
+  // (signed-in or not) can read them from the marketing footer.
+  if (/^\/(fr|en)\/(privacy|terms|data-deletion)\b/.test(pathname)) return true;
+  // Same routes without a locale prefix (Meta scrapes the bare URL).
+  if (
+    pathname === "/privacy" ||
+    pathname === "/terms" ||
+    pathname === "/data-deletion"
+  ) {
+    return true;
+  }
   if (pathname.startsWith("/api/webhooks")) return true;
   if (pathname.startsWith("/api/cron")) return true;
   // Sprint 9 — public REST API (uses its own Bearer token auth).
