@@ -222,6 +222,7 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
       <div className="space-y-2">
         <Label className="text-slate-300">{t("influencerName")}</Label>
         <Input
+          id="wizard-identity-name"
           {...register("name")}
           placeholder={t("namePlaceholderRotating", { name: namePlaceholder })}
           className="h-11 border-slate-800/50 bg-slate-800/30 text-white placeholder:text-slate-500 focus:border-violet-500"

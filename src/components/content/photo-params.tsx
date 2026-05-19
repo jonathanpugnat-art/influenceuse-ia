@@ -10,6 +10,15 @@ import {
   Sparkles,
 } from "lucide-react";
 import { CONTENT_TEMPLATES, type ContentTemplate } from "@/lib/templates/content-templates";
+import {
+  getOutfitSuggestionsForNiche,
+  type InfluencerGender,
+} from "@/lib/photo-niche-defaults";
+import {
+  explodeAppearanceVariations,
+  type AppearanceVariation,
+} from "@/lib/prompts/image-prompts";
+import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -60,55 +69,6 @@ function Chip({
 }
 
 const lightingStops = ["golden_hour", "natural", "blue_hour", "neon"] as const;
-
-type NicheSuggestionsByGender = {
-  female: string[];
-  male: string[];
-  nonbinary: string[];
-};
-
-const nicheSuggestions: Record<string, NicheSuggestionsByGender> = {
-  FITNESS: {
-    female: ["Legging + brassière", "Tenue yoga", "Bikini sportif"],
-    male: ["Short de sport + débardeur", "Tenue musculation", "Jogging technique"],
-    nonbinary: ["Short de sport + t-shirt", "Tenue yoga unisexe", "Jogging décontracté"],
-  },
-  FASHION: {
-    female: ["Robe noire élégante", "Tailleur oversize", "Robe de soirée"],
-    male: ["Costume bien coupé", "Tailleur oversize", "Chemise + jean élégant"],
-    nonbinary: ["Tailleur oversize", "Ensemble androgyne", "Chemise fluide + pantalon"],
-  },
-  TRAVEL: {
-    female: ["Robe bohème", "Short + top léger", "Tenue safari"],
-    male: ["Chemise légère + chino", "Short + t-shirt", "Tenue safari casual"],
-    nonbinary: ["Short + top léger", "Tenue safari unisexe", "Jean + chemise légère"],
-  },
-  FOOD: {
-    female: ["Tablier chef", "Tenue casual chic", "Robe cuisine"],
-    male: ["Tablier chef", "Jean + t-shirt", "Tenue casual brasserie"],
-    nonbinary: ["Tablier chef", "Tenue casual chic", "Jean + chemise décontractée"],
-  },
-  LIFESTYLE: {
-    female: ["Pyjama soie", "Tenue loungewear", "Jean + blazer"],
-    male: ["Jogging premium", "Tenue loungewear homme", "Jean + veste casual"],
-    nonbinary: ["Tenue loungewear", "Jogging confortable", "Jean + blazer décontracté"],
-  },
-  GAMING: {
-    female: ["Hoodie gaming", "T-shirt geek", "Cosplay"],
-    male: ["Hoodie gaming", "T-shirt geek", "Cosplay"],
-    nonbinary: ["Hoodie gaming", "T-shirt geek", "Cosplay"],
-  },
-  TECH: {
-    female: ["Tenue corporate", "Smart casual", "Streetwear tech"],
-    male: ["Tenue corporate", "Smart casual homme", "Streetwear tech"],
-    nonbinary: ["Tenue corporate", "Smart casual", "Streetwear tech"],
-  },
-  ADULT: {
-    female: ["Lingerie dentelle", "Bikini", "Robe transparente"],
-    male: ["Boxer premium", "Torse nu + jean", "Peignoir ouvert"],
-    nonbinary: ["Lingerie unisexe", "Torse nu + short", "Vêtement suggestif"],
-  },
-};
 
 // ──────────────────────────────────────────────
 // Component
@@ -177,9 +137,20 @@ export function PhotoParams() {
   const influencers = influencersData?.influencers ?? [];
   const selectedInfluencer = influencers.find((i) => i.id === params.influencerId);
   const selectedNiche = selectedInfluencer?.niche ?? "";
-  const influencerGender = (selectedInfluencer as { gender?: "female" | "male" | "nonbinary" } | undefined)?.gender ?? "female";
-  const nicheSuggestionsByGender = nicheSuggestions[selectedNiche];
-  const outfitSuggestions = nicheSuggestionsByGender ? nicheSuggestionsByGender[influencerGender] : [];
+  const influencerGender =
+    (selectedInfluencer?.gender as InfluencerGender | undefined) ?? "female";
+  const outfitSuggestions = getOutfitSuggestionsForNiche(
+    selectedNiche,
+    influencerGender
+  );
+  const portraitUrl =
+    selectedInfluencer?.baseImageUrl?.trim() ||
+    selectedInfluencer?.avatarUrl?.trim() ||
+    null;
+  const appearanceVariations = selectedInfluencer?.appearanceVariations as
+    | AppearanceVariation
+    | null
+    | undefined;
 
   const lightingIndex = lightingStops.indexOf(
     params.timeOfDay as (typeof lightingStops)[number]
@@ -288,6 +259,39 @@ export function PhotoParams() {
               ) ? (
               <p className="text-xs text-slate-500">{t("faceReferenceNoRef")}</p>
             ) : null}
+          </div>
+        )}
+
+        {/* Sprint 15 — portrait + visual DNA reminder for realism */}
+        {selectedInfluencer && portraitUrl && params.useFaceReference && (
+          <div className="flex gap-3 rounded-xl border border-violet-500/20 bg-violet-500/5 p-3">
+            <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-lg border border-violet-500/30">
+              <Image
+                src={portraitUrl}
+                alt={selectedInfluencer.name}
+                fill
+                className="object-cover"
+                unoptimized
+              />
+            </div>
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="text-xs font-semibold text-violet-200">
+                {t("identityLockTitle")}
+              </p>
+              <p className="text-[11px] leading-snug text-slate-400">
+                {t("identityLockHint")}
+              </p>
+              {appearanceVariations && (
+                <p className="text-[10px] text-slate-500">
+                  {(() => {
+                    const traits = explodeAppearanceVariations(appearanceVariations);
+                    return [traits.eyeColor, traits.distinctiveFeature, traits.expression]
+                      .filter(Boolean)
+                      .join(" · ");
+                  })()}
+                </p>
+              )}
+            </div>
           </div>
         )}
 

@@ -20,7 +20,11 @@ import { cn } from "@/lib/utils";
 import { useUpgradeOnLimitError } from "@/hooks/use-upgrade-on-limit-error";
 import { toast } from "sonner";
 
-export function PhotoPreview() {
+export function PhotoPreview({
+  isWelcomeFlow = false,
+}: {
+  isWelcomeFlow?: boolean;
+}) {
   const t = useTranslations("content");
 
   const {
@@ -242,7 +246,9 @@ export function PhotoPreview() {
               <div className="flex h-full flex-col items-center justify-center gap-3 p-8">
                 <ImagePlus className="h-16 w-16 text-slate-700" />
                 <p className="text-center text-sm text-slate-500">
-                  {t("placeholderHint")}
+                  {isWelcomeFlow && params.influencerId
+                    ? t("welcomePlaceholderHint")
+                    : t("placeholderHint")}
                 </p>
               </div>
             </motion.div>

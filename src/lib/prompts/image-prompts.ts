@@ -624,7 +624,8 @@ export function buildFullPrompt(input: PromptBuildInput): string {
     parts.push(
       "same exact person as the reference photo, identical facial identity, " +
         "preserve the reference face shape, eyes, nose, mouth, jawline, skin tone and ethnicity, " +
-        "same person in a new pose and setting, not a lookalike, not a similar person"
+        "same person in a new pose and setting, not a lookalike, not a similar person, " +
+        "do not change age or gender, do not beautify or smooth skin beyond a real iPhone photo"
     );
   }
 

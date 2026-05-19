@@ -72,9 +72,11 @@ export function WizardStepSummary({ onPrev }: { onPrev: () => void }) {
   const handleUpgrade = useUpgradeOnLimitError();
   const createMutation = trpc.influencer.create.useMutation({
     onSuccess: (inf) => {
-      toast.success(t("createdSuccess", { name: inf.name }));
+      toast.success(t("firstPhotoCta", { name: inf.name }));
       reset();
-      router.push(`/influencers/${inf.id}`);
+      // Sprint 15 — land on the photo creator with the new influencer
+      // pre-selected so the wizard doesn't dead-end on an empty profile.
+      router.push(`/content/photo?influencer=${inf.id}&welcome=1`);
     },
     onError: (err) => {
       if (handleUpgrade(err.message)) return;
