@@ -16,6 +16,7 @@ import {
   Calendar,
   Settings,
   Image,
+  Share2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -34,6 +35,7 @@ import {
 } from "@/components/ui/social-icons";
 import { InfluencerFeed } from "@/components/influencer/influencer-feed";
 import { InfluencerSettings } from "@/components/influencer/influencer-settings";
+import { InfluencerSocial } from "@/components/influencer/influencer-social";
 import { trpc } from "@/lib/trpc";
 import {
   nicheConfig,
@@ -296,6 +298,13 @@ export default function InfluencerDetailPage({
             Calendrier
           </TabsTrigger>
           <TabsTrigger
+            value="social"
+            className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-violet-500/20 data-[state=active]:text-violet-400"
+          >
+            <Share2 className="mr-2 h-4 w-4" />
+            Réseaux
+          </TabsTrigger>
+          <TabsTrigger
             value="settings"
             className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-violet-500/20 data-[state=active]:text-violet-400"
           >
@@ -365,6 +374,10 @@ export default function InfluencerDetailPage({
               </p>
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="social">
+          <InfluencerSocial influencerId={id} />
         </TabsContent>
 
         <TabsContent value="settings">
