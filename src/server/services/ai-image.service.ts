@@ -420,7 +420,9 @@ async function runMultiplePredictions(
 export async function generateBaseImage(
   userId: string,
   influencerAge: number,
-  style: InfluencerStyle
+  style: InfluencerStyle,
+  /** When set (wizard expert mode), use these indices instead of random. */
+  presetVariations?: AppearanceVariation
 ): Promise<ImageGenerationOutput> {
   const cost = CREDIT_COSTS.BASE_IMAGE;
   const hasCredits = await checkCredits(userId, cost);
@@ -434,7 +436,7 @@ export async function generateBaseImage(
   // expression, etc.) so two users with identical wizard inputs produce
   // visually different influencers. See `pickAppearanceVariations` in
   // image-prompts.ts for the full picker logic.
-  const variations = pickAppearanceVariations();
+  const variations = presetVariations ?? pickAppearanceVariations();
   const fingerprint = appearanceFingerprint(style, influencerAge, variations);
 
   const prompt = buildBasePortraitPrompt({

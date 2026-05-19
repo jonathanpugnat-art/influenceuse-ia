@@ -5,6 +5,7 @@ import { db } from "@/server/db";
 import { CREDIT_COSTS } from "@/lib/constants";
 import { generateBaseImage as genBaseImage, generateContentImage } from "@/server/services/ai-image.service";
 import type { AppearanceVariation } from "@/lib/prompts/image-prompts";
+import { normalizeAppearanceVariation } from "@/lib/prompts/appearance-variation-ui";
 import { generateVideo } from "@/server/services/ai-video.service";
 import { generateCaption as genCaption, generateHashtags as genHashtags, generateContentPlan as genContentPlan, generateIdeas as genIdeas } from "@/server/services/ai-text.service";
 import { processNextBatchSlice, getBatchStatus } from "@/server/services/batch.service";
@@ -67,18 +68,36 @@ export const contentRouter = createTRPCRouter({
         age: z.number().int().min(18).max(80),
         gender: z.enum(["female", "male", "nonbinary"]).default("female"),
         style: styleInputSchema,
+        /** Wizard expert mode — optional fixed trait indices from UI chips. */
+        appearanceVariations: z
+          .object({
+            faceShape: z.number().int().min(0),
+            eyeShape: z.number().int().min(0),
+            eyeColor: z.number().int().min(0),
+            nose: z.number().int().min(0),
+            distinctiveFeature: z.number().int().min(0),
+            expression: z.number().int().min(0),
+          })
+          .optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const user = await getDbUser(ctx.userId);
-      const result = await genBaseImage(user.id, input.age, {
-        gender: input.gender,
-        ethnicity: input.style.ethnicity,
-        hairColor: input.style.hairColor,
-        hairStyle: input.style.hairStyle,
-        bodyType: input.style.bodyType,
-        fashionStyle: input.style.fashionStyle,
-      });
+      const result = await genBaseImage(
+        user.id,
+        input.age,
+        {
+          gender: input.gender,
+          ethnicity: input.style.ethnicity,
+          hairColor: input.style.hairColor,
+          hairStyle: input.style.hairStyle,
+          bodyType: input.style.bodyType,
+          fashionStyle: input.style.fashionStyle,
+        },
+        input.appearanceVariations
+          ? normalizeAppearanceVariation(input.appearanceVariations)
+          : undefined
+      );
       // The wizard surfaces `appearanceVariations` + `appearanceFingerprint`
       // back to the client so the create-influencer mutation can persist
       // them on the same Influencer row that ends up with this baseImageUrl.

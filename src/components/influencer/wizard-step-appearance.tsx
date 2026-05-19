@@ -21,6 +21,12 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useInfluencerWizard } from "@/hooks/use-influencer-wizard";
 import { explodeAppearanceVariations } from "@/lib/prompts/image-prompts";
+import {
+  fingerprintFromWizard,
+  normalizeAppearanceVariation,
+  randomAppearanceVariation,
+} from "@/lib/prompts/appearance-variation-ui";
+import { WizardAppearanceExpert } from "@/components/influencer/wizard-appearance-expert";
 import { trpc } from "@/lib/trpc";
 import { CREDIT_COSTS } from "@/lib/constants";
 import { toast } from "sonner";
@@ -124,6 +130,7 @@ export function WizardStepAppearance({
     setIsGenerating(true);
     const hairStyle = [data.hairLength, data.hairTexture].filter(Boolean).join(", ") || undefined;
     const fashionStyle = data.fashionStyles?.length ? data.fashionStyles.join(", ") : undefined;
+    const variations = normalizeAppearanceVariation(data.appearanceVariations);
     generateMutation.mutate({
       age: data.age || 24,
       gender: data.gender ?? "female",
@@ -134,7 +141,17 @@ export function WizardStepAppearance({
         bodyType: data.bodyType || undefined,
         fashionStyle,
       },
+      appearanceVariations: variations,
     });
+  };
+
+  const handleSurpriseMe = () => {
+    const next = randomAppearanceVariation();
+    updateData({
+      appearanceVariations: next,
+      appearanceFingerprint: fingerprintFromWizard(data.age || 24, data, next),
+    });
+    handleGenerate();
   };
 
   const handleSelectImage = (index: number) => {
@@ -322,6 +339,8 @@ export function WizardStepAppearance({
             </div>
           </div>
 
+          <WizardAppearanceExpert data={data} updateData={updateData} />
+
           {/* Generate button (Sprint 12 — never blocked) */}
           <button
             type="button"
@@ -425,7 +444,7 @@ export function WizardStepAppearance({
                     </p>
                     <button
                       type="button"
-                      onClick={() => handleGenerate()}
+                      onClick={handleSurpriseMe}
                       disabled={isGenerating || !hasEnoughCredits}
                       className="flex items-center gap-1 rounded-md border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-200 transition-colors hover:bg-violet-500/20 disabled:opacity-40"
                       title="Re-tirer les traits + relancer la génération"

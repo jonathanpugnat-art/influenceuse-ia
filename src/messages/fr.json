@@ -419,6 +419,17 @@
     "editLaterHint": "Tu pourras modifier tous ces paramètres plus tard",
     "identitySection": "Identité",
     "appearanceSection": "Apparence",
+    "appearanceExpert": {
+      "title": "Personnaliser le visage",
+      "hint": "Affine les traits avant de générer — optionnel. Les 4 portraits utiliseront cette signature.",
+      "traitFace": "Forme du visage",
+      "traitEyes": "Regard",
+      "traitEyeColor": "Couleur des yeux",
+      "traitSignature": "Trait distinctif",
+      "traitExpression": "Expression",
+      "traitNose": "Nez",
+      "randomizeTraits": "Tirer les traits au hasard"
+    },
     "socialSection": "Réseaux sociaux",
     "selectPlaceholder": "Sélectionner...",
     "confirmation": "Confirmation",

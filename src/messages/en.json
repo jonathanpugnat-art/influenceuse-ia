@@ -419,6 +419,17 @@
     "editLaterHint": "You can change all these settings later",
     "identitySection": "Identity",
     "appearanceSection": "Appearance",
+    "appearanceExpert": {
+      "title": "Customize face",
+      "hint": "Fine-tune traits before generating — optional. All 4 portraits will use this signature.",
+      "traitFace": "Face shape",
+      "traitEyes": "Eye shape",
+      "traitEyeColor": "Eye color",
+      "traitSignature": "Distinctive trait",
+      "traitExpression": "Expression",
+      "traitNose": "Nose",
+      "randomizeTraits": "Randomize traits"
+    },
     "socialSection": "Social networks",
     "selectPlaceholder": "Select...",
     "confirmation": "Confirmation",
