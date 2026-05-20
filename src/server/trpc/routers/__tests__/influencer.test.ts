@@ -31,7 +31,7 @@ vi.mock("@/lib/constants", () => ({
   },
 }));
 
-import { createCallerFactory } from "@/server/trpc";
+import { createCallerFactory, mockTRPCContext } from "@/server/trpc";
 import { appRouter } from "@/server/trpc/router";
 
 const createCaller = createCallerFactory(appRouter);
@@ -61,7 +61,7 @@ describe("influencer router", () => {
       mockDb.influencer.findMany.mockResolvedValue([sampleInfluencer]);
       mockDb.influencer.count.mockResolvedValue(1);
 
-      const caller = createCaller({ userId: "clerk-123" });
+      const caller = createCaller(mockTRPCContext("clerk-123"));
       const result = await caller.influencer.getAll({});
 
       expect(mockDb.user.findUnique).toHaveBeenCalledWith({
@@ -82,7 +82,7 @@ describe("influencer router", () => {
     it("throws FORBIDDEN when plan limit reached", async () => {
       mockDb.influencer.count.mockResolvedValue(1); // FREE plan maxInfluencers = 1
 
-      const caller = createCaller({ userId: "clerk-123" });
+      const caller = createCaller(mockTRPCContext("clerk-123"));
       await expect(
         caller.influencer.create({
           name: "Second Inf",
@@ -116,7 +116,7 @@ describe("influencer router", () => {
         slug: "new-inf-xyz",
       });
 
-      const caller = createCaller({ userId: "clerk-123" });
+      const caller = createCaller(mockTRPCContext("clerk-123"));
       const result = await caller.influencer.create({
         name: "New Inf",
         bio: "A short bio for tests that is long enough.",
@@ -149,7 +149,7 @@ describe("influencer router", () => {
         name: "With Socials",
       });
 
-      const caller = createCaller({ userId: "clerk-123" });
+      const caller = createCaller(mockTRPCContext("clerk-123"));
       await caller.influencer.create({
         name: "With Socials",
         bio: "A short bio for tests that is long enough.",
@@ -185,7 +185,7 @@ describe("influencer router", () => {
       mockDb.influencer.count.mockResolvedValue(0);
       mockDb.influencer.create.mockResolvedValue(sampleInfluencer);
 
-      const caller = createCaller({ userId: "clerk-123" });
+      const caller = createCaller(mockTRPCContext("clerk-123"));
       await caller.influencer.create({
         name: "No Socials",
         bio: "A short bio for tests that is long enough.",
@@ -204,7 +204,7 @@ describe("influencer router", () => {
       mockDb.influencer.count.mockResolvedValue(0);
       mockDb.influencer.create.mockResolvedValue(sampleInfluencer);
 
-      const caller = createCaller({ userId: "clerk-123" });
+      const caller = createCaller(mockTRPCContext("clerk-123"));
       await caller.influencer.create({
         name: "Dup Socials",
         bio: "A short bio for tests that is long enough.",
@@ -233,7 +233,7 @@ describe("influencer router", () => {
     it("excludes the caller's own influencers from the count", async () => {
       mockDb.influencer.count.mockResolvedValue(2);
 
-      const caller = createCaller({ userId: "clerk-123" });
+      const caller = createCaller(mockTRPCContext("clerk-123"));
       const result = await caller.influencer.checkAppearanceCollision({
         fingerprint: "a3f1d20c",
       });
@@ -254,7 +254,7 @@ describe("influencer router", () => {
     it("reports hasCollision=false when count is 0", async () => {
       mockDb.influencer.count.mockResolvedValue(0);
 
-      const caller = createCaller({ userId: "clerk-123" });
+      const caller = createCaller(mockTRPCContext("clerk-123"));
       const result = await caller.influencer.checkAppearanceCollision({
         fingerprint: "deadbeef",
       });
@@ -272,7 +272,7 @@ describe("influencer router", () => {
       });
       mockDb.influencer.update.mockResolvedValue({});
 
-      const caller = createCaller({ userId: "clerk-123" });
+      const caller = createCaller(mockTRPCContext("clerk-123"));
       const result = await caller.influencer.delete({ id: "inf-1" });
 
       expect(mockDb.influencer.update).toHaveBeenCalledWith({
@@ -294,7 +294,7 @@ describe("influencer router", () => {
         _count: { contents: 0 },
       });
 
-      const caller = createCaller({ userId: "clerk-123" });
+      const caller = createCaller(mockTRPCContext("clerk-123"));
       const result = await caller.influencer.getById({ id: "inf-1" });
 
       expect(result.id).toBe("inf-1");
@@ -307,7 +307,7 @@ describe("influencer router", () => {
         userId: "other-user-id",
       });
 
-      const caller = createCaller({ userId: "clerk-123" });
+      const caller = createCaller(mockTRPCContext("clerk-123"));
       await expect(caller.influencer.getById({ id: "inf-1" })).rejects.toThrow(
         TRPCError
       );
@@ -319,7 +319,7 @@ describe("influencer router", () => {
 
   describe("UNAUTHORIZED", () => {
     it("throws UNAUTHORIZED when userId is missing", async () => {
-      const caller = createCaller({ userId: null });
+      const caller = createCaller(mockTRPCContext(null));
 
       await expect(caller.influencer.getAll({})).rejects.toThrow(TRPCError);
       await expect(caller.influencer.getAll({})).rejects.toMatchObject({

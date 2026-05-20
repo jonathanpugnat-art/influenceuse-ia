@@ -201,12 +201,6 @@ export default function LandingPage() {
             <a href="#pricing" className="hover:text-white transition-colors">
               {t("navPricing")}
             </a>
-            <Link
-              href="/changelog"
-              className="hover:text-white transition-colors"
-            >
-              {t("navChangelog")}
-            </Link>
           </nav>
 
           <div className="hidden md:flex items-center gap-4">
@@ -279,13 +273,6 @@ export default function LandingPage() {
               >
                 {t("navPricing")}
               </a>
-              <Link
-                href="/changelog"
-                onClick={() => setMobileMenuOpen(false)}
-                className="text-zinc-300 py-2 border-b border-zinc-800/50"
-              >
-                {t("navChangelog")}
-              </Link>
               <Link
                 href={pathname}
                 locale={otherLocale}

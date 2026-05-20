@@ -19,6 +19,11 @@ import { PLANS } from "@/lib/constants";
 import type { Plan } from "@/generated/prisma/client";
 
 import { getDbUser } from "@/server/helpers/get-db-user";
+import {
+  formatGenerationErrorForUser,
+  LOCALHOST_REF_MESSAGE,
+} from "@/lib/generation-errors";
+import { resolvePublicMediaUrl } from "@/server/lib/resolve-public-media-url";
 
 // ──────────────────────────────────────────────
 // Helpers
@@ -147,13 +152,23 @@ export const contentRouter = createTRPCRouter({
         });
       }
 
-      const hasRef =
-        Boolean(influencer.baseImageUrl?.trim()) ||
-        Boolean(influencer.avatarUrl?.trim());
-      const useFaceLock = input.useFaceReference && hasRef;
-      const referenceImageUrl = useFaceLock
-        ? (influencer.baseImageUrl?.trim() || influencer.avatarUrl?.trim() || undefined)
-        : undefined;
+      const rawRefUrl =
+        influencer.baseImageUrl?.trim() || influencer.avatarUrl?.trim() || undefined;
+      const referenceImageUrl =
+        input.useFaceReference && rawRefUrl
+          ? await resolvePublicMediaUrl(rawRefUrl)
+          : undefined;
+      const useFaceLock = input.useFaceReference && Boolean(referenceImageUrl);
+
+      if (input.useFaceReference && rawRefUrl && !referenceImageUrl) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            /localhost|127\.0\.0\.1/i.test(rawRefUrl)
+              ? LOCALHOST_REF_MESSAGE
+              : "Portrait de référence inaccessible. Regénérez l'image de base de l'influenceuse (onglet Modifier) ou désactivez « Verrouiller le visage ».",
+        });
+      }
 
       const initialGenerationParams = {
         scene: input.scene,
@@ -197,40 +212,44 @@ export const contentRouter = createTRPCRouter({
         },
       });
 
-      // Start async generation (fire and forget — status will be polled)
+      // Background generation — scheduled via Next.js `after()` on Vercel so the
+      // lambda stays alive after the tRPC response (plain fire-and-forget dies).
       const style = influencer.style as Record<string, string> | null;
-      // Sprint 14 — read the per-influencer visual DNA (Sprint 13 row) and
-      // forward it so the content prompt re-uses the same facial trait
-      // keywords as the portrait wizard. NULL on legacy rows is fine —
-      // buildFullPrompt just skips the trait block.
       const appearanceVariations =
         (influencer.appearanceVariations as AppearanceVariation | null) ?? undefined;
-      generateContentImage(user.id, influencer.age, {
-        gender: (influencer.gender as "female" | "male" | "nonbinary") ?? "female",
-        ethnicity: style?.ethnicity,
-        hairColor: style?.hairColor,
-        hairStyle: style?.hairStyle,
-        bodyType: style?.bodyType,
-        fashionStyle: style?.fashionStyle,
-      }, {
-        influencerId: influencer.id,
-        baseImageUrl: referenceImageUrl,
-        useReferenceFace: input.useFaceReference,
-        scene: input.scene,
-        pose: input.pose,
-        outfit: input.outfit,
-        expression: input.expression,
-        style: input.photoStyle,
-        lighting: input.timeOfDay,
-        location: input.location,
-        isNsfw: input.contentMode === "NSFW",
-        nsfwLevel: input.nsfwLevel,
-        customPrompt: input.customPrompt,
-        numberOfImages: input.numberOfImages,
-        appearanceVariations,
-      })
-        .then(async (result) => {
-          // Update content with results
+
+      const runPhotoGeneration = async () => {
+        try {
+          const result = await generateContentImage(
+            user.id,
+            influencer.age,
+            {
+              gender: (influencer.gender as "female" | "male" | "nonbinary") ?? "female",
+              ethnicity: style?.ethnicity,
+              hairColor: style?.hairColor,
+              hairStyle: style?.hairStyle,
+              bodyType: style?.bodyType,
+              fashionStyle: style?.fashionStyle,
+            },
+            {
+              influencerId: influencer.id,
+              baseImageUrl: referenceImageUrl,
+              useReferenceFace: useFaceLock,
+              scene: input.scene,
+              pose: input.pose,
+              outfit: input.outfit,
+              expression: input.expression,
+              style: input.photoStyle,
+              lighting: input.timeOfDay,
+              location: input.location,
+              isNsfw: input.contentMode === "NSFW",
+              nsfwLevel: input.nsfwLevel,
+              customPrompt: input.customPrompt,
+              numberOfImages: input.numberOfImages,
+              appearanceVariations,
+            }
+          );
+
           await db.content.update({
             where: { id: content.id },
             data: {
@@ -247,20 +266,27 @@ export const contentRouter = createTRPCRouter({
           });
           await db.generationJob.updateMany({
             where: { contentId: content.id },
-            data: { status: "COMPLETED", completedAt: new Date(), resultUrl: result.imageUrls[0] },
+            data: {
+              status: "COMPLETED",
+              completedAt: new Date(),
+              resultUrl: result.imageUrls[0],
+            },
           });
-        })
-        .catch(async (error) => {
-          console.error("[content.generatePhoto] Generation failed:", error);
+        } catch (error) {
+          const errText = error instanceof Error ? error.message : String(error);
+          console.error("[content.generatePhoto] Generation failed:", errText, error);
           await db.content.update({
             where: { id: content.id },
             data: { status: "FAILED" },
           });
           await db.generationJob.updateMany({
             where: { contentId: content.id },
-            data: { status: "FAILED", error: String(error) },
+            data: { status: "FAILED", error: errText },
           });
-        });
+        }
+      };
+
+      ctx.scheduleAfter(runPhotoGeneration);
 
       return { contentId: content.id, cost };
     }),
@@ -324,16 +350,22 @@ export const contentRouter = createTRPCRouter({
         });
       }
 
-      const baseImage = influencer.baseImageUrl.trim();
+      const baseImage = await resolvePublicMediaUrl(influencer.baseImageUrl.trim());
+      if (!baseImage) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            /localhost|127\.0\.0\.1/i.test(influencer.baseImageUrl)
+              ? LOCALHOST_REF_MESSAGE
+              : "Image de base inaccessible. Regénérez le portrait de l'influenceuse.",
+        });
+      }
       const avatarImage = influencer.avatarUrl?.trim();
-      // Only forward the avatar as a *separate* subject reference when it
-      // actually differs from the base image. The previous fallback
-      // (`avatarImage ?? baseImage`) caused the MiniMax E006 error
-      // ("cannot use both first_frame_image and subject_reference") whenever
-      // the wizard had set avatarUrl = baseImageUrl, which is the default
-      // path. The video service ignores it correctly when undefined.
-      const subjectReferenceUrl =
-        avatarImage && avatarImage !== baseImage ? avatarImage : undefined;
+      const resolvedAvatar =
+        avatarImage && avatarImage !== influencer.baseImageUrl.trim()
+          ? await resolvePublicMediaUrl(avatarImage)
+          : undefined;
+      const subjectReferenceUrl = resolvedAvatar;
 
       const initialReelParams = {
         duration: input.duration,
@@ -374,24 +406,25 @@ export const contentRouter = createTRPCRouter({
         },
       });
 
-      // Start async generation
       const durationMap: Record<number, 5 | 10> = { 15: 5, 30: 10, 60: 10 };
       const effectsStr =
         input.effects && input.effects.length > 0
           ? input.effects.join(",")
           : undefined;
-      generateVideo(user.id, {
-        influencerId: influencer.id,
-        baseImageUrl: baseImage,
-        subjectReferenceUrl,
-        duration: durationMap[input.duration] ?? 5,
-        script: input.script,
-        videoType: input.videoType,
-        effects: effectsStr,
-        reelStylePreset: input.reelStylePreset,
-        isNsfw: input.contentMode === "NSFW",
-      })
-        .then(async (result) => {
+
+      const runReelGeneration = async () => {
+        try {
+          const result = await generateVideo(user.id, {
+            influencerId: influencer.id,
+            baseImageUrl: baseImage,
+            subjectReferenceUrl,
+            duration: durationMap[input.duration] ?? 5,
+            script: input.script,
+            videoType: input.videoType,
+            effects: effectsStr,
+            reelStylePreset: input.reelStylePreset,
+            isNsfw: input.contentMode === "NSFW",
+          });
           await db.content.update({
             where: { id: content.id },
             data: {
@@ -408,18 +441,21 @@ export const contentRouter = createTRPCRouter({
             where: { contentId: content.id },
             data: { status: "COMPLETED", completedAt: new Date(), resultUrl: result.videoUrl },
           });
-        })
-        .catch(async (error) => {
-          console.error("[content.generateReel] Generation failed:", error);
+        } catch (error) {
+          const errText = error instanceof Error ? error.message : String(error);
+          console.error("[content.generateReel] Generation failed:", errText, error);
           await db.content.update({
             where: { id: content.id },
             data: { status: "FAILED" },
           });
           await db.generationJob.updateMany({
             where: { contentId: content.id },
-            data: { status: "FAILED", error: String(error) },
+            data: { status: "FAILED", error: errText },
           });
-        });
+        }
+      };
+
+      ctx.scheduleAfter(runReelGeneration);
 
       return { contentId: content.id, cost };
     }),
@@ -432,12 +468,30 @@ export const contentRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       await verifyContentOwnership(input.contentId, ctx.userId);
 
-      const content = await db.content.findUnique({
-        where: { id: input.contentId },
-        select: { status: true, mediaUrls: true, thumbnailUrl: true },
-      });
+      const [content, job] = await Promise.all([
+        db.content.findUnique({
+          where: { id: input.contentId },
+          select: { status: true, mediaUrls: true, thumbnailUrl: true },
+        }),
+        db.generationJob.findFirst({
+          where: { contentId: input.contentId },
+          orderBy: { createdAt: "desc" },
+          select: { error: true },
+        }),
+      ]);
 
-      return content;
+      if (!content) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Content not found" });
+      }
+
+      return {
+        status: content.status,
+        mediaUrls: content.mediaUrls,
+        thumbnailUrl: content.thumbnailUrl,
+        errorMessage: job?.error
+          ? formatGenerationErrorForUser(job.error)
+          : null,
+      };
     }),
 
   /**

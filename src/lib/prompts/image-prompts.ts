@@ -2,6 +2,8 @@
 // Image Generation Prompt Templates
 // ──────────────────────────────────────────────
 
+import type { ContentImageEngine } from "@/lib/prompts/nano-borderline";
+
 export type Gender = "female" | "male" | "nonbinary";
 export type GenderedTemplate = { female: string; male: string; nonbinary: string };
 
@@ -556,6 +558,11 @@ export interface PromptBuildInput {
    * "two different people" — Grok flagged this in the 2026-05-18 audit.
    */
   appearanceVariations?: AppearanceVariation;
+  /**
+   * When Kontext is chosen (borderline guard or Nano E005 fallback), we add
+   * light framing hints so the feed stays cohesive without forcing wide shots.
+   */
+  contentEngine?: ContentImageEngine;
 }
 
 /**
@@ -730,6 +737,16 @@ export function buildFullPrompt(input: PromptBuildInput): string {
   );
 
   if (input.customPrompt) parts.push(input.customPrompt);
+
+  // Kontext path — same bust-friendly 3:4 feel as Nano, slightly softer flash wording
+  // so the model switch is less obvious in the feed (not a distant full-body shot).
+  if (input.contentEngine === "kontext") {
+    parts.push(
+      "medium shot from mid-torso up, face clearly visible and recognizable, " +
+        "natural candid Instagram story framing, subject fills most of the vertical frame, " +
+        "consistent skin tone with the reference person, real iPhone snapshot energy"
+    );
+  }
 
   return parts.join(", ");
 }

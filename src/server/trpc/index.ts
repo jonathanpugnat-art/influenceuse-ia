@@ -1,7 +1,12 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 
-export const createTRPCContext = async () => {
+export type ScheduleAfterFn = (fn: () => void | Promise<void>) => void;
+
+export const createTRPCContext = async (opts?: {
+  /** Next.js `after()` — keeps serverless alive for post-response work on Vercel. */
+  scheduleAfter?: ScheduleAfterFn;
+}) => {
   // Dynamically import Clerk auth only when keys are configured
   let userId: string | null = null;
   if (process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
@@ -13,8 +18,25 @@ export const createTRPCContext = async () => {
       // Clerk not configured, userId stays null
     }
   }
-  return { userId };
+
+  const scheduleAfter: ScheduleAfterFn =
+    opts?.scheduleAfter ??
+    ((fn) => {
+      void Promise.resolve(fn());
+    });
+
+  return { userId, scheduleAfter };
 };
+
+/** Test callers — runs scheduled work inline instead of Next.js `after()`. */
+export function mockTRPCContext(userId: string | null) {
+  return {
+    userId,
+    scheduleAfter: (fn: () => void | Promise<void>) => {
+      void Promise.resolve(fn());
+    },
+  };
+}
 
 type Context = Awaited<ReturnType<typeof createTRPCContext>>;
 

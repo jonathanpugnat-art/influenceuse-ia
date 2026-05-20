@@ -193,7 +193,11 @@ export function ReelPreview() {
         setGenerationStep("");
       }, 1500);
     } else if (statusData.status === "FAILED") {
-      toast.error("La génération a échoué. Réessayez.");
+      const errMsg =
+        "errorMessage" in statusData && statusData.errorMessage
+          ? String(statusData.errorMessage)
+          : "La génération a échoué. Réessayez.";
+      toast.error(errMsg, { duration: 8000 });
       setIsGenerating(false);
       setGenerationStep("");
       if (simulationRef.current) clearInterval(simulationRef.current);

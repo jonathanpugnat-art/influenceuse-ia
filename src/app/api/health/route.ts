@@ -23,19 +23,25 @@ function getAutoPublishReadiness() {
     process.env.ENCRYPTION_SECRET && process.env.ENCRYPTION_SECRET.length >= 32
   );
 
-  return {
-    cron,
-    encryption,
-    platforms: {
-      instagram,
-      tiktok,
-      // OnlyFans is intentionally a manual-export flow — no automated post
-      // happens, so "ready" only reflects whether the ZIP bundling stack
-      // (R2 or local fallback) has what it needs.
-      onlyfans: Boolean(process.env.R2_ACCESS_KEY_ID) || true,
-    },
-    ready: cron && encryption,
-  };
+    const replicate = Boolean(process.env.REPLICATE_API_TOKEN?.trim());
+    const r2 =
+      Boolean(process.env.R2_ACCOUNT_ID) &&
+      Boolean(process.env.R2_ACCESS_KEY_ID) &&
+      Boolean(process.env.R2_SECRET_ACCESS_KEY);
+    const r2Public = Boolean(process.env.R2_PUBLIC_URL?.trim());
+
+    return {
+      cron,
+      encryption,
+      replicate,
+      storage: { r2, r2Public },
+      platforms: {
+        instagram,
+        tiktok,
+        onlyfans: r2 || !process.env.VERCEL,
+      },
+      ready: cron && encryption && replicate && (r2Public || !process.env.VERCEL),
+    };
 }
 
 /**

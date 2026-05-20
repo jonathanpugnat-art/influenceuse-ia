@@ -463,6 +463,7 @@ export const publishRouter = createTRPCRouter({
       z.object({
         startDate: z.string().transform((s) => new Date(s)),
         endDate: z.string().transform((s) => new Date(s)),
+        influencerId: z.string().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -470,7 +471,10 @@ export const publishRouter = createTRPCRouter({
 
       const contents = await db.content.findMany({
         where: {
-          influencer: { userId: user.id },
+          influencer: {
+            userId: user.id,
+            ...(input.influencerId ? { id: input.influencerId } : {}),
+          },
           OR: [
             {
               status: "DRAFT",

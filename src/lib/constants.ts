@@ -13,7 +13,7 @@
 // Image model routing (decided after the A/B/C bench of 2026-05-15):
 //   - All SFW content photos (any plan, with face reference)
 //                                  → Google Nano Banana (default)
-//   - SFW borderline scenarios (beach/lingerie/intimate)
+//   - SFW borderline scenarios (see nano-borderline.ts — maintained via bench-nano-keywords)
 //                                  → Flux Kontext Pro   (Google safety blocks)
 //   - SFW content without face ref → Flux 1.1 Pro
 //   - NSFW                         → Flux Dev Uncensored

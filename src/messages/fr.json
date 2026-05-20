@@ -259,7 +259,18 @@
     "nicheTech": "Tech",
     "nicheGaming": "Gaming",
     "nicheAdult": "Adult",
-    "nicheFood": "Food"
+    "nicheFood": "Food",
+    "profileTabs": {
+      "analyticsSubtitle": "Performances de cette influenceuse sur la période choisie.",
+      "viewFullAnalytics": "Analytics complètes",
+      "analyticsEmptyTitle": "Pas encore de données",
+      "analyticsEmptyHint": "Publiez du contenu pour voir l'évolution des vues, likes et engagement.",
+      "calendarSubtitle": "Publications planifiées et publiées pour cette influenceuse.",
+      "viewFullCalendar": "Calendrier complet",
+      "calendarEmptyTitle": "Aucune publication planifiée",
+      "calendarEmptyHint": "Créez du contenu puis programmez-le depuis le calendrier.",
+      "createContent": "Créer du contenu"
+    }
   },
   "content": {
     "title": "Créer du Contenu",

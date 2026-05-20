@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Sparkles, Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -38,14 +38,21 @@ type PlatformValue = (typeof PLATFORM_OPTIONS)[number]["value"];
 interface Props {
   open: boolean;
   onClose: () => void;
+  /** Pre-select and lock influencer when opened from a profile tab. */
+  defaultInfluencerId?: string;
   /** Called after a successful plan generation so the calendar can refetch. */
   onCreated?: (batchId: string, postsCreated: number) => void;
 }
 
-export function ContentPlanDialog({ open, onClose, onCreated }: Props) {
+export function ContentPlanDialog({
+  open,
+  onClose,
+  defaultInfluencerId,
+  onCreated,
+}: Props) {
   const t = useTranslations("calendar");
 
-  const [influencerId, setInfluencerId] = useState<string>("");
+  const [influencerId, setInfluencerId] = useState<string>(defaultInfluencerId ?? "");
   const [days, setDays] = useState<number>(7);
   const [postsPerDay, setPostsPerDay] = useState<number>(2);
   const [platforms, setPlatforms] = useState<PlatformValue[]>(["INSTAGRAM", "TIKTOK"]);
@@ -57,6 +64,14 @@ export function ContentPlanDialog({ open, onClose, onCreated }: Props) {
     { placeholderData: (prev) => prev }
   );
   const influencers = influencersData?.influencers ?? [];
+  const lockInfluencer = !!defaultInfluencerId;
+
+  // Sync when dialog opens with a profile-scoped default.
+  useEffect(() => {
+    if (open && defaultInfluencerId) {
+      setInfluencerId(defaultInfluencerId);
+    }
+  }, [open, defaultInfluencerId]);
 
   const utils = trpc.useUtils();
   const planMutation = trpc.content.generateContentPlan.useMutation({
@@ -111,7 +126,11 @@ export function ContentPlanDialog({ open, onClose, onCreated }: Props) {
           {/* Influencer */}
           <div className="space-y-1.5">
             <Label className="text-xs text-slate-400">{t("planInfluencer")}</Label>
-            <Select value={influencerId} onValueChange={setInfluencerId}>
+            <Select
+              value={influencerId}
+              onValueChange={setInfluencerId}
+              disabled={lockInfluencer}
+            >
               <SelectTrigger className="border-slate-800/50 bg-slate-800/30 text-white">
                 <SelectValue placeholder={t("planInfluencerPlaceholder")} />
               </SelectTrigger>

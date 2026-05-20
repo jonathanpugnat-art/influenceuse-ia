@@ -96,12 +96,20 @@ export async function uploadFile(
           ContentType: contentType,
         })
       );
-      return R2_PUBLIC_URL ? `${R2_PUBLIC_URL}/${key}` : key;
+      if (R2_PUBLIC_URL) return `${R2_PUBLIC_URL}/${key}`;
+      // Object is on R2 but no custom domain — presigned URL so Replicate & browsers can fetch it.
+      return getPresignedUrl(key, 7 * 86400);
     } catch (error) {
       disableR2(error);
     }
   }
 
+  // Vercel/serverless has no persistent public/uploads — require R2 in production.
+  if (process.env.VERCEL) {
+    throw new Error(
+      "R2_PUBLIC_URL / stockage Cloudflare requis en production (upload local impossible sur Vercel)."
+    );
+  }
   return saveLocal(key, buffer);
 }
 

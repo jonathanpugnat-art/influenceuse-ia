@@ -1,6 +1,7 @@
 "use client";
 
-import { use } from "react";
+import { use, useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -36,6 +37,8 @@ import {
 import { InfluencerFeed } from "@/components/influencer/influencer-feed";
 import { InfluencerSettings } from "@/components/influencer/influencer-settings";
 import { InfluencerSocial } from "@/components/influencer/influencer-social";
+import { InfluencerAnalyticsTab } from "@/components/influencer/influencer-analytics-tab";
+import { InfluencerCalendarTab } from "@/components/influencer/influencer-calendar-tab";
 import { trpc } from "@/lib/trpc";
 import {
   nicheConfig,
@@ -51,7 +54,23 @@ export default function InfluencerDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const searchParams = useSearchParams();
   const utils = trpc.useUtils();
+
+  const PROFILE_TABS = ["feed", "analytics", "calendar", "social", "settings"] as const;
+  type ProfileTab = (typeof PROFILE_TABS)[number];
+
+  const tabFromUrl = searchParams.get("tab");
+  const initialTab: ProfileTab = PROFILE_TABS.includes(tabFromUrl as ProfileTab)
+    ? (tabFromUrl as ProfileTab)
+    : "feed";
+  const [activeTab, setActiveTab] = useState<ProfileTab>(initialTab);
+
+  useEffect(() => {
+    if (PROFILE_TABS.includes(tabFromUrl as ProfileTab)) {
+      setActiveTab(tabFromUrl as ProfileTab);
+    }
+  }, [tabFromUrl]);
 
   const { data: influencer, isLoading, error } = trpc.influencer.getById.useQuery({ id });
 
@@ -274,7 +293,7 @@ export default function InfluencerDetailPage({
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="feed" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ProfileTab)} className="space-y-4">
         <TabsList className="h-auto gap-1 rounded-xl border border-slate-800/50 bg-slate-900/50 p-1">
           <TabsTrigger
             value="feed"
@@ -329,50 +348,14 @@ export default function InfluencerDetailPage({
         </TabsContent>
 
         <TabsContent value="analytics">
-          <div className="rounded-2xl border border-slate-800/50 bg-slate-900/50 p-8 backdrop-blur-xl">
-            <div className="flex flex-col items-center justify-center py-8">
-              <BarChart3 className="h-12 w-12 text-slate-600" />
-              <h3 className="mt-4 text-lg font-semibold text-white">
-                Analytics détaillées
-              </h3>
-              <p className="mt-2 text-sm text-slate-400">
-                Bientôt disponible — Suivez l&apos;évolution de vos performances
-              </p>
-              {influencer.analytics && (
-                <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                  <StatBox
-                    label="Contenus"
-                    value={influencer.analytics.totalContents.toString()}
-                  />
-                  <StatBox
-                    label="Vues totales"
-                    value={formatFollowers(influencer.analytics.totalViews)}
-                  />
-                  <StatBox
-                    label="Likes totaux"
-                    value={formatFollowers(influencer.analytics.totalLikes)}
-                  />
-                  <StatBox
-                    label="Engagement"
-                    value={`${influencer.analytics.avgEngagement.toFixed(1)}%`}
-                  />
-                </div>
-              )}
-            </div>
+          <div className="rounded-2xl border border-slate-800/50 bg-slate-900/50 p-6 backdrop-blur-xl md:p-8">
+            <InfluencerAnalyticsTab influencerId={id} />
           </div>
         </TabsContent>
 
         <TabsContent value="calendar">
-          <div className="rounded-2xl border border-slate-800/50 bg-slate-900/50 p-8 backdrop-blur-xl">
-            <div className="flex flex-col items-center justify-center py-8">
-              <Calendar className="h-12 w-12 text-slate-600" />
-              <h3 className="mt-4 text-lg font-semibold text-white">
-                Calendrier de publication
-              </h3>
-              <p className="mt-2 text-sm text-slate-400">
-                Bientôt disponible — Planifiez vos publications à l&apos;avance
-              </p>
-            </div>
+          <div className="rounded-2xl border border-slate-800/50 bg-slate-900/50 p-6 backdrop-blur-xl md:p-8">
+            <InfluencerCalendarTab influencerId={id} />
           </div>
         </TabsContent>
 
@@ -396,15 +379,6 @@ export default function InfluencerDetailPage({
         </TabsContent>
       </Tabs>
     </motion.div>
-  );
-}
-
-function StatBox({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl bg-slate-800/30 p-4 text-center">
-      <p className="text-2xl font-bold text-white">{value}</p>
-      <p className="mt-1 text-xs text-slate-500">{label}</p>
-    </div>
   );
 }
 

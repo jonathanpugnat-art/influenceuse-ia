@@ -46,6 +46,8 @@ interface ScheduleForDayDialogProps {
   onClose: () => void;
   /** The calendar day that was clicked. Time-of-day defaults to 09:00. */
   day: Date | null;
+  /** When set, only READY contents for this influencer appear in the picker. */
+  influencerId?: string;
   /** Called after a successful schedule so the parent can refetch events. */
   onScheduled?: () => void;
 }
@@ -54,6 +56,7 @@ export function ScheduleForDayDialog({
   open,
   onClose,
   day,
+  influencerId,
   onScheduled,
 }: ScheduleForDayDialogProps) {
   const t = useTranslations("calendar.schedule");
@@ -78,7 +81,7 @@ export function ScheduleForDayDialog({
   }, [open]);
 
   const readyQuery = trpc.publish.listReadyForScheduling.useQuery(
-    { limit: 30 },
+    { limit: 30, influencerId },
     {
       enabled: open,
       // Stale-while-revalidate so reopening the dialog feels instant.

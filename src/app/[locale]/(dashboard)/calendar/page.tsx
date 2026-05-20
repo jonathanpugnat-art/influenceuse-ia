@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion, type Variants } from "framer-motion";
 import {
   addMonths,
@@ -38,6 +39,7 @@ import { ScheduleForDayDialog } from "@/components/calendar/schedule-for-day-dia
 import { BatchProgressPanel } from "@/components/calendar/batch-progress-panel";
 import { RecyclePanel } from "@/components/calendar/recycle-panel";
 import { trpc } from "@/lib/trpc";
+import { filterCalendarEventsByInfluencer } from "@/lib/calendar-utils";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { CalendarEvent, CalendarView } from "@/components/calendar/types";
@@ -52,6 +54,9 @@ const sectionVariants: Variants = {
 };
 
 export default function CalendarPage() {
+  const searchParams = useSearchParams();
+  const filterInfluencerId = searchParams.get("influencer") ?? undefined;
+
   const t = useTranslations("calendar");
   const tCommon = useTranslations("common");
   const tDashboard = useTranslations("dashboard");
@@ -95,6 +100,7 @@ export default function CalendarPage() {
     {
       startDate: dateRange.start.toISOString(),
       endDate: dateRange.end.toISOString(),
+      influencerId: filterInfluencerId,
     },
     { placeholderData: (prev) => prev }
   );
@@ -117,7 +123,12 @@ export default function CalendarPage() {
     onError: (err) => toast.error(err.message),
   });
 
-  const calendarEvents: CalendarEvent[] = (events ?? []) as CalendarEvent[];
+  const calendarEvents: CalendarEvent[] = useMemo(() => {
+    const raw = (events ?? []) as CalendarEvent[];
+    return filterInfluencerId
+      ? filterCalendarEventsByInfluencer(raw, filterInfluencerId)
+      : raw;
+  }, [events, filterInfluencerId]);
 
   // Navigation
   const goNext = () => {
@@ -317,13 +328,18 @@ export default function CalendarPage() {
       />
 
       {/* Content plan dialog (Phase 3 — agent contenu) */}
-      <ContentPlanDialog open={planOpen} onClose={() => setPlanOpen(false)} />
+      <ContentPlanDialog
+        open={planOpen}
+        onClose={() => setPlanOpen(false)}
+        defaultInfluencerId={filterInfluencerId}
+      />
 
       {/* Sprint 14 — schedule existing READY content for the clicked day */}
       <ScheduleForDayDialog
         open={scheduleOpen}
         onClose={() => setScheduleOpen(false)}
         day={scheduleDay}
+        influencerId={filterInfluencerId}
         onScheduled={() => utils.publish.getCalendarEvents.invalidate()}
       />
     </motion.div>

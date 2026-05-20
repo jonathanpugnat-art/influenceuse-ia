@@ -69,19 +69,47 @@ export function PhotoPreview({
   useEffect(() => {
     if (!statusData || !isGenerating) return;
 
-    if (statusData.status === "READY" && statusData.mediaUrls.length > 0) {
-      setGeneratedUrls(statusData.mediaUrls);
-      setGenerationStep("done");
-      setTimeout(() => {
+    if (statusData.status === "READY") {
+      if (statusData.mediaUrls.length > 0) {
+        setGeneratedUrls(statusData.mediaUrls);
+        setGenerationStep("done");
+        setTimeout(() => {
+          setIsGenerating(false);
+          setGenerationStep("");
+        }, 1000);
+      } else {
+        toast.error(
+          "Génération terminée sans image. Réessayez ou contactez le support.",
+          { duration: 8000 }
+        );
         setIsGenerating(false);
         setGenerationStep("");
-      }, 1000);
+      }
     } else if (statusData.status === "FAILED") {
-      toast.error("La génération a échoué. Réessayez.");
+      const errMsg =
+        "errorMessage" in statusData && statusData.errorMessage
+          ? String(statusData.errorMessage)
+          : "La génération a échoué. Réessayez.";
+      toast.error(errMsg, { duration: 8000 });
       setIsGenerating(false);
       setGenerationStep("");
     }
   }, [statusData, isGenerating, setGeneratedUrls, setGenerationStep, setIsGenerating]);
+
+  // Stop infinite spinner if the server never updates GENERATING (Vercel timeout, etc.)
+  useEffect(() => {
+    if (!isGenerating || !contentId) return;
+    const timeoutMs = 8 * 60 * 1000;
+    const timer = setTimeout(() => {
+      toast.error(
+        "La génération prend trop de temps. Vérifiez vos crédits Replicate et réessayez.",
+        { duration: 10000 }
+      );
+      setIsGenerating(false);
+      setGenerationStep("");
+    }, timeoutMs);
+    return () => clearTimeout(timer);
+  }, [isGenerating, contentId, setIsGenerating, setGenerationStep]);
 
   const handleGenerate = () => {
     if (!params.influencerId) {

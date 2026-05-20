@@ -163,6 +163,14 @@ describe("image-prompts", () => {
       expect(result).not.toContain("same exact person as the reference photo");
     });
 
+    it("adds kontext harmonization block without forcing wide shot", () => {
+      const nano = buildFullPrompt({ contentEngine: "nano", expression: "natural" });
+      const kontext = buildFullPrompt({ contentEngine: "kontext", expression: "natural" });
+      expect(kontext).toContain("medium shot from mid-torso up");
+      expect(kontext).not.toContain("tiny figure in the distance");
+      expect(nano).not.toContain("medium shot from mid-torso up");
+    });
+
     it("always ends with quality and can append customPrompt", () => {
       const result = buildFullPrompt({
         customPrompt: "extra detail",

@@ -14,6 +14,10 @@ import {
   type AppearanceVariation,
 } from "@/lib/prompts/image-prompts";
 import { uploadFromUrl } from "@/server/services/storage.service";
+import {
+  isContentSafetyFilterError,
+  NSFW_USER_MESSAGE as NSFW_ERROR_MESSAGE,
+} from "@/lib/generation-errors";
 import { checkCredits, deductCredits } from "@/server/services/credits.service";
 import { CREDIT_COSTS } from "@/lib/constants";
 import {
@@ -21,6 +25,11 @@ import {
   runWithConcurrency,
   MAX_PARALLEL_PREDICTIONS_PER_CALL,
 } from "@/server/services/replicate-utils";
+import {
+  shouldRouteToKontext,
+  getMatchedBorderlineKeywords,
+  type ContentImageEngine,
+} from "@/lib/prompts/nano-borderline";
 
 // ──────────────────────────────────────────────
 // Types
@@ -113,76 +122,6 @@ const NANO_BANANA_DEFAULTS = {
   output_format: "jpg",
 } as const;
 
-const NSFW_ERROR_MESSAGE =
-  "La génération a été bloquée par le filtre de sécurité. Essaie avec des paramètres différents (style, tenue).";
-
-/**
- * Scenarios that Google's safety filter on Nano Banana refuses to render
- * (confirmed in the 2026-05-15 bench: Amani beach + leopard sarong → 100%
- * blocked while Flux Kontext rendered it fine).
- *
- * We pre-route those to Flux Kontext Pro so the user gets a usable photo
- * instead of an opaque "Failed to generate image" error. The matcher is
- * intentionally lexical (single-pass over scene/outfit/customPrompt) — it
- * trades one false-positive Kontext routing now and then for never
- * surprising the user with a blocked generation.
- */
-const BORDERLINE_KEYWORDS = [
-  // Beach / pool / water
-  "beach",
-  "plage",
-  "pool",
-  "piscine",
-  "poolside",
-  "ocean",
-  "shore",
-  "sand",
-  "sea",
-  // Swimwear / underwear / intimate
-  "bikini",
-  "swimsuit",
-  "swimwear",
-  "maillot de bain",
-  "lingerie",
-  "underwear",
-  "bra",
-  "thong",
-  "panties",
-  "boudoir",
-  "intimate",
-  // Bath / shower
-  "bathtub",
-  "shower",
-  "bathrobe",
-  "peignoir",
-  "towel only",
-  "wrapped in a towel",
-  // Suggestive look (still SFW but triggers Google)
-  "sarong",
-  "see-through",
-  "transparent",
-  "wet shirt",
-  "wet t-shirt",
-];
-
-/**
- * Lexical check over the scene description + outfit + custom prompt to
- * decide if we should pre-route to Flux Kontext (safer for "borderline
- * but SFW" shots). NSFW is handled by `MODEL_NSFW` separately, never here.
- */
-function isBorderlineSfw(input: ImageGenerationInput): boolean {
-  if (input.isNsfw) return false;
-  const haystack = [
-    input.scene,
-    input.outfit,
-    input.location ?? "",
-    input.customPrompt ?? "",
-  ]
-    .join(" ")
-    .toLowerCase();
-  return BORDERLINE_KEYWORDS.some((kw) => haystack.includes(kw));
-}
-
 let _replicate: Replicate | null = null;
 
 function getReplicate(): Replicate {
@@ -195,15 +134,6 @@ function getReplicate(): Replicate {
     _replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
   }
   return _replicate;
-}
-
-function isNsfwFilterError(error: unknown): boolean {
-  const msg = error instanceof Error ? error.message : String(error);
-  return (
-    msg.toLowerCase().includes("nsfw") ||
-    msg.toLowerCase().includes("safety") ||
-    msg.toLowerCase().includes("content filtered")
-  );
 }
 
 function extractUrl(item: unknown): string {
@@ -325,7 +255,7 @@ async function runReplicatePrediction(
     }
     return urls;
   } catch (error) {
-    if (isNsfwFilterError(error) && retryWithSafePrompt) {
+    if (isContentSafetyFilterError(error) && retryWithSafePrompt) {
       console.warn(
         "[ai-image] NSFW filter triggered, retrying with safe prompt prefix..."
       );
@@ -336,7 +266,7 @@ async function runReplicatePrediction(
       return runReplicatePrediction(model, safeInput, false);
     }
 
-    if (isNsfwFilterError(error)) {
+    if (isContentSafetyFilterError(error)) {
       throw new Error(NSFW_ERROR_MESSAGE);
     }
 
@@ -518,44 +448,51 @@ export async function generateContentImage(
   const sendsRefImage = !input.isNsfw && wantFaceLock && hasRefUrl;
   const useIdentityPrompt = sendsRefImage;
 
-  const promptInput: PromptBuildInput = {
-    gender: influencerStyle.gender,
-    age: influencerAge,
-    ethnicity: influencerStyle.ethnicity,
-    hairColor: influencerStyle.hairColor,
-    hairStyle: influencerStyle.hairStyle,
-    bodyType: influencerStyle.bodyType,
-    fashionStyle: influencerStyle.fashionStyle,
+  const borderlineFields = {
     scene: input.scene,
+    outfit: input.outfit,
+    location: input.location,
+    customPrompt: input.customPrompt,
     pose: input.pose,
     expression: input.expression,
-    style: input.style,
-    lighting: input.lighting,
-    location: input.location,
-    outfit: input.outfit,
-    useReferenceFace: useIdentityPrompt,
-    isNsfw: input.isNsfw,
-    nsfwLevel: input.nsfwLevel,
-    customPrompt: input.customPrompt,
-    // Sprint 14 — propagate the shared visual DNA so the content prompt
-    // re-states the same eyes/nose/freckles as the portrait wizard. Big
-    // win on multi-photo coherence inside one influencer's feed.
-    appearanceVariations: input.appearanceVariations,
   };
+  const borderline = !input.isNsfw && shouldRouteToKontext(borderlineFields);
+  const matchedKeywords = borderline
+    ? getMatchedBorderlineKeywords(borderlineFields)
+    : [];
 
-  const prompt = buildFullPrompt(promptInput);
+  const buildPromptForEngine = (engine: ContentImageEngine) =>
+    buildFullPrompt({
+      gender: influencerStyle.gender,
+      age: influencerAge,
+      ethnicity: influencerStyle.ethnicity,
+      hairColor: influencerStyle.hairColor,
+      hairStyle: influencerStyle.hairStyle,
+      bodyType: influencerStyle.bodyType,
+      fashionStyle: influencerStyle.fashionStyle,
+      scene: input.scene,
+      pose: input.pose,
+      expression: input.expression,
+      style: input.style,
+      lighting: input.lighting,
+      location: input.location,
+      outfit: input.outfit,
+      useReferenceFace: useIdentityPrompt,
+      isNsfw: input.isNsfw,
+      nsfwLevel: input.nsfwLevel,
+      customPrompt: input.customPrompt,
+      appearanceVariations: input.appearanceVariations,
+      contentEngine: engine,
+    });
+
+  const primaryEngine: ContentImageEngine = borderline ? "kontext" : "nano";
+  let usedEngine: ContentImageEngine = primaryEngine;
+  let prompt = buildPromptForEngine(primaryEngine);
   const negativePrompt = buildNegativePrompt(input.isNsfw, influencerStyle.gender ?? "female", {
     lockFace: useIdentityPrompt,
   });
 
-  // ── Optimal model routing (post 2026-05-15 A/B/C bench) ─────────────────
-  //   NSFW                                      → Flux Dev Uncensored
-  //   SFW + face ref + borderline scene         → Flux Kontext Pro
-  //   SFW + face ref + safe scene               → Google Nano Banana
-  //                                               (auto-fallback to Kontext
-  //                                                if Google's safety blocks)
-  //   SFW without face ref                      → Flux 1.1 Pro (T2I)
-  const borderline = isBorderlineSfw(input);
+  // ── Model routing (bench 2026-05-15 + nano-borderline.ts) ────────────────
 
   type ModelPlan = {
     model: string;
@@ -620,7 +557,7 @@ export async function generateContentImage(
       "[ai-image] Generating content image with",
       plan.model,
       sendsRefImage ? "(face-locked)" : "(no reference)",
-      borderline ? "(borderline → kontext)" : ""
+      borderline ? `(borderline → kontext, keywords: ${matchedKeywords.join(", ") || "n/a"})` : "(nano-first)"
     );
 
     let outputUrls: string[];
@@ -635,16 +572,18 @@ export async function generateContentImage(
       // Google Nano Banana sometimes returns a safety/content error on a
       // shot that BORDERLINE_KEYWORDS didn't catch. Fall back to Kontext
       // automatically so the user gets a photo instead of a hard failure.
-      if (plan.fallback && isNsfwFilterError(err)) {
+      if (plan.fallback && isContentSafetyFilterError(err)) {
         console.warn(
           `[ai-image] ${plan.model} blocked by safety filter, falling back to ${plan.fallback.model}…`
         );
-        outputUrls = await runMultiplePredictions(
-          plan.fallback.model,
-          plan.fallback.params,
-          numImages
-        );
-        usedParams = plan.fallback.params;
+        const kontextPrompt = buildPromptForEngine("kontext");
+        outputUrls = await runMultiplePredictions(plan.fallback.model, {
+          ...plan.fallback.params,
+          prompt: kontextPrompt,
+        }, numImages);
+        usedParams = { ...plan.fallback.params, prompt: kontextPrompt };
+        prompt = kontextPrompt;
+        usedEngine = "kontext";
       } else {
         throw err;
       }
@@ -663,7 +602,11 @@ export async function generateContentImage(
       imageUrls: storedUrls,
       promptUsed: prompt,
       negativePrompt,
-      parameters: usedParams,
+      parameters: {
+        ...usedParams,
+        contentEngine: usedEngine,
+        borderlineKeywords: matchedKeywords,
+      },
     };
   } catch (error) {
     console.error("[ai-image] generateContentImage error:", error);
