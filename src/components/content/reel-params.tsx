@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Users, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
+import { Users, ChevronDown, ChevronUp, Music2, Info } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,20 +14,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { trpc } from "@/lib/trpc";
 import { useReelCreator } from "@/hooks/use-reel-creator";
 import { cn } from "@/lib/utils";
 import { presetDefaultVideoModelLabel } from "@/lib/prompts/video-prompts";
+import { REEL_CREATOR_EXAMPLES } from "@/lib/reel-creator-examples";
 
 function Chip({
   label,
-  emoji,
   selected,
   onClick,
 }: {
   label: string;
-  emoji?: string;
   selected: boolean;
   onClick: () => void;
 }) {
@@ -42,36 +40,22 @@ function Chip({
           : "border-slate-700 bg-slate-800/30 text-slate-400 hover:border-slate-600"
       )}
     >
-      {emoji && <span className="mr-1">{emoji}</span>}
       {label}
     </button>
   );
 }
 
-const videoTypes = [
-  { value: "talking_head", emoji: "🗣️", label: "Talking Head" },
-  { value: "transition", emoji: "🔄", label: "Transition" },
-  { value: "dance", emoji: "💃", label: "Danse" },
-  { value: "grwm", emoji: "💄", label: "GRWM" },
-  { value: "unboxing", emoji: "📦", label: "Unboxing" },
-  { value: "day_in_life", emoji: "📅", label: "Day in my life" },
-  { value: "workout", emoji: "🏋️", label: "Workout" },
-  { value: "sketch", emoji: "🎭", label: "Sketch" },
-];
-
 const effectOptions = [
-  { value: "none", label: "Aucun" },
-  { value: "slow-mo", label: "Slow-mo" },
-  { value: "zoom", label: "Zoom dynamique" },
-  { value: "split", label: "Split screen" },
-  { value: "glitch", label: "Glitch" },
-  { value: "bokeh", label: "Bokeh" },
+  { value: "none", labelKey: "reelEffectNone" as const },
+  { value: "slow-mo", labelKey: "reelEffectSlowMo" as const },
+  { value: "zoom", labelKey: "reelEffectZoom" as const },
 ];
 
 export function ReelParams() {
   const t = useTranslations("content");
   const { params, updateParams } = useReelCreator();
-  const [showNsfw, setShowNsfw] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [activeExampleId, setActiveExampleId] = useState<string | null>(null);
 
   const { data: influencersData } = trpc.influencer.getAll.useQuery(
     { limit: 50 },
@@ -80,6 +64,22 @@ export function ReelParams() {
 
   const influencers = influencersData?.influencers ?? [];
   const selectedInfluencer = influencers.find((i) => i.id === params.influencerId);
+
+  const applyExample = (id: string) => {
+    const ex = REEL_CREATOR_EXAMPLES.find((e) => e.id === id);
+    if (!ex) return;
+    setActiveExampleId(id);
+    updateParams({
+      videoType: ex.videoType,
+      sceneDescription: ex.sceneDescription,
+      outfit: ex.outfit,
+      script: ex.script,
+      reelStylePreset: "natural_motion",
+      music: "none",
+      effects: [],
+      textOverlay: "",
+    });
+  };
 
   const toggleEffect = (effect: string) => {
     if (effect === "none") {
@@ -96,12 +96,13 @@ export function ReelParams() {
 
   return (
     <div className="h-full overflow-y-auto border-r border-slate-800/50 bg-slate-900/30 p-4 scrollbar-thin">
-      <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-slate-500">
+      <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-slate-500">
         {t("paramsReel")}
       </h2>
+      <p className="mb-4 text-xs text-slate-600">{t("reelCreatorIntro")}</p>
 
       <div className="space-y-5">
-        {/* Influencer selector */}
+        {/* Influencer */}
         <div className="space-y-2">
           <Label className="text-xs text-slate-400">{t("influencerLabel")}</Label>
           {influencers.length === 0 ? (
@@ -142,68 +143,129 @@ export function ReelParams() {
           )}
         </div>
 
-        {/* Duration */}
-        <div className="space-y-2">
-          <Label className="text-xs text-slate-400">Durée</Label>
-          <div className="flex gap-2">
-            {([15, 30, 60] as const).map((d) => (
+        {/* Duration + format — compact */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <Label className="text-xs text-slate-400">{t("reelDurationLabel")}</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {([15, 30, 60] as const).map((d) => (
+                <Chip
+                  key={d}
+                  label={`${d}s`}
+                  selected={params.duration === d}
+                  onClick={() => updateParams({ duration: d })}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs text-slate-400">{t("reelFormatLabel")}</Label>
+            <div className="flex gap-1.5">
               <Chip
-                key={d}
-                label={`${d}s`}
-                selected={params.duration === d}
-                onClick={() => updateParams({ duration: d })}
+                label="9:16"
+                selected={params.format === "VERTICAL"}
+                onClick={() => updateParams({ format: "VERTICAL" })}
               />
+              <Chip
+                label="1:1"
+                selected={params.format === "SQUARE"}
+                onClick={() => updateParams({ format: "SQUARE" })}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Real IG examples — replaces abstract "video types" */}
+        <div className="space-y-2">
+          <Label className="text-xs text-slate-400">{t("reelExamplesTitle")}</Label>
+          <p className="text-[11px] text-slate-600">{t("reelExamplesHint")}</p>
+          <div className="flex flex-col gap-2">
+            {REEL_CREATOR_EXAMPLES.map((ex) => (
+              <button
+                key={ex.id}
+                type="button"
+                onClick={() => applyExample(ex.id)}
+                className={cn(
+                  "rounded-xl border px-3 py-2.5 text-left transition-all",
+                  activeExampleId === ex.id
+                    ? "border-violet-500 bg-violet-500/15"
+                    : "border-slate-700 bg-slate-800/30 hover:border-slate-600"
+                )}
+              >
+                <div className="text-xs font-medium text-white">
+                  {t(`reelExamples.${ex.id}.title`)}
+                </div>
+                <div className="mt-0.5 text-[11px] leading-snug text-slate-500">
+                  {t(`reelExamples.${ex.id}.subtitle`)}
+                </div>
+              </button>
             ))}
           </div>
-          <p className="text-xs text-slate-600">La durée réelle peut varier légèrement</p>
         </div>
 
-        {/* Format */}
-        <div className="space-y-2">
-          <Label className="text-xs text-slate-400">Format</Label>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => updateParams({ format: "VERTICAL" })}
-              className={cn(
-                "flex flex-1 flex-col items-center gap-1.5 rounded-xl border p-3 transition-all",
-                params.format === "VERTICAL"
-                  ? "border-violet-500 bg-violet-500/20"
-                  : "border-slate-700 bg-slate-800/30 hover:border-slate-600"
-              )}
-            >
-              <div className={cn(
-                "h-8 w-5 rounded-sm border-2",
-                params.format === "VERTICAL" ? "border-violet-400" : "border-slate-600"
-              )} />
-              <span className={cn("text-xs font-medium", params.format === "VERTICAL" ? "text-violet-300" : "text-slate-500")}>
-                📱 9:16
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => updateParams({ format: "SQUARE" })}
-              className={cn(
-                "flex flex-1 flex-col items-center gap-1.5 rounded-xl border p-3 transition-all",
-                params.format === "SQUARE"
-                  ? "border-violet-500 bg-violet-500/20"
-                  : "border-slate-700 bg-slate-800/30 hover:border-slate-600"
-              )}
-            >
-              <div className={cn(
-                "h-6 w-6 rounded-sm border-2",
-                params.format === "SQUARE" ? "border-violet-400" : "border-slate-600"
-              )} />
-              <span className={cn("text-xs font-medium", params.format === "SQUARE" ? "text-violet-300" : "text-slate-500")}>
-                ⬛ 1:1
-              </span>
-            </button>
+        {/* 1 — Scene */}
+        <div className="space-y-2 rounded-xl border border-violet-500/20 bg-violet-500/5 p-3">
+          <div className="flex items-center gap-2">
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-violet-500/30 text-[10px] font-bold text-violet-200">
+              1
+            </span>
+            <Label className="text-xs font-medium text-violet-300">
+              {t("reelSceneTitle")}
+            </Label>
           </div>
+          <p className="text-[11px] text-slate-500">{t("reelSceneHintShort")}</p>
+          <Textarea
+            value={params.sceneDescription}
+            onChange={(e) => {
+              setActiveExampleId(null);
+              updateParams({ sceneDescription: e.target.value });
+            }}
+            placeholder={t("reelScenePlaceholder")}
+            rows={3}
+            className="border-slate-800/50 bg-slate-800/30 text-sm text-white placeholder:text-slate-600"
+          />
+          <Input
+            value={params.outfit}
+            onChange={(e) => {
+              setActiveExampleId(null);
+              updateParams({ outfit: e.target.value });
+            }}
+            placeholder={t("reelOutfitPlaceholder")}
+            className="border-slate-800/50 bg-slate-800/30 text-sm text-white placeholder:text-slate-600"
+          />
         </div>
 
-        {/* Reel style preset — Phase 2: face consistency vs motion */}
+        {/* 2 — Motion (main field) */}
+        <div className="space-y-2 rounded-xl border border-slate-700/80 bg-slate-800/20 p-3">
+          <div className="flex items-center gap-2">
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-600 text-[10px] font-bold text-slate-200">
+              2
+            </span>
+            <Label className="text-xs font-medium text-slate-200">
+              {t("reelMotionLabel")}
+            </Label>
+          </div>
+          <p className="text-[11px] text-slate-500">{t("reelMotionHint")}</p>
+          <Textarea
+            value={params.script}
+            onChange={(e) => {
+              setActiveExampleId(null);
+              updateParams({ script: e.target.value });
+            }}
+            placeholder={t("reelMotionPlaceholder")}
+            rows={5}
+            className="border-slate-800/50 bg-slate-800/30 text-sm text-white placeholder:text-slate-600"
+          />
+        </div>
+
+        {/* 3 — How it moves (IG-friendly style labels) */}
         <div className="space-y-2">
-          <Label className="text-xs text-slate-400">{t("reelStylePreset")}</Label>
+          <div className="flex items-center gap-2">
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-600 text-[10px] font-bold text-slate-200">
+              3
+            </span>
+            <Label className="text-xs text-slate-400">{t("reelMotionStyleLabel")}</Label>
+          </div>
           <div className="flex flex-col gap-2">
             {(
               [
@@ -213,8 +275,21 @@ export function ReelParams() {
                   desc: t("reelStyleNaturalDesc"),
                   recommended: true,
                 },
-                { key: "stable_face" as const, title: t("reelStyleStable"), desc: t("reelStyleStableDesc") },
-                { key: "creative" as const, title: t("reelStyleCreative"), desc: t("reelStyleCreativeDesc") },
+                {
+                  key: "classic_motion" as const,
+                  title: t("reelStyleClassic"),
+                  desc: t("reelStyleClassicDesc"),
+                },
+                {
+                  key: "stable_face" as const,
+                  title: t("reelStyleStable"),
+                  desc: t("reelStyleStableDesc"),
+                },
+                {
+                  key: "creative" as const,
+                  title: t("reelStyleCreative"),
+                  desc: t("reelStyleCreativeDesc"),
+                },
               ] as const
             ).map((opt) => (
               <button
@@ -236,7 +311,7 @@ export function ReelParams() {
                     </span>
                   )}
                 </div>
-                <div className="text-xs text-slate-500">{opt.desc}</div>
+                <div className="text-[11px] text-slate-500">{opt.desc}</div>
                 <div className="mt-0.5 text-[10px] text-slate-600">
                   {t("reelStyleEngine", {
                     model: presetDefaultVideoModelLabel(opt.key),
@@ -247,134 +322,70 @@ export function ReelParams() {
           </div>
         </div>
 
-        {/* Video type */}
-        <div className="space-y-2">
-          <Label className="text-xs text-slate-400">Type de vidéo</Label>
-          <div className="flex flex-wrap gap-1.5">
-            {videoTypes.map((t) => (
-              <Chip
-                key={t.value}
-                label={t.label}
-                emoji={t.emoji}
-                selected={params.videoType === t.value}
-                onClick={() => updateParams({ videoType: t.value })}
-              />
-            ))}
+        <p className="text-[11px] text-slate-600">{t("reelPostProdHint")}</p>
+
+        {/* Music — IG publishes with own audio */}
+        <div className="flex gap-2 rounded-xl border border-slate-700/60 bg-slate-800/25 p-3">
+          <Music2 className="mt-0.5 h-4 w-4 shrink-0 text-pink-400" />
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-slate-300">{t("reelMusicTitle")}</p>
+            <p className="text-[11px] leading-snug text-slate-500">{t("reelMusicHint")}</p>
           </div>
         </div>
 
-        {/* Scene (first frame) */}
-        <div className="space-y-2 rounded-xl border border-violet-500/20 bg-violet-500/5 p-3">
-          <Label className="text-xs font-medium text-violet-300">
-            {t("reelSceneTitle")}
-          </Label>
-          <p className="text-xs text-slate-500">{t("reelSceneHint")}</p>
-          <p className="text-xs text-slate-600">{t("reelQualityNote")}</p>
-          <Textarea
-            value={params.sceneDescription}
-            onChange={(e) => updateParams({ sceneDescription: e.target.value })}
-            placeholder={t("reelScenePlaceholder")}
-            rows={3}
-            className="border-slate-800/50 bg-slate-800/30 text-sm text-white placeholder:text-slate-600"
-          />
-          <Input
-            value={params.outfit}
-            onChange={(e) => updateParams({ outfit: e.target.value })}
-            placeholder={t("reelOutfitPlaceholder")}
-            className="border-slate-800/50 bg-slate-800/30 text-sm text-white placeholder:text-slate-600"
-          />
-        </div>
-
-        {/* Script */}
+        {/* Advanced — effects + overlay notes */}
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <Label className="text-xs text-slate-400">{t("reelMotionLabel")}</Label>
-            <button
-              type="button"
-              className="flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300"
-            >
-              <Sparkles className="h-3 w-3" />
-              Générer un scénario
-            </button>
-          </div>
-          <Textarea
-            value={params.script}
-            onChange={(e) => updateParams({ script: e.target.value })}
-            placeholder={t("reelMotionPlaceholder")}
-            rows={6}
-            className="border-slate-800/50 bg-slate-800/30 text-sm text-white placeholder:text-slate-600"
-          />
-        </div>
-
-        {/* Music */}
-        <div className="space-y-2">
-          <Label className="text-xs text-slate-400">Musique</Label>
-          <Select value={params.music} onValueChange={(v) => updateParams({ music: v })}>
-            <SelectTrigger className="h-9 border-slate-800/50 bg-slate-800/30 text-sm text-white">
-              <SelectValue placeholder="Aucune musique" />
-            </SelectTrigger>
-            <SelectContent className="border-slate-800 bg-slate-900">
-              <SelectItem value="none" className="text-slate-300 focus:bg-slate-800 text-xs">Aucune musique</SelectItem>
-              <SelectItem value="trending" className="text-slate-300 focus:bg-slate-800 text-xs">🔥 Trending (auto)</SelectItem>
-              <SelectItem value="chill" className="text-slate-300 focus:bg-slate-800 text-xs">😌 Chill</SelectItem>
-              <SelectItem value="energetic" className="text-slate-300 focus:bg-slate-800 text-xs">⚡ Energetic</SelectItem>
-              <SelectItem value="emotional" className="text-slate-300 focus:bg-slate-800 text-xs">💔 Emotional</SelectItem>
-              <SelectItem value="funny" className="text-slate-300 focus:bg-slate-800 text-xs">😂 Funny</SelectItem>
-            </SelectContent>
-          </Select>
-          {params.music === "trending" && (
-            <p className="text-xs text-slate-600">Sera ajouté au moment de la publication</p>
+          <button
+            type="button"
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="flex w-full items-center justify-between rounded-lg border border-slate-800/50 px-3 py-2 text-xs text-slate-400 hover:bg-slate-800/30"
+          >
+            <span className="flex items-center gap-1.5">
+              <Info className="h-3.5 w-3.5" />
+              {t("reelAdvancedTitle")}
+            </span>
+            {showAdvanced ? (
+              <ChevronUp className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5" />
+            )}
+          </button>
+          {showAdvanced && (
+            <div className="space-y-3 rounded-xl border border-slate-800/50 bg-slate-800/20 p-3">
+              <p className="text-[11px] text-slate-500">{t("reelAdvancedHint")}</p>
+              <div className="space-y-2">
+                <Label className="text-xs text-slate-400">{t("reelEffectsLabel")}</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {effectOptions.map((e) => (
+                    <Chip
+                      key={e.value}
+                      label={t(e.labelKey)}
+                      selected={
+                        e.value === "none"
+                          ? params.effects.length === 0
+                          : params.effects.includes(e.value)
+                      }
+                      onClick={() => toggleEffect(e.value)}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-slate-400">{t("reelOverlayLabel")}</Label>
+                <Input
+                  value={params.textOverlay}
+                  onChange={(e) => updateParams({ textOverlay: e.target.value })}
+                  placeholder={t("reelOverlayPlaceholder")}
+                  className="h-9 border-slate-800/50 bg-slate-800/30 text-sm text-white placeholder:text-slate-600"
+                />
+                <p className="text-[10px] text-slate-600">{t("reelOverlayHint")}</p>
+              </div>
+            </div>
           )}
         </div>
 
-        {/* Effects */}
-        <div className="space-y-2">
-          <Label className="text-xs text-slate-400">Effets</Label>
-          <div className="flex flex-wrap gap-1.5">
-            {effectOptions.map((e) => (
-              <Chip
-                key={e.value}
-                label={e.label}
-                selected={
-                  e.value === "none"
-                    ? params.effects.length === 0
-                    : params.effects.includes(e.value)
-                }
-                onClick={() => toggleEffect(e.value)}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Text overlay */}
-        <div className="space-y-2">
-          <Label className="text-xs text-slate-400">Texte overlay (optionnel)</Label>
-          <Input
-            value={params.textOverlay}
-            onChange={(e) => updateParams({ textOverlay: e.target.value })}
-            placeholder="Texte qui apparaîtra sur la vidéo"
-            className="h-9 border-slate-800/50 bg-slate-800/30 text-sm text-white placeholder:text-slate-600"
-          />
-        </div>
-
-        {/* NSFW — hidden for now, will be re-enabled later */}
-        {false && selectedInfluencer?.isNsfw && (
-          <div className="space-y-3 rounded-xl border border-slate-800/50 bg-slate-800/20 p-3">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs text-slate-400">Mode contenu</Label>
-              <div className="flex items-center gap-2">
-                <span className={cn("text-xs", params.contentMode === "SFW" ? "text-emerald-400" : "text-slate-500")}>SFW</span>
-                <Switch
-                  checked={params.contentMode === "NSFW"}
-                  onCheckedChange={(v) => updateParams({ contentMode: v ? "NSFW" : "SFW" })}
-                />
-                <span className={cn("text-xs", params.contentMode === "NSFW" ? "text-red-400" : "text-slate-500")}>NSFW</span>
-              </div>
-            </div>
-          </div>
-        )}
+        {false && selectedInfluencer?.isNsfw && null}
       </div>
     </div>
   );
 }
-

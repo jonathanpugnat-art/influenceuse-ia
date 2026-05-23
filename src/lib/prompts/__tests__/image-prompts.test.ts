@@ -253,6 +253,20 @@ describe("image-prompts", () => {
       expect(result).toContain("streetwear");
     });
 
+    it("uses iPhone UGC wording not studio editorial", () => {
+      const result = buildBasePortraitPrompt({
+        age: 24,
+        ethnicity: "caucasian",
+        hairColor: "brown",
+        hairStyle: "long",
+        bodyType: "average",
+        fashionStyle: "casual",
+      });
+      expect(result).toMatch(/iPhone/i);
+      expect(result).not.toMatch(/beauty editorial/i);
+      expect(result).toMatch(/pores/i);
+    });
+
     it("uses gender label in base portrait", () => {
       const female = buildBasePortraitPrompt({
         age: 25, ethnicity: "caucasian", hairColor: "brown",

@@ -32,6 +32,7 @@ import {
   PREMIUM_OUTFIT_SUGGESTIONS,
   type ContentLane,
 } from "@/lib/premium-content";
+import { parseIdentityPack } from "@/lib/identity-pack";
 import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { Label } from "@/components/ui/label";
@@ -183,6 +184,9 @@ export function PhotoParams() {
     | AppearanceVariation
     | null
     | undefined;
+  const identityPack = parseIdentityPack(
+    (selectedInfluencer as { identityPack?: unknown } | undefined)?.identityPack
+  );
 
   const lightingIndex = lightingStops.indexOf(
     params.timeOfDay as (typeof lightingStops)[number]
@@ -377,6 +381,12 @@ export function PhotoParams() {
               <p className="text-[11px] leading-snug text-slate-400">
                 {t("identityLockHint")}
               </p>
+              {identityPack?.status === "ready" && (
+                <p className="text-[10px] text-emerald-400">{t("identityPackReady")}</p>
+              )}
+              {identityPack?.status === "generating" && (
+                <p className="text-[10px] text-amber-400">{t("identityPackGenerating")}</p>
+              )}
               {appearanceVariations && (
                 <p className="text-[10px] text-slate-500">
                   {(() => {

@@ -235,6 +235,7 @@ export const influencerRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const user = await getDbUser(ctx.userId);
+      const scheduleAfter = ctx.scheduleAfter;
 
       // Check plan limit
       const planConfig = PLANS[user.plan as Plan];
@@ -310,7 +311,57 @@ export const influencerRouter = createTRPCRouter({
         data: { influencerId: influencer.id },
       });
 
+      // IG-realism: multi-angle 2D identity pack (free on first create).
+      if (input.baseImageUrl?.trim() && !input.isNsfw) {
+        const baseUrl = input.baseImageUrl.trim();
+        const influencerId = influencer.id;
+        const userId = user.id;
+        scheduleAfter(async () => {
+          try {
+            const { scheduleIdentityPackGeneration } = await import(
+              "@/server/services/identity-pack.service"
+            );
+            await scheduleIdentityPackGeneration(userId, influencerId, baseUrl, {
+              complimentary: true,
+            });
+          } catch (err) {
+            console.error(
+              "[influencer.create] identity pack failed:",
+              err instanceof Error ? err.message : err
+            );
+          }
+        });
+      }
+
       return influencer;
+    }),
+
+  /**
+   * generateIdentityPack — (re)build multi-angle refs from base portrait.
+   */
+  generateIdentityPack: protectedProcedure
+    .input(z.object({ influencerId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const { user, influencer } = await verifyOwnership(
+        input.influencerId,
+        ctx.userId
+      );
+      if (influencer.isNsfw) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Le kit identité n'est pas disponible en mode NSFW.",
+        });
+      }
+      if (!influencer.baseImageUrl?.trim()) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Ajoute d'abord un portrait de base.",
+        });
+      }
+      const { generateAndPersistIdentityPack } = await import(
+        "@/server/services/identity-pack.service"
+      );
+      return generateAndPersistIdentityPack(user.id, influencer.id);
     }),
 
   /**

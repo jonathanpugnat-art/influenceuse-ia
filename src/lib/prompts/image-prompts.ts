@@ -33,16 +33,16 @@ export function genderLabel(gender: Gender): string {
  * combinations BEFORE the random seed kicks in. Combined with a random seed
  * per output, the collision probability drops below 1 in millions.
  */
+/** Wizard base portrait — must match feed photos (iPhone UGC), not studio/editorial. */
 export const BASE_PORTRAIT_TEMPLATE =
-  "ultra photorealistic RAW photo, shot on Canon EOS R5, 85mm f/1.2 lens, " +
-  "portrait of a {age} year old {ethnicity} {gender}, " +
-  "{hair_color} {hair_style} hair, {body_type} build, {fashion_style} fashion, " +
+  "candid vertical iPhone portrait photo of a {age} year old {ethnicity} {gender}, " +
+  "{hair_color} {hair_style} hair, {body_type} build, {fashion_style} outfit, " +
   "{distinct_traits}, " +
-  "flawless skin with realistic texture and subtle pores, " +
-  "sharp detailed eyes with catchlight, " +
-  "professional studio lighting, soft key light, cinematic lighting, " +
-  "8k, hyperrealistic, national geographic quality, " +
-  "kodak portra 400 film emulation, natural color grading, vogue beauty editorial";
+  "shot on iPhone front camera or friend took it with flash, harsh natural flash, " +
+  "real skin with visible pores and small blemishes, slightly oily T-zone, faint under-eye circles, " +
+  "asymmetrical natural face, not retouched, not airbrushed, " +
+  "slightly off-center amateur framing, mild grain, apartment or street background softly blurred, " +
+  "NOT studio lighting, NOT vogue editorial, NOT beauty campaign, NOT doll-like, NOT plastic skin";
 
 /**
  * Pools of subtle but visually meaningful traits we randomly mix into the
@@ -526,13 +526,14 @@ export const DEFAULT_IMAGE_PARAMS = {
 };
 
 /** Portrait-ratio params for close-up portraits (wizard base image — high quality) */
+/** Flux fallback for wizard portrait (when Nano safety-blocks). */
 export const PORTRAIT_IMAGE_PARAMS = {
   width: 1024,
-  height: 1365,
-  num_inference_steps: 40,
-  guidance_scale: 4.0,
+  height: 1280,
+  num_inference_steps: 35,
+  guidance_scale: 3.2,
   output_format: "jpg" as const,
-  output_quality: 98,
+  output_quality: 88,
 };
 
 /**

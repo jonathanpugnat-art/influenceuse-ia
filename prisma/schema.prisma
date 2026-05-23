@@ -150,6 +150,8 @@ model Influencer {
   /// 8-char FNV-1a hash of (style + age + appearanceVariations). Indexed so
   /// we can detect near-duplicate influencers across users in O(1).
   appearanceFingerprint String?
+  /// Multi-angle 2D reference stills (see `IdentityPackRecord` in identity-pack.ts).
+  identityPack          Json?
 
   user           User                 @relation(fields: [userId], references: [id])
   socialAccounts SocialAccount[]

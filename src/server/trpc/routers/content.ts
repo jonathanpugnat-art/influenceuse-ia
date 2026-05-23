@@ -8,6 +8,7 @@ import type { AppearanceVariation } from "@/lib/prompts/image-prompts";
 import { normalizeAppearanceVariation } from "@/lib/prompts/appearance-variation-ui";
 import { generateVideo } from "@/server/services/ai-video.service";
 import { clampPremiumNsfwLevel } from "@/lib/premium-content";
+import { parseIdentityPack } from "@/lib/identity-pack";
 import { generateCaption as genCaption, generateHashtags as genHashtags, generateContentPlan as genContentPlan, generateIdeas as genIdeas } from "@/server/services/ai-text.service";
 import { processNextBatchSlice, getBatchStatus } from "@/server/services/batch.service";
 import {
@@ -226,6 +227,7 @@ export const contentRouter = createTRPCRouter({
       const nsfwLevel = isPremiumPhoto
         ? clampPremiumNsfwLevel(input.nsfwLevel)
         : input.nsfwLevel;
+      const identityPack = parseIdentityPack(influencer.identityPack);
 
       const runPhotoGeneration = async () => {
         try {
@@ -257,6 +259,7 @@ export const contentRouter = createTRPCRouter({
               customPrompt: input.customPrompt,
               numberOfImages: input.numberOfImages,
               appearanceVariations,
+              identityPack,
             }
           );
 
@@ -270,6 +273,7 @@ export const contentRouter = createTRPCRouter({
               negativePrompt: result.negativePrompt,
               generationParams: {
                 ...initialGenerationParams,
+                identityPackStatus: identityPack?.status ?? null,
                 modelParams: result.parameters as object,
               } as object,
             },
@@ -322,7 +326,7 @@ export const contentRouter = createTRPCRouter({
         nsfwLevel: z.string().optional(),
         /** stable_face: max identity; natural_motion: balanced; creative: prompt optimizer on */
         reelStylePreset: z
-          .enum(["stable_face", "natural_motion", "creative"])
+          .enum(["stable_face", "natural_motion", "classic_motion", "creative"])
           .default("natural_motion"),
         /** When false, animates base portrait only (legacy behaviour). */
         generateSceneFrame: z.boolean().default(true),
@@ -441,6 +445,7 @@ export const contentRouter = createTRPCRouter({
             ? clampPremiumNsfwLevel(input.nsfwLevel)
             : input.nsfwLevel;
           const useFaceLock = !isPremiumReel;
+          const identityPack = parseIdentityPack(influencer.identityPack);
 
           let firstFrameUrl = baseImage;
           let sceneFrameUrl: string | null = null;
@@ -492,6 +497,7 @@ export const contentRouter = createTRPCRouter({
                 appearanceVariations,
                 omitCreditBilling: true,
                 isReelSceneFrame: true,
+                identityPack,
               }
             );
 

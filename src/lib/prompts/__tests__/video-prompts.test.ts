@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   buildVideoPrompt,
+  isCrowdedScenePrompt,
   resolveReplicateVideoModel,
   resolveLipSyncModel,
   buildVideoModelInputs,
@@ -19,74 +20,81 @@ describe("video-prompts", () => {
   });
 
   describe("buildVideoPrompt", () => {
-    it("includes stable face identity instructions by default", () => {
+    it("keeps prompt compact and prioritizes user motion over type hint", () => {
       const p = buildVideoPrompt({
         videoType: "dance",
         script: "She starts dancing",
         reelStylePreset: "stable_face",
       });
-      expect(p).toContain("same person");
-      expect(p).toContain("TikTok dance trend");
-      expect(p).toContain("She starts dancing");
-      expect(p).toContain("NO captions");
-      expect(p).toContain("finished native Instagram Reel");
+      expect(p).toMatch(/same person/i);
+      expect(p).toContain("Action: She starts dancing");
+      expect(p).not.toContain("TikTok dance trend");
+      expect(p).toContain("no plastic");
+      expect(p.length).toBeLessThan(900);
     });
 
-    it("forbids portrait morph when sceneFrameOnly", () => {
+    it("forbids identity change when sceneFrameOnly", () => {
       const p = buildVideoPrompt({
         videoType: "grwm",
         script: "adjusts outfit",
         sceneFrameOnly: true,
         reelStylePreset: "natural_motion",
       });
-      expect(p).toContain("no morphing from a different photo");
-      expect(p).toContain("frame zero");
+      expect(p).toContain("reference frame");
+      expect(p).toContain("no location or identity change");
     });
 
-    it("locks environment when sceneDescription is provided", () => {
+    it("includes scene description when provided", () => {
       const p = buildVideoPrompt({
         videoType: "grwm",
         script: "adjusts outfit",
         sceneDescription: "modern bathroom mirror",
         reelStylePreset: "stable_face",
       });
-      expect(p).toContain("modern bathroom mirror");
+      expect(p).toContain("Scene: modern bathroom mirror");
       expect(p).toContain("Do not change location");
     });
 
-    it("uses creative preset prefix and omits CRITICAL block style", () => {
+    it("uses creative preset motion wording", () => {
       const p = buildVideoPrompt({
         videoType: "travel",
         script: "Walking in the city",
         reelStylePreset: "creative",
       });
-      expect(p).toContain("based on the first frame person");
+      expect(p).toContain("expressive motion");
       expect(p).not.toContain("CRITICAL:");
     });
 
-    it("joins multiple effects from comma-separated string", () => {
+    it("uses only the first effect to avoid prompt bloat", () => {
       const p = buildVideoPrompt({
         videoType: "ootd",
         script: "Outfit reveal",
         effects: "zoom,slow-mo",
         reelStylePreset: "natural_motion",
       });
-      expect(p).toContain("TikTok zoom trend");
-      expect(p).toContain("slow motion");
+      expect(p).toContain("subtle zoom");
+      expect(p).not.toContain("slow motion");
     });
 
-    it("supports day_in_life and sketch types", () => {
+    it("falls back to type hint when script is empty", () => {
       const day = buildVideoPrompt({
         videoType: "day_in_life",
-        script: "Morning routine",
+        script: "",
       });
       expect(day).toContain("day in my life");
+    });
 
-      const sketch = buildVideoPrompt({
-        videoType: "sketch",
-        script: "Punchline",
+    it("adds crowd guidance for gym/busy scenes", () => {
+      expect(
+        isCrowdedScenePrompt("busy gym", "talking to camera while people train")
+      ).toBe(true);
+      const p = buildVideoPrompt({
+        videoType: "workout",
+        script: "talking to camera while promoting product",
+        sceneDescription: "busy gym, indoor lighting",
+        reelStylePreset: "stable_face",
       });
-      expect(sketch).toContain("comedy sketch");
+      expect(p).toContain("Background people soft");
     });
   });
 
@@ -99,6 +107,14 @@ describe("video-prompts", () => {
     it("routes natural_motion to Wan 2.5 I2V by default", () => {
       const m = resolveReplicateVideoModel({ preset: "natural_motion", hasReferenceImage: true });
       expect(m.id).toBe("wan-video/wan-2.5-i2v");
+    });
+
+    it("routes classic_motion to MiniMax Video-01", () => {
+      const m = resolveReplicateVideoModel({
+        preset: "classic_motion",
+        hasReferenceImage: true,
+      });
+      expect(m.id).toBe("minimax/video-01");
     });
 
     it("routes creative to Runway without a start frame, Wan when a start frame is needed", () => {
@@ -156,7 +172,7 @@ describe("video-prompts", () => {
         script: "Hi everyone",
         reelStylePreset: "lip_sync",
       });
-      expect(p).toMatch(/lip[- ]sync/i);
+      expect(p).toMatch(/talking to camera/i);
       expect(p).toMatch(/mouth visible/i);
     });
 

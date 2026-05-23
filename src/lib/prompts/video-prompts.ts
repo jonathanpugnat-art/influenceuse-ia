@@ -5,6 +5,7 @@
 export type ReelStylePreset =
   | "stable_face"
   | "natural_motion"
+  | "classic_motion"
   | "creative"
   | "lip_sync";
 
@@ -52,81 +53,99 @@ const VIDEO_TYPE_PROMPTS: Record<string, string> = {
 };
 
 const VIDEO_EFFECT_PROMPTS: Record<string, string> = {
-  "slow-mo":
-    "slow motion hair flip or movement, dramatic but casual, iPhone slow-mo mode",
-  zoom: "quick zoom on face or outfit, TikTok zoom trend",
-  pan: "smooth phone pan around subject, reveal environment",
-  timelapse: "sped up routine, timelapse feel",
-  bokeh: "portrait mode shallow depth, face sharp background soft",
-  split: "split screen trend framing, two zones in frame",
-  glitch: "subtle glitch transition beat, not full sci-fi",
-  none: "no special effects, natural phone recording",
+  "slow-mo": "light slow motion",
+  zoom: "subtle zoom",
+  pan: "gentle pan",
+  timelapse: "mild timelapse feel",
+  bokeh: "shallow depth background blur",
+  split: "split frame",
+  glitch: "subtle glitch beat",
+  none: "",
 };
 
-/** Shared block — finished IG/TikTok clip, not an animated still. */
-const INSTAGRAM_REEL_FINISH =
-  "finished native Instagram Reel clip, single continuous handheld take, real-time speed (not slideshow, not ken burns zoom on a still), " +
-  "iPhone camera app look, natural motion blur on moving hands, real skin texture, no wax figure, no AI glamour glow, " +
-  "not cinematic color grade, not TV commercial, not 3D render";
+/** Inlined negatives — most video APIs have no negative_prompt field. */
+const VIDEO_AVOID =
+  "no plastic or waxy skin, no doll face, no AI glow, no cinematic grade, no robotic stiff motion, no morphing face, no text or logos on screen";
 
-const PRESET_PREFIX: Record<ReelStylePreset, string> = {
+const PRESET_MOTION: Record<ReelStylePreset, string> = {
   stable_face:
-    "CRITICAL: same person, face, outfit and room as the first frame throughout, no face morphing, no location change, " +
-    "natural creator motion: weight shift, hand gesture, hair bounce, blinking, slight handheld drift — NOT a living portrait with only eye blink, ",
+    "subtle head movement, natural blinking, micro-expressions, slight handheld drift",
   natural_motion:
-    "same person, outfit and environment as the first frame, believable creator body language and handheld phone movement, " +
-    "authentic Instagram Reel energy, continuous clip feel, ",
-  creative:
-    "based on the first frame person and place, expressive but still phone-filmed social reel, ",
-  lip_sync:
-    "same person throughout, natural upper-body motion for lip-sync, talking-to-camera, mouth visible, vertical reel, ",
+    "natural body sway, gentle hand gestures, handheld iPhone shake, real-time single take",
+  classic_motion: "calm subtle motion, gentle blinking, slight handheld drift",
+  creative: "expressive motion but still phone-filmed",
+  lip_sync: "talking to camera, mouth visible, natural speech motion",
 };
+
+const CROWD_SCENE_RE =
+  /\b(gym|crowd|people|busy|street|party|club|restaurant|café|cafe|public|strangers|background people)\b/i;
+
+/** True when the user asked for other people / busy places — I2V struggles here. */
+export function isCrowdedScenePrompt(scene?: string, motion?: string): boolean {
+  const text = `${scene ?? ""} ${motion ?? ""}`;
+  return CROWD_SCENE_RE.test(text);
+}
+
+function trimUserText(text: string, maxLen: number): string {
+  const t = text.trim().replace(/\s+/g, " ");
+  if (t.length <= maxLen) return t;
+  return `${t.slice(0, maxLen - 1)}…`;
+}
 
 /**
- * Builds the full text prompt sent to the video model (e.g. MiniMax).
+ * Compact video prompt — models (Kling, Wan, MiniMax) degrade when prompts
+ * stack redundant blocks. User scene + motion come first; type hint only if
+ * motion is empty.
  */
 export function buildVideoPrompt(input: VideoPromptInput): string {
   const preset: ReelStylePreset = input.reelStylePreset ?? "natural_motion";
-  const parts: string[] = [];
+  const scene = trimUserText(input.sceneDescription ?? "", 400);
+  const motion = trimUserText(input.script ?? "", 500);
+  const crowded = isCrowdedScenePrompt(scene, motion);
 
-  parts.push(PRESET_PREFIX[preset]);
-  parts.push(INSTAGRAM_REEL_FINISH);
+  const sentences: string[] = [];
 
-  if (input.sceneFrameOnly) {
-    parts.push(
-      "video opens exactly on the provided first frame, same room and outfit from frame zero, " +
-        "no morphing from a different photo, no crossfade from a studio portrait, no identity transition at start"
-    );
-  }
-
-  const typePrompt = VIDEO_TYPE_PROMPTS[input.videoType] ?? input.videoType;
-  parts.push(typePrompt);
-
-  if (input.sceneDescription?.trim()) {
-    parts.push(
-      `Keep the environment from the first frame: ${input.sceneDescription.trim()}. Do not change location.`
-    );
-  }
-
-  if (input.script?.trim()) {
-    parts.push(`Motion and action (do not change scene): ${input.script.trim()}`);
-  }
-
-  if (input.effects) {
-    const effectKeys = input.effects.split(",").map((s) => s.trim()).filter(Boolean);
-    for (const key of effectKeys) {
-      const effect = VIDEO_EFFECT_PROMPTS[key] ?? key;
-      parts.push(effect);
-    }
-  }
-
-  parts.push(
-    "natural skin and hair movement, available daylight or indoor lamps, " +
-      "looks like a real influencer posted this on Instagram today, " +
-      "ABSOLUTELY NO text on screen, NO captions, NO subtitles, NO stickers, NO logos, NO watermarks, NO UI overlays"
+  sentences.push(
+    "Same person, same outfit and same place as the reference image throughout"
   );
 
-  return parts.join(", ");
+  if (scene) {
+    sentences.push(`Scene: ${scene}`);
+  }
+
+  if (motion) {
+    sentences.push(`Action: ${motion}`);
+  } else {
+    const hint = VIDEO_TYPE_PROMPTS[input.videoType];
+    if (hint) sentences.push(hint);
+  }
+
+  if (crowded) {
+    sentences.push(
+      "Background people soft and mostly static, out of focus; she stays the sharp main subject"
+    );
+  }
+
+  sentences.push(
+    `Handheld iPhone Reel, authentic social clip, ${PRESET_MOTION[preset]}, natural skin pores, ${VIDEO_AVOID}`
+  );
+
+  if (input.sceneFrameOnly) {
+    sentences.push("Opens on the reference frame, no location or identity change");
+  } else {
+    sentences.push("Do not change location");
+  }
+
+  const effectKeys = (input.effects ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((k) => k && k !== "none");
+  if (effectKeys.length > 0) {
+    const fx = VIDEO_EFFECT_PROMPTS[effectKeys[0]] ?? effectKeys[0];
+    if (fx) sentences.push(fx);
+  }
+
+  return sentences.join(". ").replace(/\.\s*\./g, ".");
 }
 
 // ──────────────────────────────────────────────
@@ -277,6 +296,8 @@ const DEFAULT_PRESET_ROUTING: Record<ReelStylePreset, VideoModelId> = {
   stable_face: "kwaivgi/kling-v2.0",
   /** Wan 2.5 I2V: one image in → natural handheld motion (best default for IG reels). */
   natural_motion: "wan-video/wan-2.5-i2v",
+  /** MiniMax Video-01 — earlier Aura default; some users prefer it for calm clips. */
+  classic_motion: "minimax/video-01",
   creative: "runwayml/gen4-aleph",
   lip_sync: "kwaivgi/kling-v2.0",
 };

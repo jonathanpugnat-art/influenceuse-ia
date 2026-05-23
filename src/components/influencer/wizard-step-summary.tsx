@@ -73,6 +73,9 @@ export function WizardStepSummary({ onPrev }: { onPrev: () => void }) {
   const createMutation = trpc.influencer.create.useMutation({
     onSuccess: (inf) => {
       toast.success(t("firstPhotoCta", { name: inf.name }));
+      if (selectedImageUrl && !data.isNsfw) {
+        toast.info(t("identityPackStarted"));
+      }
       reset();
       // Sprint 15 — land on the photo creator with the new influencer
       // pre-selected so the wizard doesn't dead-end on an empty profile.

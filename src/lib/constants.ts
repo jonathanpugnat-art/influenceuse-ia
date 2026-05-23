@@ -17,7 +17,7 @@
 //                                  → Flux Kontext Pro   (Google safety blocks)
 //   - SFW content without face ref → Flux 1.1 Pro
 //   - NSFW                         → Flux Dev Uncensored
-//   - Wizard base portrait         → Flux 1.1 Pro
+//   - Wizard base portrait         → Nano Banana (Flux 1.1 Pro fallback)
 // Beta period (2026-05): the FREE tier is intentionally generous (500 credits
 // instead of 50) so early adopters can fully exercise the app — generate
 // multiple influencers, run several content batches — without ever hitting a
@@ -114,6 +114,8 @@ export const CREDIT_COSTS = {
   REEL: 8,
   CAPTION: 0.5,
   BASE_IMAGE: 2,
+  /** 3 extra Kontext angles from the chosen wizard portrait (profile, 3/4, full body). */
+  IDENTITY_PACK: 3,
   HASHTAGS: 0.25,
   /** Per-post cost when generating a multi-day editorial plan. */
   CONTENT_PLAN_PER_POST: 0.5,

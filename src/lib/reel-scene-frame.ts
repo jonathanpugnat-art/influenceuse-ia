@@ -21,9 +21,10 @@ export type ReelSceneFrameOutput = {
 };
 
 const SCENE_FRAME_SUFFIX =
-  "High-end Instagram fashion creator still, tasteful editorial look, fully clothed, appropriate for social media. " +
-  "Candid mid-action frame for a vertical 9:16 Reel — NOT a studio passport photo on grey backdrop. " +
-  "Full real environment visible (walls, mirror, tiles, furniture). iPhone camera, natural light, authentic UGC quality. " +
+  "Authentic Instagram Reel still, fully clothed, appropriate for social media. " +
+  "Real skin texture, visible pores, subtle imperfections, natural makeup, no plastic or waxy skin. " +
+  "Candid mid-action frame for vertical 9:16 — NOT a studio passport photo on grey backdrop. " +
+  "Full real environment visible. iPhone 16 look, natural indoor light, documentary UGC quality. " +
   "Natural pose with subtle movement implied. No text on image.";
 
 export function inferReelScenePreset(script: string, videoType: string): string {

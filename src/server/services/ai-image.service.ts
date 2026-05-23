@@ -31,6 +31,10 @@ import {
   type ContentImageEngine,
 } from "@/lib/prompts/nano-borderline";
 import { softenPromptForEditorial } from "@/lib/prompts/safety-soften";
+import {
+  selectIdentityPackRefs,
+  type IdentityPackRecord,
+} from "@/lib/identity-pack";
 
 // ──────────────────────────────────────────────
 // Types
@@ -75,6 +79,8 @@ export interface ImageGenerationInput {
   omitCreditBilling?: boolean;
   /** Reel first-frame: always Flux Kontext (Nano/Google blocks bathroom, lace, GRWM). */
   isReelSceneFrame?: boolean;
+  /** Multi-angle refs from identity pack (Nano `image_input` when ready). */
+  identityPack?: IdentityPackRecord | null;
 }
 
 export interface ImageGenerationOutput {
@@ -389,26 +395,51 @@ export async function generateBaseImage(
   });
 
   const negativePrompt = buildNegativePrompt(false, style.gender ?? "female");
+  const numVariants = 4;
 
-  // Wizard portrait: Flux 1.1 Pro on every plan. Bench (2026-05-15) showed
-  // T2I-without-reference is where Flux beats Nano (cleaner identity over 4
-  // variations, no Google safety blocks on edgy aesthetics).
-  // Note: we no longer rely on `num_outputs` here — runMultiplePredictions
-  // fans out into 4 parallel calls with distinct random seeds so two users
-  // with identical wizard inputs cannot collide on the default Flux seed.
-  const params: Record<string, unknown> = {
-    ...PORTRAIT_IMAGE_PARAMS,
+  // Wizard portrait: Nano Banana first (same iPhone-realism as feed photos).
+  // Flux 1.1 Pro only when Google safety blocks the prompt.
+  let outputUrls: string[];
+  let usedParams: Record<string, unknown>;
+  let usedModel: string = MODEL_SFW_NANO;
+
+  const nanoParams: Record<string, unknown> = {
+    ...NANO_BANANA_DEFAULTS,
+    aspect_ratio: "3:4",
     prompt,
-    negative_prompt: negativePrompt,
-    safety_tolerance: 5,
+    image_input: [] as string[],
   };
 
   try {
     console.log(
-      `[ai-image] Generating base image (flux-1.1-pro, fingerprint=${fingerprint})…`
+      `[ai-image] Generating base portrait (nano-banana, fingerprint=${fingerprint})…`
     );
-    const outputUrls = await runMultiplePredictions(MODEL_SFW_T2I, params, 4);
+    outputUrls = await runMultiplePredictions(
+      MODEL_SFW_NANO,
+      nanoParams,
+      numVariants
+    );
+    usedParams = nanoParams;
+  } catch (err) {
+    if (!isContentSafetyFilterError(err)) throw err;
+    console.warn(
+      "[ai-image] Nano blocked wizard portrait, falling back to flux-1.1-pro…"
+    );
+    usedModel = MODEL_SFW_T2I;
+    usedParams = {
+      ...PORTRAIT_IMAGE_PARAMS,
+      prompt,
+      negative_prompt: negativePrompt,
+      safety_tolerance: 5,
+    };
+    outputUrls = await runMultiplePredictions(
+      MODEL_SFW_T2I,
+      usedParams,
+      numVariants
+    );
+  }
 
+  try {
     const storedUrls = await Promise.all(
       outputUrls.map(async (url, i) => {
         const filename = `base-${nanoid(6)}-${i}.jpg`;
@@ -422,7 +453,7 @@ export async function generateBaseImage(
       imageUrls: storedUrls,
       promptUsed: prompt,
       negativePrompt,
-      parameters: params,
+      parameters: { ...usedParams, replicateModel: usedModel },
       appearanceVariations: variations,
       appearanceFingerprint: fingerprint,
     };
@@ -518,7 +549,10 @@ export async function generateContentImage(
 
   const refs =
     sendsRefImage && input.baseImageUrl?.trim()
-      ? [input.baseImageUrl.trim()]
+      ? selectIdentityPackRefs(input.baseImageUrl.trim(), input.identityPack, {
+          pose: input.pose,
+          sceneDescription: input.sceneDescription,
+        })
       : [];
 
   const kontextPlan: ModelPlan = {
@@ -572,7 +606,8 @@ export async function generateContentImage(
       "[ai-image] Generating content image with",
       plan.model,
       sendsRefImage ? "(face-locked)" : "(no reference)",
-      borderline ? `(borderline → kontext, keywords: ${matchedKeywords.join(", ") || "n/a"})` : "(nano-first)"
+      borderline ? `(borderline → kontext, keywords: ${matchedKeywords.join(", ") || "n/a"})` : "(nano-first)",
+      refs.length > 1 ? `(${refs.length} identity refs)` : ""
     );
 
     let outputUrls: string[];
