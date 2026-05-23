@@ -184,6 +184,10 @@ La page `/trends` du dashboard agrège des signaux de tendances TikTok et Instag
 
 ---
 
+## Roadmap produit
+
+Voir [docs/ROADMAP-2026-Q2.md](docs/ROADMAP-2026-Q2.md) — plan 6 semaines (lip-sync, voix, Instagram, trends, agent contenu).
+
 ## Tests
 
 ```bash

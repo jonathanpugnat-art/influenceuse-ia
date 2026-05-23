@@ -19,6 +19,11 @@ import { useReelCreator } from "@/hooks/use-reel-creator";
 import { cn } from "@/lib/utils";
 import { presetDefaultVideoModelLabel } from "@/lib/prompts/video-prompts";
 import { REEL_CREATOR_EXAMPLES } from "@/lib/reel-creator-examples";
+import {
+  REEL_STYLE_OPTIONS,
+  reelStyleSelectSideEffects,
+} from "@/lib/reel-style-options";
+import { ReelAudioPanel } from "@/components/content/reel-audio-panel";
 
 function Chip({
   label,
@@ -267,35 +272,16 @@ export function ReelParams() {
             <Label className="text-xs text-slate-400">{t("reelMotionStyleLabel")}</Label>
           </div>
           <div className="flex flex-col gap-2">
-            {(
-              [
-                {
-                  key: "natural_motion" as const,
-                  title: t("reelStyleNatural"),
-                  desc: t("reelStyleNaturalDesc"),
-                  recommended: true,
-                },
-                {
-                  key: "classic_motion" as const,
-                  title: t("reelStyleClassic"),
-                  desc: t("reelStyleClassicDesc"),
-                },
-                {
-                  key: "stable_face" as const,
-                  title: t("reelStyleStable"),
-                  desc: t("reelStyleStableDesc"),
-                },
-                {
-                  key: "creative" as const,
-                  title: t("reelStyleCreative"),
-                  desc: t("reelStyleCreativeDesc"),
-                },
-              ] as const
-            ).map((opt) => (
+            {REEL_STYLE_OPTIONS.map((opt) => (
               <button
                 key={opt.key}
                 type="button"
-                onClick={() => updateParams({ reelStylePreset: opt.key })}
+                onClick={() =>
+                  updateParams({
+                    reelStylePreset: opt.key,
+                    ...reelStyleSelectSideEffects(opt.key),
+                  })
+                }
                 className={cn(
                   "rounded-xl border px-3 py-2 text-left transition-all",
                   params.reelStylePreset === opt.key
@@ -304,14 +290,16 @@ export function ReelParams() {
                 )}
               >
                 <div className="flex items-center gap-2">
-                  <div className="text-xs font-medium text-white">{opt.title}</div>
-                  {"recommended" in opt && opt.recommended && (
+                  <div className="text-xs font-medium text-white">
+                    {t(opt.titleKey)}
+                  </div>
+                  {opt.recommended && (
                     <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
                       {t("reelStyleRecommended")}
                     </span>
                   )}
                 </div>
-                <div className="text-[11px] text-slate-500">{opt.desc}</div>
+                <div className="text-[11px] text-slate-500">{t(opt.descKey)}</div>
                 <div className="mt-0.5 text-[10px] text-slate-600">
                   {t("reelStyleEngine", {
                     model: presetDefaultVideoModelLabel(opt.key),
@@ -323,6 +311,15 @@ export function ReelParams() {
         </div>
 
         <p className="text-[11px] text-slate-600">{t("reelPostProdHint")}</p>
+
+        {params.reelStylePreset === "lip_sync" && (
+          <ReelAudioPanel
+            influencerId={params.influencerId}
+            script={params.script}
+            audioUrl={params.audioUrl}
+            onAudioUrlChange={(url) => updateParams({ audioUrl: url })}
+          />
+        )}
 
         {/* Music — IG publishes with own audio */}
         <div className="flex gap-2 rounded-xl border border-slate-700/60 bg-slate-800/25 p-3">

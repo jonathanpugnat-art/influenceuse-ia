@@ -330,6 +330,29 @@ export function PhotoParams() {
           </div>
         )}
 
+        {/* Scene-first pipeline (SFW) */}
+        {influencers.length > 0 && !isPremium && (
+          <div className="space-y-2 rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <Label className="text-xs text-emerald-200/90">{t("sceneFirstLabel")}</Label>
+                <p className="mt-0.5 text-xs leading-snug text-slate-500">
+                  {t("sceneFirstHint")}
+                </p>
+              </div>
+              <Switch
+                checked={params.sceneFirst && params.useFaceReference}
+                disabled={!params.useFaceReference}
+                onCheckedChange={(v) => updateParams({ sceneFirst: v })}
+                className="shrink-0"
+              />
+            </div>
+            {!params.useFaceReference && (
+              <p className="text-[11px] text-amber-600/90">{t("sceneFirstNeedsFaceRef")}</p>
+            )}
+          </div>
+        )}
+
         {/* Face reference (SFW + Flux image conditioning) */}
         {influencers.length > 0 && (
           <div className="space-y-2 rounded-xl border border-slate-800/50 bg-slate-800/20 p-3">
@@ -347,7 +370,12 @@ export function PhotoParams() {
                     Boolean(selectedInfluencer?.avatarUrl?.trim())
                   )
                 }
-                onCheckedChange={(v) => updateParams({ useFaceReference: v })}
+                onCheckedChange={(v) =>
+                  updateParams({
+                    useFaceReference: v,
+                    sceneFirst: v ? params.sceneFirst : false,
+                  })
+                }
                 className="shrink-0"
               />
             </div>

@@ -165,6 +165,10 @@ export function InfluencerSocial({ influencerId }: { influencerId: string }) {
               Tu autoriseras Aura à publier en ton nom — révocable à tout
               moment
             </li>
+            <li>
+              Publication via l’<strong>API officielle Meta</strong> — pas de
+              likes automatisés ni de bots (réduit le risque de sanction)
+            </li>
           </ul>
         </div>
       </div>

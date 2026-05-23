@@ -3,7 +3,13 @@ import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import { db } from "@/server/db";
 import { CREDIT_COSTS } from "@/lib/constants";
-import { generateBaseImage as genBaseImage, generateContentImage } from "@/server/services/ai-image.service";
+import {
+  generateBaseImage as genBaseImage,
+  generateContentImage,
+  generateScenePlateImage,
+  composeImageOnScenePlate,
+} from "@/server/services/ai-image.service";
+import { SCENE_FIRST_PLATE_CREDIT } from "@/lib/prompts/scene-first-photo";
 import type { AppearanceVariation } from "@/lib/prompts/image-prompts";
 import { normalizeAppearanceVariation } from "@/lib/prompts/appearance-variation-ui";
 import { generateVideo } from "@/server/services/ai-video.service";
@@ -27,6 +33,11 @@ import {
 } from "@/lib/generation-errors";
 import { resolvePublicMediaUrl } from "@/server/lib/resolve-public-media-url";
 import { buildReelSceneFrameParams } from "@/lib/reel-scene-frame";
+import {
+  generateReelNarration,
+  isSpeechConfigured,
+  reelNarrationCreditCost,
+} from "@/server/services/ai-speech.service";
 
 // ──────────────────────────────────────────────
 // Helpers
@@ -52,6 +63,58 @@ const platformValues = ["INSTAGRAM", "TIKTOK", "ONLYFANS"] as const;
 const contentTypeValues = ["PHOTO", "CAROUSEL", "REEL", "STORY"] as const;
 const contentStatusValues = ["DRAFT", "GENERATING", "READY", "SCHEDULED", "PUBLISHED", "FAILED"] as const;
 const contentModeValues = ["SFW", "NSFW"] as const;
+
+const photoCreatorInputSchema = z.object({
+  influencerId: z.string(),
+  scene: z.string(),
+  sceneDescription: z.string().max(600).optional(),
+  pose: z.string(),
+  outfit: z.string().default(""),
+  expression: z.string().default("natural"),
+  photoStyle: z.string().default("natural"),
+  timeOfDay: z.string().default("natural"),
+  location: z.string().optional(),
+  customPrompt: z.string().optional(),
+  numberOfImages: z.number().int().min(1).max(4).default(1),
+  contentMode: z.enum(contentModeValues).default("SFW"),
+  nsfwLevel: z.string().optional(),
+  useFaceReference: z.boolean().default(true),
+});
+
+export type PhotoCreatorInput = z.infer<typeof photoCreatorInputSchema>;
+
+function photoParamsBlob(
+  input: PhotoCreatorInput,
+  extra: Record<string, unknown> = {}
+): object {
+  return {
+    scene: input.scene,
+    sceneDescription: input.sceneDescription,
+    pose: input.pose,
+    outfit: input.outfit,
+    expression: input.expression,
+    photoStyle: input.photoStyle,
+    timeOfDay: input.timeOfDay,
+    location: input.location,
+    customPrompt: input.customPrompt,
+    numberOfImages: input.numberOfImages,
+    useFaceReference: input.useFaceReference,
+    contentMode: input.contentMode,
+    ...extra,
+  };
+}
+
+function parsePhotoPhase(params: unknown): string | undefined {
+  if (!params || typeof params !== "object") return undefined;
+  const phase = (params as { photoPhase?: unknown }).photoPhase;
+  return typeof phase === "string" ? phase : undefined;
+}
+
+function parseScenePlateUrl(params: unknown): string | undefined {
+  if (!params || typeof params !== "object") return undefined;
+  const url = (params as { scenePlateUrl?: unknown }).scenePlateUrl;
+  return typeof url === "string" && url.startsWith("http") ? url : undefined;
+}
 
 // ──────────────────────────────────────────────
 // Router
@@ -113,32 +176,13 @@ export const contentRouter = createTRPCRouter({
     }),
 
   /**
-   * generatePhoto — Start AI photo generation
+   * generatePhoto — Single-shot photo (classic path, or when scene-first is off).
    */
   generatePhoto: protectedProcedure
-    .input(
-      z.object({
-        influencerId: z.string(),
-        scene: z.string(),
-        sceneDescription: z.string().max(600).optional(),
-        pose: z.string(),
-        outfit: z.string().default(""),
-        expression: z.string().default("natural"),
-        photoStyle: z.string().default("natural"),
-        timeOfDay: z.string().default("natural"),
-        location: z.string().optional(),
-        customPrompt: z.string().optional(),
-        numberOfImages: z.number().int().min(1).max(4).default(1),
-        contentMode: z.enum(contentModeValues).default("SFW"),
-        nsfwLevel: z.string().optional(),
-        /** Lock face to base/avatar reference (SFW Flux only; NSFW model has no image conditioning). */
-        useFaceReference: z.boolean().default(true),
-      })
-    )
+    .input(photoCreatorInputSchema)
     .mutation(async ({ ctx, input }) => {
       const user = await getDbUser(ctx.userId);
 
-      // Verify influencer ownership
       const influencer = await db.influencer.findUnique({
         where: { id: input.influencerId },
       });
@@ -146,7 +190,6 @@ export const contentRouter = createTRPCRouter({
         throw new TRPCError({ code: "NOT_FOUND", message: "Influencer not found" });
       }
 
-      // Check credits
       const cost = input.numberOfImages * CREDIT_COSTS.PHOTO;
       const hasCredits = await checkCredits(user.id, cost);
       if (!hasCredits) {
@@ -174,20 +217,10 @@ export const contentRouter = createTRPCRouter({
         });
       }
 
-      const initialGenerationParams = {
-        scene: input.scene,
-        sceneDescription: input.sceneDescription,
-        pose: input.pose,
-        outfit: input.outfit,
-        expression: input.expression,
-        photoStyle: input.photoStyle,
-        timeOfDay: input.timeOfDay,
-        location: input.location,
-        customPrompt: input.customPrompt,
-        numberOfImages: input.numberOfImages,
-        useFaceReference: input.useFaceReference,
+      const initialGenerationParams = photoParamsBlob(input, {
+        photoPhase: "final",
         hasReferenceImage: Boolean(referenceImageUrl),
-      } as object;
+      });
 
       // Create content in DB with GENERATING status
       const content = await db.content.create({
@@ -306,6 +339,315 @@ export const contentRouter = createTRPCRouter({
     }),
 
   /**
+   * generatePhotoScenePlate — Step 1: décor seul (valider avant de placer l'influenceuse).
+   */
+  generatePhotoScenePlate: protectedProcedure
+    .input(photoCreatorInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      if (input.contentMode !== "SFW" || !input.useFaceReference) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Le mode scène en 2 étapes est disponible en photos sociales avec visage verrouillé.",
+        });
+      }
+
+      const user = await getDbUser(ctx.userId);
+      const influencer = await db.influencer.findUnique({
+        where: { id: input.influencerId },
+      });
+      if (!influencer || influencer.userId !== user.id) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Influencer not found" });
+      }
+
+      const cost = SCENE_FIRST_PLATE_CREDIT;
+      if (!(await checkCredits(user.id, cost))) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: `Crédits insuffisants. Coût décor : ${cost} crédit.`,
+        });
+      }
+
+      const initialGenerationParams = photoParamsBlob(input, {
+        photoPhase: "scene_generating",
+        workflow: "scene_first",
+      });
+
+      const content = await db.content.create({
+        data: {
+          influencerId: influencer.id,
+          type: "PHOTO",
+          contentMode: "SFW",
+          status: "GENERATING",
+          platforms: [],
+          mediaUrls: [],
+          hashtags: [],
+          promptUsed: "",
+          generationParams: initialGenerationParams,
+        },
+      });
+
+      await db.generationJob.create({
+        data: {
+          userId: user.id,
+          influencerId: influencer.id,
+          contentId: content.id,
+          type: "IMAGE",
+          status: "PENDING",
+          prompt: "scene_plate",
+          creditsUsed: cost,
+        },
+      });
+
+      const runScenePlate = async () => {
+        try {
+          const { scenePlateUrl, platePrompt } = await generateScenePlateImage(
+            user.id,
+            {
+              influencerId: influencer.id,
+              scene: input.scene,
+              sceneDescription: input.sceneDescription,
+              lighting: input.timeOfDay,
+              location: input.location,
+            }
+          );
+
+          await db.content.update({
+            where: { id: content.id },
+            data: {
+              status: "DRAFT",
+              thumbnailUrl: scenePlateUrl,
+              promptUsed: platePrompt,
+              generationParams: {
+                ...initialGenerationParams,
+                photoPhase: "scene_ready",
+                scenePlateUrl,
+                scenePlatePrompt: platePrompt,
+              } as object,
+            },
+          });
+          await db.generationJob.updateMany({
+            where: { contentId: content.id },
+            data: {
+              status: "COMPLETED",
+              completedAt: new Date(),
+              resultUrl: scenePlateUrl,
+            },
+          });
+        } catch (error) {
+          const errText = error instanceof Error ? error.message : String(error);
+          console.error("[content.generatePhotoScenePlate] failed:", errText);
+          await db.content.update({
+            where: { id: content.id },
+            data: { status: "FAILED" },
+          });
+          await db.generationJob.updateMany({
+            where: { contentId: content.id },
+            data: { status: "FAILED", error: errText },
+          });
+        }
+      };
+
+      ctx.scheduleAfter(runScenePlate);
+
+      return { contentId: content.id, cost };
+    }),
+
+  /**
+   * composePhotoOnScene — Step 2: placer l'influenceuse sur le décor validé.
+   */
+  composePhotoOnScene: protectedProcedure
+    .input(
+      z.object({
+        contentId: z.string(),
+        /** Optional override; defaults to params stored on the content row. */
+        numberOfImages: z.number().int().min(1).max(4).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { user, content } = await verifyContentOwnership(
+        input.contentId,
+        ctx.userId
+      );
+
+      const params = content.generationParams as Record<string, unknown> | null;
+      const phase = parsePhotoPhase(params);
+      const scenePlateUrl = parseScenePlateUrl(params) ?? content.thumbnailUrl ?? undefined;
+
+      if (phase !== "scene_ready" || !scenePlateUrl) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Génère et valide d'abord le décor (étape 1), puis lance « Placer l'influenceuse ».",
+        });
+      }
+
+      const influencer = content.influencerId
+        ? await db.influencer.findUnique({ where: { id: content.influencerId } })
+        : null;
+      if (!influencer || influencer.userId !== user.id) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Influencer not found" });
+      }
+
+      const stored = params ?? {};
+      const numberOfImages =
+        input.numberOfImages ??
+        (typeof stored.numberOfImages === "number" ? stored.numberOfImages : 1);
+
+      const cost = numberOfImages * CREDIT_COSTS.PHOTO;
+      if (!(await checkCredits(user.id, cost))) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: `Crédits insuffisants. Coût : ${cost} crédits.`,
+        });
+      }
+
+      const rawRefUrl =
+        influencer.baseImageUrl?.trim() || influencer.avatarUrl?.trim() || undefined;
+      const referenceImageUrl = rawRefUrl
+        ? await resolvePublicMediaUrl(rawRefUrl)
+        : undefined;
+      if (!referenceImageUrl) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: /localhost|127\.0\.0\.1/i.test(rawRefUrl ?? "")
+            ? LOCALHOST_REF_MESSAGE
+            : "Portrait de référence inaccessible.",
+        });
+      }
+
+      await db.content.update({
+        where: { id: content.id },
+        data: { status: "GENERATING" },
+      });
+
+      await db.generationJob.create({
+        data: {
+          userId: user.id,
+          influencerId: influencer.id,
+          contentId: content.id,
+          type: "IMAGE",
+          status: "PENDING",
+          prompt: "compose_on_scene",
+          creditsUsed: cost,
+        },
+      });
+
+      const style = influencer.style as Record<string, string> | null;
+      const appearanceVariations =
+        (influencer.appearanceVariations as AppearanceVariation | null) ?? undefined;
+      const identityPack = parseIdentityPack(influencer.identityPack);
+
+      const photoInput: PhotoCreatorInput = {
+        influencerId: influencer.id,
+        scene: String(stored.scene ?? "custom"),
+        sceneDescription:
+          typeof stored.sceneDescription === "string"
+            ? stored.sceneDescription
+            : undefined,
+        pose: String(stored.pose ?? "portrait"),
+        outfit: String(stored.outfit ?? ""),
+        expression: String(stored.expression ?? "natural"),
+        photoStyle: String(stored.photoStyle ?? "natural"),
+        timeOfDay: String(stored.timeOfDay ?? "natural"),
+        location:
+          typeof stored.location === "string" ? stored.location : undefined,
+        customPrompt:
+          typeof stored.customPrompt === "string" ? stored.customPrompt : undefined,
+        numberOfImages,
+        contentMode: "SFW",
+        useFaceReference: true,
+      };
+
+      const runCompose = async () => {
+        try {
+          const result = await composeImageOnScenePlate(
+            user.id,
+            influencer.age,
+            {
+              gender:
+                (influencer.gender as "female" | "male" | "nonbinary") ?? "female",
+              ethnicity: style?.ethnicity,
+              hairColor: style?.hairColor,
+              hairStyle: style?.hairStyle,
+              bodyType: style?.bodyType,
+              fashionStyle: style?.fashionStyle,
+            },
+            {
+              influencerId: influencer.id,
+              baseImageUrl: referenceImageUrl,
+              useReferenceFace: true,
+              scene: photoInput.scene,
+              sceneDescription: photoInput.sceneDescription,
+              pose: photoInput.pose,
+              outfit: photoInput.outfit,
+              expression: photoInput.expression,
+              style: photoInput.photoStyle,
+              lighting: photoInput.timeOfDay,
+              location: photoInput.location,
+              customPrompt: photoInput.customPrompt,
+              numberOfImages,
+              appearanceVariations,
+              identityPack,
+              scenePlateUrl,
+              isNsfw: false,
+            }
+          );
+
+          await db.content.update({
+            where: { id: content.id },
+            data: {
+              status: "READY",
+              mediaUrls: result.imageUrls,
+              thumbnailUrl: result.imageUrls[0] ?? scenePlateUrl,
+              promptUsed: result.promptUsed,
+              negativePrompt: result.negativePrompt,
+              generationParams: {
+                ...photoParamsBlob(photoInput, {
+                  photoPhase: "final",
+                  scenePlateUrl,
+                  workflow: "scene_first",
+                  identityPackStatus: identityPack?.status ?? null,
+                  modelParams: result.parameters as object,
+                }),
+              } as object,
+            },
+          });
+          await db.generationJob.updateMany({
+            where: { contentId: content.id },
+            data: {
+              status: "COMPLETED",
+              completedAt: new Date(),
+              resultUrl: result.imageUrls[0],
+            },
+          });
+        } catch (error) {
+          const errText = error instanceof Error ? error.message : String(error);
+          console.error("[content.composePhotoOnScene] failed:", errText);
+          await db.content.update({
+            where: { id: content.id },
+            data: {
+              status: "DRAFT",
+              generationParams: {
+                ...(params ?? {}),
+                photoPhase: "scene_ready",
+                scenePlateUrl,
+              } as object,
+            },
+          });
+          await db.generationJob.updateMany({
+            where: { contentId: content.id },
+            data: { status: "FAILED", error: errText },
+          });
+        }
+      };
+
+      ctx.scheduleAfter(runCompose);
+
+      return { contentId: content.id, cost };
+    }),
+
+  /**
    * generateReel — Start AI video/reel generation
    */
   generateReel: protectedProcedure
@@ -326,8 +668,16 @@ export const contentRouter = createTRPCRouter({
         nsfwLevel: z.string().optional(),
         /** stable_face: max identity; natural_motion: balanced; creative: prompt optimizer on */
         reelStylePreset: z
-          .enum(["stable_face", "natural_motion", "classic_motion", "creative"])
+          .enum([
+            "stable_face",
+            "natural_motion",
+            "classic_motion",
+            "creative",
+            "lip_sync",
+          ])
           .default("natural_motion"),
+        /** HTTPS audio for lip_sync preset (Sync 1.6 post-process). */
+        audioUrl: z.string().url().optional(),
         /** When false, animates base portrait only (legacy behaviour). */
         generateSceneFrame: z.boolean().default(true),
       })
@@ -357,6 +707,26 @@ export const contentRouter = createTRPCRouter({
           code: "BAD_REQUEST",
           message: "L'influenceuse doit avoir une image de base pour générer des reels. Génère d'abord une photo.",
         });
+      }
+
+      if (input.reelStylePreset === "lip_sync" && !input.audioUrl?.trim()) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Le style « Reel parlant » nécessite une piste audio (URL HTTPS vers un MP3 ou WAV).",
+        });
+      }
+
+      let resolvedAudioUrl: string | undefined;
+      if (input.audioUrl?.trim()) {
+        resolvedAudioUrl = await resolvePublicMediaUrl(input.audioUrl.trim());
+        if (!resolvedAudioUrl) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "URL audio inaccessible. Utilise un lien public HTTPS (bibliothèque média ou stockage).",
+          });
+        }
       }
 
       // Check credits
@@ -397,6 +767,7 @@ export const contentRouter = createTRPCRouter({
         effects: input.effects,
         textOverlay: input.textOverlay,
         reelStylePreset: input.reelStylePreset,
+        audioUrl: resolvedAudioUrl ?? input.audioUrl,
         generateSceneFrame: input.generateSceneFrame,
       } as object;
 
@@ -541,6 +912,7 @@ export const contentRouter = createTRPCRouter({
             videoType: input.videoType,
             effects: effectsStr,
             reelStylePreset: input.reelStylePreset,
+            audioUrl: resolvedAudioUrl,
             isNsfw: isPremiumReel,
             sceneDescription: sceneDescriptionForVideo,
           });
@@ -593,7 +965,12 @@ export const contentRouter = createTRPCRouter({
       const [content, job] = await Promise.all([
         db.content.findUnique({
           where: { id: input.contentId },
-          select: { status: true, mediaUrls: true, thumbnailUrl: true },
+          select: {
+            status: true,
+            mediaUrls: true,
+            thumbnailUrl: true,
+            generationParams: true,
+          },
         }),
         db.generationJob.findFirst({
           where: { contentId: input.contentId },
@@ -606,14 +983,57 @@ export const contentRouter = createTRPCRouter({
         throw new TRPCError({ code: "NOT_FOUND", message: "Content not found" });
       }
 
+      const photoPhase = parsePhotoPhase(content.generationParams);
+      const scenePlateUrl =
+        parseScenePlateUrl(content.generationParams) ??
+        (photoPhase === "scene_ready" ? content.thumbnailUrl ?? undefined : undefined);
+
       return {
         status: content.status,
         mediaUrls: content.mediaUrls,
         thumbnailUrl: content.thumbnailUrl,
+        photoPhase,
+        scenePlateUrl,
         errorMessage: job?.error
           ? formatGenerationErrorForUser(job.error)
           : null,
       };
+    }),
+
+  /**
+   * speechConfig — whether TTS is available for talking reels.
+   */
+  speechConfig: protectedProcedure.query(() => ({
+    available: isSpeechConfigured(),
+    creditCost: reelNarrationCreditCost(),
+  })),
+
+  /**
+   * generateReelNarration — TTS from reel script (stored on R2, returned as URL).
+   */
+  generateReelNarration: protectedProcedure
+    .input(
+      z.object({
+        script: z.string().min(10).max(1200),
+        language: z.enum(["fr", "en"]).default("fr"),
+        voice: z.string().max(80).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const user = await getDbUser(ctx.userId);
+      const planCfg = PLANS[user.plan as Plan];
+      if (!planCfg.hasVideo) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "La narration vocale nécessite le plan Pro ou Agency.",
+        });
+      }
+      const result = await generateReelNarration(user.id, {
+        text: input.script,
+        language: input.language,
+        voice: input.voice,
+      });
+      return result;
     }),
 
   /**

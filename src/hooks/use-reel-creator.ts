@@ -17,7 +17,14 @@ export interface ReelParams {
   contentMode: "SFW" | "NSFW";
   nsfwLevel: string;
   /** Video identity / motion tradeoff (MiniMax prompt + optimizer). */
-  reelStylePreset: "stable_face" | "natural_motion" | "classic_motion" | "creative";
+  reelStylePreset:
+    | "stable_face"
+    | "natural_motion"
+    | "classic_motion"
+    | "creative"
+    | "lip_sync";
+  /** Public HTTPS URL to narration (MP3/WAV) — required for lip_sync post-process. */
+  audioUrl: string;
   /** Generate a scene photo before animating (recommended). */
   generateSceneFrame: boolean;
 }
@@ -66,6 +73,7 @@ const defaultParams: ReelParams = {
   contentMode: "SFW",
   nsfwLevel: "suggestive",
   reelStylePreset: "natural_motion",
+  audioUrl: "",
 };
 
 export const useReelCreator = create<ReelCreatorState>()((set) => ({

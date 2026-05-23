@@ -253,6 +253,10 @@ export function ReelPreview() {
       nsfwLevel: params.contentMode === "NSFW" ? params.nsfwLevel : undefined,
       reelStylePreset: params.reelStylePreset,
       generateSceneFrame: params.generateSceneFrame,
+      audioUrl:
+        params.reelStylePreset === "lip_sync" && params.audioUrl.trim()
+          ? params.audioUrl.trim()
+          : undefined,
     });
   }, [params, setIsGenerating, setVideoUrl, setGenerationProgress, setGenerationStep, generateMutation]);
 

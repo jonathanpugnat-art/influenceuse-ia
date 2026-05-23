@@ -18,6 +18,8 @@ export interface PhotoParams {
   numberOfImages: number;
   /** When true, SFW photos use base/avatar image + identity prompts (Flux). */
   useFaceReference: boolean;
+  /** Two-step pipeline: environment plate then Nano compose (SFW). */
+  sceneFirst: boolean;
   contentMode: "SFW" | "NSFW";
   nsfwLevel: string;
 }
@@ -48,11 +50,14 @@ interface PhotoCreatorState {
   applySeed: (seed: PhotoCreatorSeed) => void;
   // Generation
   contentId: string | null;
+  /** Approved scene plate URL between step 1 and 2. */
+  scenePlateUrl: string | null;
   isGenerating: boolean;
   generationStep: string;
   generatedUrls: string[];
   selectedImageIndex: number;
   setContentId: (id: string | null) => void;
+  setScenePlateUrl: (url: string | null) => void;
   setIsGenerating: (val: boolean) => void;
   setGenerationStep: (step: string) => void;
   setGeneratedUrls: (urls: string[]) => void;
@@ -85,6 +90,7 @@ const defaultParams: PhotoParams = {
   customPrompt: "",
   numberOfImages: 1,
   useFaceReference: true,
+  sceneFirst: true,
   contentMode: "SFW",
   nsfwLevel: "suggestive",
 };
@@ -107,11 +113,13 @@ export const usePhotoCreator = create<PhotoCreatorState>()((set) => ({
       };
     }),
   contentId: null,
+  scenePlateUrl: null,
   isGenerating: false,
   generationStep: "",
   generatedUrls: [],
   selectedImageIndex: 0,
   setContentId: (id) => set({ contentId: id }),
+  setScenePlateUrl: (url) => set({ scenePlateUrl: url }),
   setIsGenerating: (val) => set({ isGenerating: val }),
   setGenerationStep: (step) => set({ generationStep: step }),
   setGeneratedUrls: (urls) => set({ generatedUrls: urls, selectedImageIndex: 0 }),
@@ -128,6 +136,7 @@ export const usePhotoCreator = create<PhotoCreatorState>()((set) => ({
     set({
       params: { ...defaultParams },
       contentId: null,
+      scenePlateUrl: null,
       isGenerating: false,
       generationStep: "",
       generatedUrls: [],

@@ -142,6 +142,8 @@ export default function TrendsPage() {
   const applyMut = trpc.trends.applyToPhotoParams.useMutation({
     onSuccess: (blob) => {
       if (blob.target === "reel") {
+        const isTalking =
+          blob.videoType === "talking_head" || blob.videoType === "day_in_life";
         updateReelParams({
           influencerId: blob.influencerId,
           duration: blob.duration,
@@ -153,6 +155,10 @@ export default function TrendsPage() {
           music: blob.music,
           effects: blob.effects,
           textOverlay: blob.textOverlay,
+          generateSceneFrame: true,
+          ...(isTalking
+            ? { reelStylePreset: "lip_sync" as const }
+            : { reelStylePreset: "natural_motion" as const }),
         });
         setReelCaption(blob.hook);
         setReelHashtags(blob.hashtags);

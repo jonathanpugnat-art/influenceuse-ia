@@ -112,6 +112,8 @@ export function getPlanDisplayName(plan: keyof typeof PLANS): string {
 export const CREDIT_COSTS = {
   PHOTO: 1,
   REEL: 8,
+  /** TTS narration for talking reels (Replicate Kokoro or REPLICATE_TTS_MODEL). */
+  REEL_NARRATION: 0.5,
   CAPTION: 0.5,
   BASE_IMAGE: 2,
   /** 3 extra Kontext angles from the chosen wizard portrait (profile, 3/4, full body). */

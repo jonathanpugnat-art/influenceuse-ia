@@ -9,19 +9,42 @@ import {
   Trash2,
   Sparkles,
   Coins,
+  MapPin,
+  User,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { usePhotoCreator } from "@/hooks/use-photo-creator";
+import { usePhotoCreator, type PhotoParams } from "@/hooks/use-photo-creator";
 import { PhotoGenerationPreview } from "@/components/content/photo-generation-preview";
 import { trpc } from "@/lib/trpc";
 import { CREDIT_COSTS } from "@/lib/constants";
+import { SCENE_FIRST_PLATE_CREDIT } from "@/lib/prompts/scene-first-photo";
 import { cn } from "@/lib/utils";
 import { useUpgradeOnLimitError } from "@/hooks/use-upgrade-on-limit-error";
 import { toast } from "sonner";
 import { MediaViewerDialog } from "@/components/media/media-viewer-dialog";
 import { downloadMediaUrl } from "@/lib/download-media";
+import { WorkflowSteps } from "@/components/content/workflow-steps";
+
+function photoPayload(params: PhotoParams) {
+  return {
+    influencerId: params.influencerId,
+    scene: params.scene,
+    sceneDescription: params.sceneDescription.trim() || undefined,
+    pose: params.pose,
+    outfit: params.outfit,
+    expression: params.expression,
+    photoStyle: params.photoStyle,
+    timeOfDay: params.timeOfDay,
+    location: params.location || undefined,
+    customPrompt: params.customPrompt || undefined,
+    numberOfImages: params.numberOfImages,
+    contentMode: params.contentMode,
+    nsfwLevel: params.contentMode === "NSFW" ? params.nsfwLevel : undefined,
+    useFaceReference: params.useFaceReference,
+  };
+}
 
 export function PhotoPreview({
   isWelcomeFlow = false,
@@ -33,14 +56,17 @@ export function PhotoPreview({
   const {
     params,
     contentId,
+    scenePlateUrl,
     isGenerating,
     generatedUrls,
     selectedImageIndex,
     setContentId,
+    setScenePlateUrl,
     setIsGenerating,
     setGenerationStep,
     setGeneratedUrls,
     setSelectedImageIndex,
+    generationStep,
   } = usePhotoCreator();
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -48,21 +74,58 @@ export function PhotoPreview({
   const [viewerOpen, setViewerOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
+  const useSceneFirst =
+    params.sceneFirst &&
+    params.contentMode === "SFW" &&
+    params.useFaceReference;
+
+  useEffect(() => {
+    setScenePlateUrl(null);
+    setContentId(null);
+    setGeneratedUrls([]);
+  }, [
+    params.influencerId,
+    params.sceneDescription,
+    setScenePlateUrl,
+    setContentId,
+    setGeneratedUrls,
+  ]);
+
   const generateMutation = trpc.content.generatePhoto.useMutation({
     onSuccess: (data) => {
       setContentId(data.contentId);
-      setGenerationStep("generate");
+      setGenerationStep("compose");
     },
     onError: (err) => {
-      if (!handleUpgrade(err.message)) {
-        toast.error(err.message);
-      }
+      if (!handleUpgrade(err.message)) toast.error(err.message);
       setIsGenerating(false);
       setGenerationStep("");
     },
   });
 
-  // Poll for generation status
+  const scenePlateMutation = trpc.content.generatePhotoScenePlate.useMutation({
+    onSuccess: (data) => {
+      setContentId(data.contentId);
+      setGenerationStep("scene");
+    },
+    onError: (err) => {
+      if (!handleUpgrade(err.message)) toast.error(err.message);
+      setIsGenerating(false);
+      setGenerationStep("");
+    },
+  });
+
+  const composeMutation = trpc.content.composePhotoOnScene.useMutation({
+    onSuccess: () => {
+      setGenerationStep("compose");
+    },
+    onError: (err) => {
+      if (!handleUpgrade(err.message)) toast.error(err.message);
+      setIsGenerating(false);
+      setGenerationStep("");
+    },
+  });
+
   const { data: statusData } = trpc.content.getGenerationStatus.useQuery(
     { contentId: contentId! },
     {
@@ -74,104 +137,155 @@ export function PhotoPreview({
   useEffect(() => {
     if (!statusData || !isGenerating) return;
 
-    if (statusData.status === "READY") {
-      if (statusData.mediaUrls.length > 0) {
-        setGeneratedUrls(statusData.mediaUrls);
-        setGenerationStep("done");
-        setTimeout(() => {
-          setIsGenerating(false);
-          setGenerationStep("");
-        }, 1000);
-      } else {
-        toast.error(
-          "Génération terminée sans image. Réessayez ou contactez le support.",
-          { duration: 8000 }
-        );
+    const phase = statusData.photoPhase;
+
+    if (phase === "scene_ready" && statusData.scenePlateUrl) {
+      setScenePlateUrl(statusData.scenePlateUrl);
+      setIsGenerating(false);
+      setGenerationStep("");
+      toast.success(t("sceneReadyToast"));
+      return;
+    }
+
+    if (statusData.status === "READY" && statusData.mediaUrls.length > 0) {
+      setGeneratedUrls(statusData.mediaUrls);
+      setGenerationStep("done");
+      setTimeout(() => {
         setIsGenerating(false);
         setGenerationStep("");
-      }
-    } else if (statusData.status === "FAILED") {
-      const errMsg =
-        "errorMessage" in statusData && statusData.errorMessage
-          ? String(statusData.errorMessage)
-          : "La génération a échoué. Réessayez.";
+      }, 800);
+      return;
+    }
+
+    if (statusData.status === "FAILED") {
+      const errMsg = statusData.errorMessage ?? t("generationFailed");
       toast.error(errMsg, { duration: 8000 });
       setIsGenerating(false);
       setGenerationStep("");
     }
-  }, [statusData, isGenerating, setGeneratedUrls, setGenerationStep, setIsGenerating]);
+  }, [
+    statusData,
+    isGenerating,
+    setGeneratedUrls,
+    setGenerationStep,
+    setIsGenerating,
+    setScenePlateUrl,
+    t,
+  ]);
 
-  // Stop infinite spinner if the server never updates GENERATING (Vercel timeout, etc.)
   useEffect(() => {
     if (!isGenerating || !contentId) return;
     const timeoutMs = 8 * 60 * 1000;
     const timer = setTimeout(() => {
-      toast.error(
-        "La génération prend trop de temps. Vérifiez vos crédits Replicate et réessayez.",
-        { duration: 10000 }
-      );
+      toast.error(t("generationTimeout"), { duration: 10000 });
       setIsGenerating(false);
       setGenerationStep("");
     }, timeoutMs);
     return () => clearTimeout(timer);
-  }, [isGenerating, contentId, setIsGenerating, setGenerationStep]);
+  }, [isGenerating, contentId, setIsGenerating, setGenerationStep, t]);
 
-  const handleGenerate = () => {
+  const resetForNewRun = () => {
+    setGeneratedUrls([]);
+    setSelectedImageIndex(0);
+  };
+
+  const handleGenerateScene = () => {
     if (!params.influencerId) {
       toast.error(t("selectInfluencerFirst"));
       return;
     }
-    setIsGenerating(true);
-    setGenerationStep("prompt");
-    setGeneratedUrls([]);
-    setSelectedImageIndex(0);
+    resetForNewRun();
+    setScenePlateUrl(null);
     setContentId(null);
+    setIsGenerating(true);
+    setGenerationStep("scene");
+    scenePlateMutation.mutate(photoPayload(params));
+  };
 
-    generateMutation.mutate({
-      influencerId: params.influencerId,
-      scene: params.scene,
-      sceneDescription: params.sceneDescription.trim() || undefined,
-      pose: params.pose,
-      outfit: params.outfit,
-      expression: params.expression,
-      photoStyle: params.photoStyle,
-      timeOfDay: params.timeOfDay,
-      location: params.location || undefined,
-      customPrompt: params.customPrompt || undefined,
+  const handleCompose = () => {
+    if (!contentId) {
+      toast.error(t("generateSceneFirst"));
+      return;
+    }
+    setIsGenerating(true);
+    setGenerationStep("compose");
+    composeMutation.mutate({
+      contentId,
       numberOfImages: params.numberOfImages,
-      contentMode: params.contentMode,
-      nsfwLevel: params.contentMode === "NSFW" ? params.nsfwLevel : undefined,
-      useFaceReference: params.useFaceReference,
     });
   };
 
-  // Cleanup polling on unmount
+  const handleClassicGenerate = () => {
+    if (!params.influencerId) {
+      toast.error(t("selectInfluencerFirst"));
+      return;
+    }
+    resetForNewRun();
+    setScenePlateUrl(null);
+    setContentId(null);
+    setIsGenerating(true);
+    setGenerationStep("compose");
+    generateMutation.mutate(photoPayload(params));
+  };
+
   useEffect(() => {
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current);
     };
   }, []);
 
-  const cost = params.numberOfImages * CREDIT_COSTS.PHOTO;
-  const canGenerate = !!params.influencerId && !isGenerating;
-  const hasImages = generatedUrls.length > 0 && !isGenerating;
+  const composeCost = params.numberOfImages * CREDIT_COSTS.PHOTO;
+  const canAct = !!params.influencerId && !isGenerating;
+  const hasFinalImages = generatedUrls.length > 0 && !isGenerating;
+  const awaitingSceneApproval = useSceneFirst && Boolean(scenePlateUrl) && !hasFinalImages;
   const currentImage = generatedUrls[selectedImageIndex];
+  const displaySceneUrl = scenePlateUrl;
+
+  const workflowStepIndex = hasFinalImages
+    ? 2
+    : awaitingSceneApproval
+      ? 1
+      : 0;
+
+  const loadingLabel =
+    generationStep === "scene"
+      ? t("generatingScene")
+      : generationStep === "compose"
+        ? t("generatingInfluencer")
+        : t("estimatedTime");
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center p-4 md:p-6">
-      {/* Credit badge */}
-      <div className="mb-4 self-end">
+      <div className="mb-4 flex w-full max-w-lg flex-wrap items-center justify-end gap-2">
+        {useSceneFirst && !hasFinalImages && (
+          <Badge variant="outline" className="border-emerald-500/40 text-[10px] text-emerald-400">
+            {awaitingSceneApproval ? t("photoStep2Badge") : t("photoStep1Badge")}
+          </Badge>
+        )}
         <Badge className="border-slate-700 bg-slate-800/50 text-xs text-slate-400">
           <Coins className="mr-1 inline h-3 w-3" />
-          {t("cost")} : {cost} {t("creditUnit")}{cost > 1 ? "s" : ""}
+          {useSceneFirst && !hasFinalImages
+            ? awaitingSceneApproval
+              ? t("composeCostLabel", { cost: String(composeCost) })
+              : t("sceneCostLabel", { cost: String(SCENE_FIRST_PLATE_CREDIT) })
+            : `${t("cost")} : ${composeCost} ${t("creditUnit")}${composeCost > 1 ? "s" : ""}`}
         </Badge>
       </div>
 
-      {/* Main content area */}
       <div className="w-full max-w-lg">
+        {useSceneFirst && !hasFinalImages && (
+          <WorkflowSteps
+            className="mb-4"
+            currentIndex={workflowStepIndex}
+            steps={[
+              { label: t("photoWorkflowStepScene") },
+              { label: t("photoWorkflowStepCompose") },
+              { label: t("photoWorkflowStepDone") },
+            ]}
+          />
+        )}
         <AnimatePresence mode="wait">
           {isGenerating ? (
-            /* Loading state */
             <motion.div
               key="loading"
               initial={{ opacity: 0 }}
@@ -181,16 +295,13 @@ export function PhotoPreview({
             >
               <div className="relative aspect-[3/4] overflow-hidden rounded-2xl border border-slate-800/50 bg-slate-800/30">
                 <Skeleton className="h-full w-full bg-slate-700/30" />
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
                   <RefreshCw className="h-10 w-10 animate-spin text-violet-400" />
-                  <p className="text-xs text-slate-500">
-                    {t("estimatedTime")}
-                  </p>
+                  <p className="text-xs text-slate-400">{loadingLabel}</p>
                 </div>
               </div>
             </motion.div>
-          ) : hasImages ? (
-            /* Generated images */
+          ) : hasFinalImages ? (
             <motion.div
               key="generated"
               initial={{ opacity: 0, scale: 0.98 }}
@@ -198,69 +309,46 @@ export function PhotoPreview({
               exit={{ opacity: 0 }}
               className="space-y-3"
             >
-              {/* Main image */}
               <button
                 type="button"
                 onClick={() => setViewerOpen(true)}
                 className="relative aspect-[3/4] w-full overflow-hidden rounded-2xl border border-slate-800/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
                 aria-label={t("viewFullscreen")}
               >
-                <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-violet-600 to-indigo-600">
-                  <span className="text-6xl font-bold text-white/20">
-                    {selectedImageIndex + 1}
-                  </span>
-                </div>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={currentImage}
-                  alt="Generated content"
-                  className="relative z-10 h-full w-full cursor-zoom-in object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
-                  }}
+                  alt=""
+                  className="h-full w-full cursor-zoom-in object-cover"
                 />
               </button>
 
-              {/* Thumbnails (multiple images) */}
               {generatedUrls.length > 1 && (
                 <div className="flex justify-center gap-2">
                   {generatedUrls.map((url, i) => (
                     <button
-                      key={i}
+                      key={url}
                       type="button"
                       onClick={() => setSelectedImageIndex(i)}
                       className={cn(
                         "relative h-16 w-16 overflow-hidden rounded-lg border-2 transition-all",
                         selectedImageIndex === i
-                          ? "border-violet-500 shadow-lg shadow-violet-500/20"
-                          : "border-transparent opacity-60 hover:opacity-90"
+                          ? "border-violet-500"
+                          : "border-transparent opacity-60"
                       )}
                     >
-                      <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-violet-600 to-indigo-600">
-                        <span className="text-xs font-bold text-white/40">
-                          {i + 1}
-                        </span>
-                      </div>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={url}
-                        alt={`Variation ${i + 1}`}
-                        className="relative z-10 h-full w-full object-cover"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = "none";
-                        }}
-                      />
+                      <img src={url} alt="" className="h-full w-full object-cover" />
                     </button>
                   ))}
                 </div>
               )}
 
-              {/* Action bar */}
               <div className="flex items-center justify-center gap-2">
                 <ActionBtn
                   icon={RefreshCw}
                   label={t("regenerate")}
-                  onClick={handleGenerate}
+                  onClick={useSceneFirst ? handleGenerateScene : handleClassicGenerate}
                 />
                 <ActionBtn
                   icon={Download}
@@ -282,20 +370,60 @@ export function PhotoPreview({
                   }}
                   disabled={isDownloading}
                 />
-                <ActionBtn icon={Trash2} label={t("deleteAction")} onClick={() => {
-                  const newUrls = generatedUrls.filter((_, i) => i !== selectedImageIndex);
-                  setGeneratedUrls(newUrls);
-                  if (selectedImageIndex >= newUrls.length) setSelectedImageIndex(Math.max(0, newUrls.length - 1));
-                }} />
+                <ActionBtn
+                  icon={Trash2}
+                  label={t("deleteAction")}
+                  onClick={() => {
+                    const newUrls = generatedUrls.filter((_, i) => i !== selectedImageIndex);
+                    setGeneratedUrls(newUrls);
+                    setScenePlateUrl(null);
+                    setContentId(null);
+                  }}
+                />
+              </div>
+            </motion.div>
+          ) : awaitingSceneApproval && displaySceneUrl ? (
+            <motion.div
+              key="scene-ready"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="space-y-3"
+            >
+              <p className="text-center text-sm text-emerald-300/90">{t("sceneReadyHint")}</p>
+              <div className="relative aspect-[3/4] overflow-hidden rounded-2xl border border-emerald-500/30">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={displaySceneUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={handleGenerateScene}
+                  disabled={!canAct}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-600 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800/50 disabled:opacity-40"
+                >
+                  <MapPin className="h-4 w-4" />
+                  {t("regenerateSceneBtn")}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCompose}
+                  disabled={!canAct}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+                >
+                  <User className="h-4 w-4" />
+                  {t("composeInfluencerBtn", { cost: String(composeCost) })}
+                </button>
               </div>
             </motion.div>
           ) : (
-            /* Placeholder state */
             <motion.div
               key="placeholder"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
               className="aspect-[3/4] rounded-2xl border-2 border-dashed border-slate-700 bg-slate-800/10"
             >
               <div className="flex h-full flex-col items-center justify-center gap-3 p-8">
@@ -303,39 +431,55 @@ export function PhotoPreview({
                 <p className="text-center text-sm text-slate-500">
                   {isWelcomeFlow && params.influencerId
                     ? t("welcomePlaceholderHint")
-                    : t("placeholderHint")}
+                    : useSceneFirst
+                      ? t("photoSceneFirstPlaceholder")
+                      : t("placeholderHint")}
                 </p>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {!hasImages && !isGenerating && params.sceneDescription?.trim() && (
+        {!hasFinalImages && !isGenerating && !awaitingSceneApproval && params.sceneDescription?.trim() && (
           <div className="mt-3">
             <PhotoGenerationPreview params={params} />
           </div>
         )}
 
-        {/* Generate button */}
-        <div className="mt-4">
-          <button
-            type="button"
-            onClick={handleGenerate}
-            disabled={!canGenerate}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-500/25 transition-all hover:shadow-xl hover:shadow-violet-500/30 disabled:opacity-40 disabled:shadow-none"
-          >
-            {isGenerating ? (
-              <>
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                {t("generating")}
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-4 w-4" />
-                {t("generateBtn")} ({cost} {t("creditUnit")}{cost > 1 ? "s" : ""})
-              </>
-            )}
-          </button>
+        <div className="mt-4 space-y-2">
+          {useSceneFirst && !hasFinalImages && !awaitingSceneApproval && (
+            <button
+              type="button"
+              onClick={handleGenerateScene}
+              disabled={!canAct}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-6 py-3 text-sm font-semibold text-white shadow-lg disabled:opacity-40"
+            >
+              <MapPin className="h-4 w-4" />
+              {t("generateSceneBtn", { cost: String(SCENE_FIRST_PLATE_CREDIT) })}
+            </button>
+          )}
+
+          {!useSceneFirst && (
+            <button
+              type="button"
+              onClick={handleClassicGenerate}
+              disabled={!canAct}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-6 py-3 text-sm font-semibold text-white shadow-lg disabled:opacity-40"
+            >
+              {isGenerating ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  {t("generating")}
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4" />
+                  {t("generateBtn")} ({composeCost} {t("creditUnit")}
+                  {composeCost > 1 ? "s" : ""})
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
@@ -378,4 +522,3 @@ function ActionBtn({
     </button>
   );
 }
-
