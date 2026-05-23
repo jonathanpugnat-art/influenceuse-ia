@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   Sparkles,
@@ -28,6 +28,7 @@ import {
   OnlyFansIcon,
 } from "@/components/ui/social-icons";
 import { usePhotoCreator } from "@/hooks/use-photo-creator";
+import { buildPhotoContentDescription } from "@/lib/photo-content-context";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -84,6 +85,37 @@ export function PhotoPublish() {
   const failingChecks =
     readinessQuery.data?.checks.filter((c) => !c.ok) ?? [];
 
+  const photoContentDescription = useCallback(
+    () =>
+      buildPhotoContentDescription(
+        {
+          scene: params.scene,
+          sceneDescription: params.sceneDescription,
+          pose: params.pose,
+          outfit: params.outfit,
+          expression: params.expression,
+          photoStyle: params.photoStyle,
+          timeOfDay: params.timeOfDay,
+          location: params.location,
+          customPrompt: params.customPrompt,
+          contentMode: params.contentMode,
+          nsfwLevel: params.nsfwLevel,
+        },
+        language
+      ),
+    [params, language]
+  );
+
+  // Premium lane → OnlyFans by default (single-influencer OF workflow).
+  useEffect(() => {
+    if (params.contentMode !== "NSFW") return;
+    setCaptionPlatform("ONLYFANS");
+    setPlatforms(
+      platforms.includes("ONLYFANS") ? platforms : ["ONLYFANS"]
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when entering Premium lane
+  }, [params.contentMode]);
+
   // Generate caption
   const handleGenCaption = useCallback(async () => {
     if (!params.influencerId) return;
@@ -91,7 +123,7 @@ export function PhotoPublish() {
     try {
       const result = await captionMutation.mutateAsync({
         influencerId: params.influencerId,
-        contentDescription: `Photo: ${params.scene}, ${params.pose}, ${params.outfit || "casual"}`,
+        contentDescription: photoContentDescription(),
         platform: captionPlatform as "INSTAGRAM",
         language,
       });
@@ -107,7 +139,14 @@ export function PhotoPublish() {
     } finally {
       setIsGenCaption(false);
     }
-  }, [params, captionPlatform, language, captionMutation, setCaption]);
+  }, [
+    params.influencerId,
+    captionPlatform,
+    language,
+    captionMutation,
+    setCaption,
+    photoContentDescription,
+  ]);
 
   // Sprint 8 — Generate 2 A/B caption variants the user can pick from.
   const handleGenVariants = useCallback(async () => {
@@ -117,7 +156,7 @@ export function PhotoPublish() {
     try {
       const result = await variantsMutation.mutateAsync({
         influencerId: params.influencerId,
-        contentDescription: `Photo: ${params.scene}, ${params.pose}, ${params.outfit || "casual"}`,
+        contentDescription: photoContentDescription(),
         platform: captionPlatform as "INSTAGRAM",
         language,
       });
@@ -127,7 +166,13 @@ export function PhotoPublish() {
     } finally {
       setIsGenVariants(false);
     }
-  }, [params, captionPlatform, language, variantsMutation]);
+  }, [
+    params.influencerId,
+    captionPlatform,
+    language,
+    variantsMutation,
+    photoContentDescription,
+  ]);
 
   const pickVariant = (text: string) => {
     setCaption(text);
@@ -142,7 +187,7 @@ export function PhotoPublish() {
       const result = await hashtagMutation.mutateAsync({
         niche: selectedInf.niche,
         platform: captionPlatform as "INSTAGRAM",
-        description: `Photo: ${params.scene}, ${params.pose}`,
+        description: photoContentDescription(),
         count: 15,
       });
       setHashtags(result.hashtags.map((h) => h.replace(/^#/, "")));
@@ -151,7 +196,13 @@ export function PhotoPublish() {
     } finally {
       setIsGenHashtags(false);
     }
-  }, [selectedInf, params, captionPlatform, hashtagMutation, setHashtags]);
+  }, [
+    selectedInf,
+    captionPlatform,
+    hashtagMutation,
+    setHashtags,
+    photoContentDescription,
+  ]);
 
   // Add hashtag manually
   const addHashtag = () => {

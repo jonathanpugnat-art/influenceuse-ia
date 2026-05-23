@@ -9,11 +9,15 @@ import {
   getFeedForInfluencer,
   personalizeFeedForInfluencer,
   personalizeSingleTrendForInfluencer,
+  recommendationToCreatorParams,
   recommendationToPhotoParams,
+  ensureTrendFormatAnalyzed,
   runTrendsFetch,
   trendAnalysisCost,
   trendAnalysisOneCost,
+  trendFormatAnalyzeCost,
 } from "@/server/services/trends.service";
+import { parseTrendFormatBrief } from "@/lib/trends/trend-format-brief";
 import { resolveTrendsProvider } from "@/server/services/trend-provider";
 import type { Plan, TrendItem } from "@/generated/prisma/client";
 
@@ -55,6 +59,7 @@ export const trendsRouter = createTRPCRouter({
       planName: planCfg.name,
       analysisCost: trendAnalysisCost(),
       analysisOneCost: trendAnalysisOneCost(),
+      formatAnalyzeCost: trendFormatAnalyzeCost(),
     };
   }),
 
@@ -116,12 +121,18 @@ export const trendsRouter = createTRPCRouter({
             });
       const byTrendId = new Map(recs.map((r) => [r.trendItemId, r]));
 
+      const itemsWithFormat = items.map((item) => ({
+        ...item,
+        formatBrief: parseTrendFormatBrief(item.formatBrief),
+        hasMedia: item.mediaUrls.length > 0 || Boolean(item.thumbnailUrl),
+      }));
+
       return {
         feature: {
           planLocked: !planCfg.hasTrends,
           planName: planCfg.name,
         },
-        items: items.map((trendItem) => ({
+        items: itemsWithFormat.map((trendItem) => ({
           id: trendItem.id,
           platform: trendItem.platform,
           title: trendItem.title,
@@ -138,6 +149,10 @@ export const trendsRouter = createTRPCRouter({
           locale: trendItem.locale,
           region: trendItem.region,
           fetchedAt: trendItem.fetchedAt,
+          mediaKind: trendItem.mediaKind,
+          hasMedia: trendItem.hasMedia,
+          formatBrief: trendItem.formatBrief,
+          formatAnalyzedAt: trendItem.formatAnalyzedAt,
           recommendation: byTrendId.get(trendItem.id) ?? null,
         })),
         nextCursor,
@@ -240,7 +255,7 @@ export const trendsRouter = createTRPCRouter({
         where: { id: input.recommendationId },
         include: {
           trendItem: {
-            select: { id: true, hashtags: true, platform: true },
+            select: { id: true, hashtags: true, platform: true, formatBrief: true },
           },
         },
       });
@@ -251,17 +266,71 @@ export const trendsRouter = createTRPCRouter({
         });
       }
 
-      const blob = recommendationToPhotoParams(
+      return recommendationToCreatorParams(
         {
           id: rec.id,
           trendItemId: rec.trendItemId,
           generatedFields: rec.generatedFields,
         },
         influencer.id,
-        rec.trendItem.hashtags
+        rec.trendItem.hashtags,
+        rec.trendItem,
+        influencer.isNsfw
       );
+    }),
 
-      return blob;
+  /**
+   * analyzeFormat — Vision/text analysis of scraped media for one trend.
+   */
+  analyzeFormat: protectedProcedure
+    .input(
+      z.object({
+        trendItemId: z.string(),
+        force: z.boolean().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const user = await getDbUser(ctx.userId);
+      const trendItem = await db.trendItem.findUnique({
+        where: { id: input.trendItemId },
+      });
+      if (!trendItem) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Trend not found",
+        });
+      }
+
+      const cost = trendFormatAnalyzeCost();
+      if (cost > 0) {
+        const hasCredits = await checkCredits(user.id, cost);
+        if (!hasCredits) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: `Crédits insuffisants. Coût : ${cost} crédit.`,
+          });
+        }
+      }
+
+      try {
+        const result = await ensureTrendFormatAnalyzed(
+          input.trendItemId,
+          { force: input.force }
+        );
+        if (cost > 0) await deductCredits(user.id, cost);
+        return {
+          brief: result.brief,
+          model: result.model,
+          cost,
+        };
+      } catch (error) {
+        console.error("[trends.analyzeFormat]", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message:
+            "L'analyse du format a échoué. Vérifie ANTHROPIC_API_KEY pour la vision, ou réessaie.",
+        });
+      }
     }),
 
   /**

@@ -663,6 +663,15 @@ model TrendItem {
   /// When this trend should be considered stale and hidden from the feed.
   /// NULL = no expiry (still up to `fetchedAt` recency to decide).
   expiresAt     DateTime?
+  /// Public media URLs from top scraped posts (images / video posters). Never
+  /// sent to image models as identity reference — only analyzed for format.
+  mediaUrls       String[] @default([])
+  /// image | video | carousel | hashtag_signal (TikTok hashtag stats only).
+  mediaKind       String?
+  /// Vision/text-derived format inspiration (scene, reel storyboard, etc.).
+  formatBrief       Json?
+  formatAnalyzedAt  DateTime?
+  formatAnalysisModel String?
   fetchedAt     DateTime @default(now())
 
   snapshot       TrendSnapshot         @relation(fields: [snapshotId], references: [id], onDelete: Cascade)

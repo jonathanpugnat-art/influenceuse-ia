@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ImagePlus,
@@ -14,11 +14,14 @@ import { useTranslations } from "next-intl";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { usePhotoCreator } from "@/hooks/use-photo-creator";
+import { PhotoGenerationPreview } from "@/components/content/photo-generation-preview";
 import { trpc } from "@/lib/trpc";
 import { CREDIT_COSTS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { useUpgradeOnLimitError } from "@/hooks/use-upgrade-on-limit-error";
 import { toast } from "sonner";
+import { MediaViewerDialog } from "@/components/media/media-viewer-dialog";
+import { downloadMediaUrl } from "@/lib/download-media";
 
 export function PhotoPreview({
   isWelcomeFlow = false,
@@ -42,6 +45,8 @@ export function PhotoPreview({
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const handleUpgrade = useUpgradeOnLimitError();
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const generateMutation = trpc.content.generatePhoto.useMutation({
     onSuccess: (data) => {
@@ -125,6 +130,7 @@ export function PhotoPreview({
     generateMutation.mutate({
       influencerId: params.influencerId,
       scene: params.scene,
+      sceneDescription: params.sceneDescription.trim() || undefined,
       pose: params.pose,
       outfit: params.outfit,
       expression: params.expression,
@@ -193,8 +199,12 @@ export function PhotoPreview({
               className="space-y-3"
             >
               {/* Main image */}
-              <div className="relative aspect-[3/4] overflow-hidden rounded-2xl border border-slate-800/50">
-                {/* Fallback gradient — sits behind the image */}
+              <button
+                type="button"
+                onClick={() => setViewerOpen(true)}
+                className="relative aspect-[3/4] w-full overflow-hidden rounded-2xl border border-slate-800/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+                aria-label={t("viewFullscreen")}
+              >
                 <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-violet-600 to-indigo-600">
                   <span className="text-6xl font-bold text-white/20">
                     {selectedImageIndex + 1}
@@ -204,12 +214,12 @@ export function PhotoPreview({
                 <img
                   src={currentImage}
                   alt="Generated content"
-                  className="relative z-10 h-full w-full object-cover"
+                  className="relative z-10 h-full w-full cursor-zoom-in object-cover"
                   onError={(e) => {
                     (e.target as HTMLImageElement).style.display = "none";
                   }}
                 />
-              </div>
+              </button>
 
               {/* Thumbnails (multiple images) */}
               {generatedUrls.length > 1 && (
@@ -252,9 +262,26 @@ export function PhotoPreview({
                   label={t("regenerate")}
                   onClick={handleGenerate}
                 />
-                <ActionBtn icon={Download} label={t("download")} onClick={() => {
-                  if (currentImage) window.open(currentImage, "_blank");
-                }} />
+                <ActionBtn
+                  icon={Download}
+                  label={t("download")}
+                  onClick={async () => {
+                    if (!currentImage) return;
+                    setIsDownloading(true);
+                    try {
+                      await downloadMediaUrl(currentImage, {
+                        kind: "image",
+                        filename: `aura-photo-${selectedImageIndex + 1}`,
+                      });
+                      toast.success(t("downloadStarted"));
+                    } catch {
+                      toast.error(t("downloadFailed"));
+                    } finally {
+                      setIsDownloading(false);
+                    }
+                  }}
+                  disabled={isDownloading}
+                />
                 <ActionBtn icon={Trash2} label={t("deleteAction")} onClick={() => {
                   const newUrls = generatedUrls.filter((_, i) => i !== selectedImageIndex);
                   setGeneratedUrls(newUrls);
@@ -283,6 +310,12 @@ export function PhotoPreview({
           )}
         </AnimatePresence>
 
+        {!hasImages && !isGenerating && params.sceneDescription?.trim() && (
+          <div className="mt-3">
+            <PhotoGenerationPreview params={params} />
+          </div>
+        )}
+
         {/* Generate button */}
         <div className="mt-4">
           <button
@@ -305,6 +338,19 @@ export function PhotoPreview({
           </button>
         </div>
       </div>
+
+      {currentImage && (
+        <MediaViewerDialog
+          open={viewerOpen}
+          onOpenChange={setViewerOpen}
+          urls={generatedUrls}
+          kind="image"
+          initialIndex={selectedImageIndex}
+          title={t("preview")}
+          downloadLabel={t("download")}
+          openInNewTabLabel={t("openInNewTab")}
+        />
+      )}
     </div>
   );
 }
@@ -313,16 +359,19 @@ function ActionBtn({
   icon: Icon,
   label,
   onClick,
+  disabled,
 }: {
   icon: React.ElementType;
   label: string;
   onClick: () => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex flex-col items-center gap-1 rounded-lg px-3 py-2 text-slate-400 transition-colors hover:bg-slate-800/50 hover:text-white"
+      disabled={disabled}
+      className="flex flex-col items-center gap-1 rounded-lg px-3 py-2 text-slate-400 transition-colors hover:bg-slate-800/50 hover:text-white disabled:opacity-40"
     >
       <Icon className="h-4 w-4" />
       <span className="text-xs">{label}</span>

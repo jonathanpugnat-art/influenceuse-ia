@@ -7,6 +7,7 @@ import { generateBaseImage as genBaseImage, generateContentImage } from "@/serve
 import type { AppearanceVariation } from "@/lib/prompts/image-prompts";
 import { normalizeAppearanceVariation } from "@/lib/prompts/appearance-variation-ui";
 import { generateVideo } from "@/server/services/ai-video.service";
+import { clampPremiumNsfwLevel } from "@/lib/premium-content";
 import { generateCaption as genCaption, generateHashtags as genHashtags, generateContentPlan as genContentPlan, generateIdeas as genIdeas } from "@/server/services/ai-text.service";
 import { processNextBatchSlice, getBatchStatus } from "@/server/services/batch.service";
 import {
@@ -24,6 +25,7 @@ import {
   LOCALHOST_REF_MESSAGE,
 } from "@/lib/generation-errors";
 import { resolvePublicMediaUrl } from "@/server/lib/resolve-public-media-url";
+import { buildReelSceneFrameParams } from "@/lib/reel-scene-frame";
 
 // ──────────────────────────────────────────────
 // Helpers
@@ -117,6 +119,7 @@ export const contentRouter = createTRPCRouter({
       z.object({
         influencerId: z.string(),
         scene: z.string(),
+        sceneDescription: z.string().max(600).optional(),
         pose: z.string(),
         outfit: z.string().default(""),
         expression: z.string().default("natural"),
@@ -172,6 +175,7 @@ export const contentRouter = createTRPCRouter({
 
       const initialGenerationParams = {
         scene: input.scene,
+        sceneDescription: input.sceneDescription,
         pose: input.pose,
         outfit: input.outfit,
         expression: input.expression,
@@ -218,6 +222,11 @@ export const contentRouter = createTRPCRouter({
       const appearanceVariations =
         (influencer.appearanceVariations as AppearanceVariation | null) ?? undefined;
 
+      const isPremiumPhoto = input.contentMode === "NSFW";
+      const nsfwLevel = isPremiumPhoto
+        ? clampPremiumNsfwLevel(input.nsfwLevel)
+        : input.nsfwLevel;
+
       const runPhotoGeneration = async () => {
         try {
           const result = await generateContentImage(
@@ -236,14 +245,15 @@ export const contentRouter = createTRPCRouter({
               baseImageUrl: referenceImageUrl,
               useReferenceFace: useFaceLock,
               scene: input.scene,
+              sceneDescription: input.sceneDescription,
               pose: input.pose,
               outfit: input.outfit,
               expression: input.expression,
               style: input.photoStyle,
               lighting: input.timeOfDay,
               location: input.location,
-              isNsfw: input.contentMode === "NSFW",
-              nsfwLevel: input.nsfwLevel,
+              isNsfw: isPremiumPhoto,
+              nsfwLevel,
               customPrompt: input.customPrompt,
               numberOfImages: input.numberOfImages,
               appearanceVariations,
@@ -302,6 +312,9 @@ export const contentRouter = createTRPCRouter({
         format: z.enum(["VERTICAL", "SQUARE"]).default("VERTICAL"),
         videoType: z.string(),
         script: z.string().min(10),
+        /** Explicit scene (English recommended). If empty, the script is used. */
+        sceneDescription: z.string().optional(),
+        outfit: z.string().optional(),
         music: z.string().optional(),
         effects: z.array(z.string()).optional(),
         textOverlay: z.string().optional(),
@@ -310,7 +323,9 @@ export const contentRouter = createTRPCRouter({
         /** stable_face: max identity; natural_motion: balanced; creative: prompt optimizer on */
         reelStylePreset: z
           .enum(["stable_face", "natural_motion", "creative"])
-          .default("stable_face"),
+          .default("natural_motion"),
+        /** When false, animates base portrait only (legacy behaviour). */
+        generateSceneFrame: z.boolean().default(true),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -372,10 +387,13 @@ export const contentRouter = createTRPCRouter({
         format: input.format,
         videoType: input.videoType,
         script: input.script,
+        sceneDescription: input.sceneDescription,
+        outfit: input.outfit,
         music: input.music,
         effects: input.effects,
         textOverlay: input.textOverlay,
         reelStylePreset: input.reelStylePreset,
+        generateSceneFrame: input.generateSceneFrame,
       } as object;
 
       // Create content in DB
@@ -414,25 +432,123 @@ export const contentRouter = createTRPCRouter({
 
       const runReelGeneration = async () => {
         try {
+          const style = influencer.style as Record<string, string> | null;
+          const appearanceVariations =
+            (influencer.appearanceVariations as AppearanceVariation | null) ??
+            undefined;
+          const isPremiumReel = input.contentMode === "NSFW";
+          const nsfwLevel = isPremiumReel
+            ? clampPremiumNsfwLevel(input.nsfwLevel)
+            : input.nsfwLevel;
+          const useFaceLock = !isPremiumReel;
+
+          let firstFrameUrl = baseImage;
+          let sceneFrameUrl: string | null = null;
+          let scenePromptUsed: string | undefined;
+          let sceneDescriptionForVideo = input.sceneDescription;
+
+          if (input.generateSceneFrame) {
+            const sceneParams = buildReelSceneFrameParams({
+              script: input.script,
+              sceneDescription: input.sceneDescription,
+              outfit: input.outfit,
+              videoType: input.videoType,
+            });
+
+            console.log(
+              "[content.generateReel] Generating scene frame:",
+              sceneParams.scene,
+              sceneParams.outfit.slice(0, 60)
+            );
+
+            const sceneImage = await generateContentImage(
+              user.id,
+              influencer.age,
+              {
+                gender:
+                  (influencer.gender as "female" | "male" | "nonbinary") ??
+                  "female",
+                ethnicity: style?.ethnicity,
+                hairColor: style?.hairColor,
+                hairStyle: style?.hairStyle,
+                bodyType: style?.bodyType,
+                fashionStyle: style?.fashionStyle,
+              },
+              {
+                influencerId: influencer.id,
+                baseImageUrl: baseImage,
+                useReferenceFace: useFaceLock,
+                scene: sceneParams.scene,
+                sceneDescription: sceneParams.sceneDescription,
+                pose: sceneParams.pose,
+                outfit: sceneParams.outfit,
+                expression: sceneParams.expression,
+                style: sceneParams.style,
+                lighting: sceneParams.lighting,
+                isNsfw: isPremiumReel,
+                nsfwLevel,
+                customPrompt: sceneParams.customPrompt,
+                numberOfImages: 1,
+                appearanceVariations,
+                omitCreditBilling: true,
+                isReelSceneFrame: true,
+              }
+            );
+
+            sceneFrameUrl = sceneImage.imageUrls[0] ?? null;
+            scenePromptUsed = sceneImage.promptUsed;
+            sceneDescriptionForVideo =
+              input.sceneDescription?.trim() || sceneParams.sceneDescription;
+            if (!sceneFrameUrl) {
+              throw new Error(
+                "Impossible de générer la photo de scène pour ce reel. Décris le lieu dans « Scène » (ex. salle de bain, miroir, lumière naturelle) et réessaie."
+              );
+            }
+            firstFrameUrl = sceneFrameUrl;
+
+            await db.content.update({
+              where: { id: content.id },
+              data: {
+                thumbnailUrl: sceneFrameUrl,
+                generationParams: {
+                  ...initialReelParams,
+                  sceneFrameUrl,
+                  scenePromptUsed,
+                } as object,
+              },
+            });
+          }
+
+          const usedSceneFrame = Boolean(sceneFrameUrl);
+
           const result = await generateVideo(user.id, {
             influencerId: influencer.id,
-            baseImageUrl: baseImage,
-            subjectReferenceUrl,
+            baseImageUrl: firstFrameUrl,
+            // Never pass the wizard portrait as a second video reference when we
+            // already baked identity into the scene still — dual refs make
+            // MiniMax/Kling morph from portrait → room (weird opening transition).
+            subjectReferenceUrl:
+              useFaceLock && !usedSceneFrame ? subjectReferenceUrl : undefined,
+            sceneFrameOnly: usedSceneFrame,
             duration: durationMap[input.duration] ?? 5,
             script: input.script,
             videoType: input.videoType,
             effects: effectsStr,
             reelStylePreset: input.reelStylePreset,
-            isNsfw: input.contentMode === "NSFW",
+            isNsfw: isPremiumReel,
+            sceneDescription: sceneDescriptionForVideo,
           });
           await db.content.update({
             where: { id: content.id },
             data: {
               status: "READY",
               mediaUrls: [result.videoUrl],
-              thumbnailUrl: result.thumbnailUrl ?? null,
+              thumbnailUrl: result.thumbnailUrl ?? sceneFrameUrl ?? null,
+              promptUsed: scenePromptUsed ?? input.script,
               generationParams: {
                 ...initialReelParams,
+                sceneFrameUrl,
+                scenePromptUsed,
                 modelParams: result.parameters as object,
               } as object,
             },

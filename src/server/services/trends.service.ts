@@ -18,6 +18,16 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
+import { getSceneInspirationText } from "@/lib/prompts/image-prompts";
+import {
+  formatBriefToPhotoSeed,
+  formatBriefToReelSeed,
+  mergeRecommendationWithBrief,
+} from "@/lib/trends/trend-format-brief";
+import {
+  analyzeTrendItemFormat,
+  getTrendFormatBrief,
+} from "@/server/services/trend-media-analysis.service";
 import { db } from "@/server/db";
 import { callJsonLLM, resolveTextProvider } from "@/server/services/ai-text.service";
 import {
@@ -163,6 +173,8 @@ export const trendRecommendationFieldsSchema = z.object({
   expression: z.string().min(1).max(40),
   outfit: z.string().min(0).max(200),
   customPrompt: z.string().min(0).max(400),
+  /** Filled from formatBrief after vision analysis (English). */
+  sceneDescription: z.string().max(800).optional(),
   confidence: z.enum(["high", "medium", "low"]),
   citations: z.array(z.string().min(1).max(60)).max(8),
 });
@@ -315,6 +327,8 @@ async function persistRawTrends(
       thumbnailUrlAlt: item.thumbnailUrlAlt?.slice(0, 1000) ?? null,
       embedUrl: item.embedUrl?.slice(0, 500) ?? null,
       authorHandle: item.authorHandle?.slice(0, 100) ?? null,
+      mediaUrls: (item.mediaUrls ?? []).slice(0, 12),
+      mediaKind: item.mediaKind?.slice(0, 40) ?? null,
       nicheTags: normalizeNicheTags(item.nicheTags),
       isNsfw: item.isNsfw ?? false,
       locale: item.locale ?? ctx.locale ?? null,
@@ -429,15 +443,9 @@ export async function personalizeFeedForInfluencer(
   // reasonable. 12 is well within deepseek's context with our prompt size.
   const batch = trendItems.slice(0, 12);
 
-  const payload: TrendForPrompt[] = batch.map((t) => ({
-    trendId: t.id,
-    platform: t.platform,
-    title: t.title,
-    description: t.description ?? undefined,
-    hashtags: t.hashtags,
-    soundName: t.soundName ?? undefined,
-    growthScore: t.growthScore ?? undefined,
-  }));
+  const payload: TrendForPrompt[] = batch.map((t) =>
+    trendPayloadFromItem(t, getTrendFormatBrief(t))
+  );
 
   const { systemPrompt, userPrompt } = buildTrendPersonalizationPrompt(
     {
@@ -471,7 +479,8 @@ export async function personalizeFeedForInfluencer(
     const trend = byId.get(rec.trendId);
     if (!trend) continue; // hallucinated id — drop
 
-    const cleaned: TrendRecommendationFields = {
+    const brief = trend ? getTrendFormatBrief(trend) : null;
+    let cleaned: TrendRecommendationFields = {
       ...rec,
       scene: clampScene(rec.scene),
       pose: clampPose(rec.pose),
@@ -489,6 +498,10 @@ export async function personalizeFeedForInfluencer(
                 : clampExpression(rec.expression),
           }),
     };
+    cleaned = mergeRecommendationWithBrief(cleaned, brief);
+    if (brief?.sceneDescription) {
+      cleaned.sceneDescription = brief.sceneDescription;
+    }
 
     const upserted = await db.trendRecommendation.upsert({
       where: {
@@ -530,19 +543,24 @@ export async function personalizeSingleTrendForInfluencer(
     "id" | "name" | "gender" | "niche" | "personality" | "bio" | "isNsfw"
   >,
   trendItem: TrendItem,
-  language: "fr" | "en"
+  language: "fr" | "en",
+  options?: { skipFormatAnalysis?: boolean }
 ): Promise<{ recommendationId: string; llmModel: string }> {
-  const payload: TrendForPrompt[] = [
-    {
-      trendId: trendItem.id,
-      platform: trendItem.platform,
-      title: trendItem.title,
-      description: trendItem.description ?? undefined,
-      hashtags: trendItem.hashtags,
-      soundName: trendItem.soundName ?? undefined,
-      growthScore: trendItem.growthScore ?? undefined,
-    },
-  ];
+  let item = trendItem;
+  if (!options?.skipFormatAnalysis && !item.formatBrief) {
+    try {
+      await ensureTrendFormatAnalyzed(item.id);
+      const refreshed = await db.trendItem.findUnique({
+        where: { id: item.id },
+      });
+      if (refreshed) item = refreshed;
+    } catch (e) {
+      console.warn("[trends] format analysis skipped:", e);
+    }
+  }
+
+  const brief = getTrendFormatBrief(item);
+  const payload: TrendForPrompt[] = [trendPayloadFromItem(item, brief)];
 
   const { systemPrompt, userPrompt } = buildTrendPersonalizationPrompt(
     {
@@ -576,7 +594,7 @@ export async function personalizeSingleTrendForInfluencer(
     throw new Error("LLM returned no recommendation for the trend");
   }
 
-  const cleaned: TrendRecommendationFields = {
+  let cleaned: TrendRecommendationFields = {
     ...rec,
     trendId: trendItem.id,
     scene: clampScene(rec.scene),
@@ -589,6 +607,13 @@ export async function personalizeSingleTrendForInfluencer(
     type: clampContentType(rec.type),
     platform: clampPlatform(rec.platform),
   };
+  cleaned = mergeRecommendationWithBrief(cleaned, brief);
+  if (brief?.sceneDescription) {
+    cleaned.sceneDescription = brief.sceneDescription;
+  }
+  if (brief?.contentType === "REEL") {
+    cleaned.type = "REEL";
+  }
 
   const llmModel = resolveTextProvider();
   const upserted = await db.trendRecommendation.upsert({
@@ -631,6 +656,7 @@ export interface ApplyToPhotoParamsResult {
   platform: "INSTAGRAM" | "TIKTOK" | "ONLYFANS";
   influencerId: string;
   scene: string;
+  sceneDescription: string;
   pose: string;
   outfit: string;
   expression: string;
@@ -645,6 +671,26 @@ export interface ApplyToPhotoParamsResult {
   trendItemId: string;
   recommendationId: string;
 }
+
+export type ApplyToCreatorResult =
+  | (ApplyToPhotoParamsResult & { target: "photo" })
+  | {
+      target: "reel";
+      influencerId: string;
+      duration: 15 | 30 | 60;
+      format: "VERTICAL" | "SQUARE";
+      videoType: string;
+      script: string;
+      sceneDescription: string;
+      outfit: string;
+      music: string;
+      effects: string[];
+      textOverlay: string;
+      hook: string;
+      hashtags: string[];
+      trendItemId: string;
+      recommendationId: string;
+    };
 
 /**
  * Convert a stored recommendation into a creator-ready param blob. We re-clamp
@@ -675,11 +721,20 @@ export function recommendationToPhotoParams(
         citations: [],
       };
 
+  const scene = clampScene(fields.scene);
+  const sceneBase = getSceneInspirationText(scene);
+  const sceneDescription =
+    fields.sceneDescription?.trim() ||
+    (fields.customPrompt.trim().length > 0
+      ? [sceneBase, fields.customPrompt.trim()].filter(Boolean).join(". ")
+      : sceneBase);
+
   return {
     type: clampContentType(fields.type),
     platform: clampPlatform(fields.platform),
     influencerId,
-    scene: clampScene(fields.scene),
+    scene,
+    sceneDescription,
     pose: clampPose(fields.pose),
     outfit: fields.outfit,
     expression: clampExpression(fields.expression),
@@ -691,6 +746,74 @@ export function recommendationToPhotoParams(
     trendItemId: rec.trendItemId,
     recommendationId: rec.id,
   };
+}
+
+/** Route to photo or reel creator based on recommendation + format brief. */
+export function recommendationToCreatorParams(
+  rec: { id: string; trendItemId: string; generatedFields: unknown },
+  influencerId: string,
+  hashtags: string[],
+  trendItem: Pick<TrendItem, "formatBrief">,
+  influencerIsNsfw: boolean
+): ApplyToCreatorResult {
+  const photoBlob = recommendationToPhotoParams(
+    rec,
+    influencerId,
+    hashtags
+  );
+  const brief = getTrendFormatBrief(trendItem);
+  const parsed = trendRecommendationFieldsSchema.safeParse(rec.generatedFields);
+  const type = parsed.success ? parsed.data.type : photoBlob.type;
+
+  if (type === "REEL" && brief) {
+    const reel = formatBriefToReelSeed(brief, influencerId, hashtags);
+    return {
+      target: "reel",
+      influencerId,
+      duration: reel.duration,
+      format: reel.format,
+      videoType: reel.videoType,
+      script: reel.script,
+      sceneDescription: reel.sceneDescription,
+      outfit: reel.outfit,
+      music: reel.music,
+      effects: reel.effects,
+      textOverlay: reel.textOverlay,
+      hook: photoBlob.hook,
+      hashtags,
+      trendItemId: rec.trendItemId,
+      recommendationId: rec.id,
+    };
+  }
+
+  if (brief && influencerIsNsfw) {
+    const premium = formatBriefToPhotoSeed(
+      brief,
+      influencerId,
+      hashtags,
+      true
+    );
+    return {
+      target: "photo",
+      type: "PHOTO",
+      platform: photoBlob.platform,
+      influencerId,
+      scene: premium.scene ?? photoBlob.scene,
+      sceneDescription: premium.sceneDescription ?? photoBlob.sceneDescription,
+      pose: premium.pose ?? photoBlob.pose,
+      outfit: premium.outfit ?? photoBlob.outfit,
+      expression: premium.expression ?? photoBlob.expression,
+      customPrompt: premium.customPrompt ?? photoBlob.customPrompt,
+      hook: photoBlob.hook,
+      hashtags,
+      confidence: photoBlob.confidence,
+      citations: photoBlob.citations,
+      trendItemId: rec.trendItemId,
+      recommendationId: rec.id,
+    };
+  }
+
+  return { target: "photo", ...photoBlob };
 }
 
 // ──────────────────────────────────────────────
@@ -705,4 +828,46 @@ export function trendAnalysisCost(): number {
 /** Cost of personalizing a single trend card (cheaper than the bulk path). */
 export function trendAnalysisOneCost(): number {
   return CREDIT_COSTS.TREND_ANALYSIS_ONE;
+}
+
+export function trendFormatAnalyzeCost(): number {
+  return CREDIT_COSTS.TREND_FORMAT_ANALYZE;
+}
+
+function trendPayloadFromItem(
+  item: TrendItem,
+  brief: ReturnType<typeof getTrendFormatBrief>
+): TrendForPrompt {
+  return {
+    trendId: item.id,
+    platform: item.platform,
+    title: item.title,
+    description: item.description ?? undefined,
+    hashtags: item.hashtags,
+    soundName: item.soundName ?? undefined,
+    growthScore: item.growthScore ?? undefined,
+    formatBrief: brief
+      ? {
+          contentType: brief.contentType,
+          sceneDescription: brief.sceneDescription,
+          pose: brief.pose,
+          expression: brief.expression,
+          outfit: brief.outfit,
+          mood: brief.mood,
+          hook: brief.hook,
+          videoType: brief.videoType,
+          reelStoryboard: brief.reelStoryboard,
+          confidence: brief.confidence,
+          analyzedFrom: brief.analyzedFrom,
+        }
+      : undefined,
+  };
+}
+
+/** Run vision/text format analysis (idempotent unless force). */
+export async function ensureTrendFormatAnalyzed(
+  trendItemId: string,
+  options?: { force?: boolean }
+) {
+  return analyzeTrendItemFormat(trendItemId, options);
 }

@@ -4,7 +4,10 @@ import { create } from "zustand";
 
 export interface PhotoParams {
   influencerId: string;
+  /** Preset id for analytics/templates; use "custom" when the user edits the scene text. */
   scene: string;
+  /** Free-form environment description (English recommended). Drives the image prompt. */
+  sceneDescription: string;
   pose: string;
   outfit: string;
   expression: string;
@@ -27,6 +30,7 @@ export interface PhotoParams {
 export interface PhotoCreatorSeed {
   influencerId?: string;
   scene?: string;
+  sceneDescription?: string;
   pose?: string;
   outfit?: string;
   expression?: string;
@@ -66,9 +70,12 @@ interface PhotoCreatorState {
   reset: () => void;
 }
 
+import { getSceneInspirationText } from "@/lib/prompts/image-prompts";
+
 const defaultParams: PhotoParams = {
   influencerId: "",
   scene: "studio",
+  sceneDescription: getSceneInspirationText("studio"),
   pose: "portrait",
   outfit: "",
   expression: "smile",

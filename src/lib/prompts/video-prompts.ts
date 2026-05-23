@@ -14,6 +14,10 @@ export interface VideoPromptInput {
   effects?: string;
   /** Prioritize identity vs motion vs creative freedom */
   reelStylePreset?: ReelStylePreset;
+  /** Scene already baked into the first frame — motion only, no location change */
+  sceneDescription?: string;
+  /** First frame is a full scene still — forbid morphing from another identity photo */
+  sceneFrameOnly?: boolean;
 }
 
 const VIDEO_TYPE_PROMPTS: Record<string, string> = {
@@ -36,9 +40,11 @@ const VIDEO_TYPE_PROMPTS: Record<string, string> = {
   tutorial:
     "GRWM-style bathroom mirror, hair or skincare steps, talking casually to camera, products visible",
   grwm:
-    "get ready at vanity, step by step, products on table, chatting casually",
+    "get ready in bathroom or at vanity, trying outfit, mirror reflection, subtle movements, products visible, casual creator energy",
   ootd:
-    "OOTD mirror spin, outfit angles, bedroom, closet visible",
+    "OOTD in bathroom mirror or bedroom, showing outfit, gentle turn, closet visible",
+  try_on:
+    "trying on outfit in bathroom mirror, adjusting clothes, natural movements, same room throughout",
   day_in_life:
     "day in my life vlog, one continuous handheld clip feel, coffee routine, casual transitions in same space, authentic creator energy",
   sketch:
@@ -57,38 +63,53 @@ const VIDEO_EFFECT_PROMPTS: Record<string, string> = {
   none: "no special effects, natural phone recording",
 };
 
+/** Shared block — finished IG/TikTok clip, not an animated still. */
+const INSTAGRAM_REEL_FINISH =
+  "finished native Instagram Reel clip, single continuous handheld take, real-time speed (not slideshow, not ken burns zoom on a still), " +
+  "iPhone camera app look, natural motion blur on moving hands, real skin texture, no wax figure, no AI glamour glow, " +
+  "not cinematic color grade, not TV commercial, not 3D render";
+
 const PRESET_PREFIX: Record<ReelStylePreset, string> = {
   stable_face:
-    "CRITICAL: the exact same person and face as the reference images throughout the clip, " +
-    "no face drift, no identity change, same skin tone and facial features, " +
-    "subtle natural motion only, smartphone vertical reel, not cinematic ",
+    "CRITICAL: same person, face, outfit and room as the first frame throughout, no face morphing, no location change, " +
+    "natural creator motion: weight shift, hand gesture, hair bounce, blinking, slight handheld drift — NOT a living portrait with only eye blink, ",
   natural_motion:
-    "same person as reference throughout, natural body and head motion, handheld iPhone vertical reel, " +
-    "authentic TikTok energy, not a movie trailer ",
+    "same person, outfit and environment as the first frame, believable creator body language and handheld phone movement, " +
+    "authentic Instagram Reel energy, continuous clip feel, ",
   creative:
-    "based on the reference person and first frame, creative motion and energy, vertical social reel, fun and watchable ",
+    "based on the first frame person and place, expressive but still phone-filmed social reel, ",
   lip_sync:
-    "same person as reference throughout, slight natural body and head motion to enable accurate lip-sync, " +
-    "talking-to-camera framing, mouth fully visible, no hand or hair occluding the lips, vertical reel ",
+    "same person throughout, natural upper-body motion for lip-sync, talking-to-camera, mouth visible, vertical reel, ",
 };
 
 /**
  * Builds the full text prompt sent to the video model (e.g. MiniMax).
  */
 export function buildVideoPrompt(input: VideoPromptInput): string {
-  const preset: ReelStylePreset = input.reelStylePreset ?? "stable_face";
+  const preset: ReelStylePreset = input.reelStylePreset ?? "natural_motion";
   const parts: string[] = [];
 
   parts.push(PRESET_PREFIX[preset]);
-  parts.push(
-    "realistic phone video, filmed on iPhone, vertical 9:16 social media reel, not AI glossy, not film grain overlay"
-  );
+  parts.push(INSTAGRAM_REEL_FINISH);
+
+  if (input.sceneFrameOnly) {
+    parts.push(
+      "video opens exactly on the provided first frame, same room and outfit from frame zero, " +
+        "no morphing from a different photo, no crossfade from a studio portrait, no identity transition at start"
+    );
+  }
 
   const typePrompt = VIDEO_TYPE_PROMPTS[input.videoType] ?? input.videoType;
   parts.push(typePrompt);
 
+  if (input.sceneDescription?.trim()) {
+    parts.push(
+      `Keep the environment from the first frame: ${input.sceneDescription.trim()}. Do not change location.`
+    );
+  }
+
   if (input.script?.trim()) {
-    parts.push(input.script.trim());
+    parts.push(`Motion and action (do not change scene): ${input.script.trim()}`);
   }
 
   if (input.effects) {
@@ -100,8 +121,9 @@ export function buildVideoPrompt(input: VideoPromptInput): string {
   }
 
   parts.push(
-    "natural handheld micro-shake, realistic skin and hair movement, available daylight or indoor lamps, " +
-      "TikTok / Instagram Reel quality, casual authentic creator, no text on screen, no watermark"
+    "natural skin and hair movement, available daylight or indoor lamps, " +
+      "looks like a real influencer posted this on Instagram today, " +
+      "ABSOLUTELY NO text on screen, NO captions, NO subtitles, NO stickers, NO logos, NO watermarks, NO UI overlays"
   );
 
   return parts.join(", ");
@@ -251,29 +273,55 @@ export function buildVideoModelInputs(
 
 /** Default routing table by reel style preset. */
 const DEFAULT_PRESET_ROUTING: Record<ReelStylePreset, VideoModelId> = {
+  /** Kling: strong identity lock on a single start frame (no dual ref). */
   stable_face: "kwaivgi/kling-v2.0",
-  natural_motion: "minimax/video-01",
+  /** Wan 2.5 I2V: one image in → natural handheld motion (best default for IG reels). */
+  natural_motion: "wan-video/wan-2.5-i2v",
   creative: "runwayml/gen4-aleph",
-  // For lip-sync the *base* video uses Kling (best face stability) and the
-  // dedicated post-process is selected via `resolveLipSyncModel()`.
   lip_sync: "kwaivgi/kling-v2.0",
 };
+
+/** Built-in candidates for a preset (may include Wan when Runway can't take a start frame). */
+function builtInVideoModelCandidates(
+  preset: ReelStylePreset,
+  hasRef: boolean
+): VideoModelId[] {
+  const primary = DEFAULT_PRESET_ROUTING[preset];
+  const list: VideoModelId[] = [primary];
+  if (hasRef && !VIDEO_MODELS[primary].supportsImageRef) {
+    list.push("wan-video/wan-2.5-i2v");
+  }
+  return list;
+}
+
+/** Human label for UI — matches built-in routing (env overrides not reflected). */
+export function presetDefaultVideoModelLabel(
+  preset: ReelStylePreset,
+  hasStartFrame = true
+): string {
+  for (const id of builtInVideoModelCandidates(preset, hasStartFrame)) {
+    const desc = VIDEO_MODELS[id];
+    if (hasStartFrame && !desc.supportsImageRef) continue;
+    return desc.label;
+  }
+  return VIDEO_MODELS["wan-video/wan-2.5-i2v"].label;
+}
 
 /**
  * Picks the best Replicate model for the requested preset.
  *
  * Hierarchy:
- *  1. `REPLICATE_VIDEO_MODEL_<PRESET>` env override (e.g. `_STABLE_FACE`).
- *  2. `REPLICATE_VIDEO_MODEL` legacy global override.
- *  3. Built-in routing table.
- *  4. Hard fallback to `minimax/video-01` if a reference image is needed
- *     but the chosen model can't accept one.
+ *  1. `REPLICATE_VIDEO_MODEL_<PRESET>` env override (e.g. `_NATURAL_MOTION`).
+ *  2. Built-in routing table (per preset; Wan when creative + start frame).
+ *  3. `REPLICATE_VIDEO_MODEL` legacy global override (last resort — do not set
+ *     to `minimax/video-01` unless you want every preset on MiniMax).
+ *  4. Hard fallback: Wan 2.5 I2V with a start frame, else MiniMax Video-01.
  */
 export function resolveReplicateVideoModel(opts?: {
   preset?: ReelStylePreset;
   hasReferenceImage?: boolean;
 }): VideoModelDescriptor {
-  const preset: ReelStylePreset = opts?.preset ?? "stable_face";
+  const preset: ReelStylePreset = opts?.preset ?? "natural_motion";
   const hasRef = opts?.hasReferenceImage ?? false;
 
   const presetEnvKey = `REPLICATE_VIDEO_MODEL_${preset.toUpperCase()}`;
@@ -282,8 +330,8 @@ export function resolveReplicateVideoModel(opts?: {
 
   const candidates = [
     presetEnv,
+    ...builtInVideoModelCandidates(preset, hasRef),
     globalEnv,
-    DEFAULT_PRESET_ROUTING[preset],
   ].filter(Boolean) as VideoModelId[];
 
   for (const id of candidates) {
@@ -301,7 +349,9 @@ export function resolveReplicateVideoModel(opts?: {
     return desc;
   }
 
-  return VIDEO_MODELS["minimax/video-01"];
+  return hasRef
+    ? VIDEO_MODELS["wan-video/wan-2.5-i2v"]
+    : VIDEO_MODELS["minimax/video-01"];
 }
 
 /**

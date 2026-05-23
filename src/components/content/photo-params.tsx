@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import {
   ChevronDown,
@@ -16,8 +16,22 @@ import {
 } from "@/lib/photo-niche-defaults";
 import {
   explodeAppearanceVariations,
+  getSceneInspirationText,
   type AppearanceVariation,
 } from "@/lib/prompts/image-prompts";
+import {
+  getCompatiblePoseIds,
+  isPoseCompatibleWithScene,
+  pickDefaultPoseForScene,
+} from "@/lib/photo-scene-pose";
+import { PhotoGenerationPreview } from "@/components/content/photo-generation-preview";
+import {
+  getPremiumPhotoDefaults,
+  getSocialPhotoDefaults,
+  laneFromContentMode,
+  PREMIUM_OUTFIT_SUGGESTIONS,
+  type ContentLane,
+} from "@/lib/premium-content";
 import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { Label } from "@/components/ui/label";
@@ -44,22 +58,27 @@ function Chip({
   label,
   emoji,
   selected,
+  disabled,
   onClick,
 }: {
   label: string;
   emoji?: string;
   selected: boolean;
+  disabled?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={onClick}
       className={cn(
         "rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all",
+        disabled && "cursor-not-allowed opacity-35",
         selected
           ? "border-violet-500 bg-violet-500/20 text-violet-300"
-          : "border-slate-700 bg-slate-800/30 text-slate-400 hover:border-slate-600"
+          : "border-slate-700 bg-slate-800/30 text-slate-400 hover:border-slate-600",
+        disabled && !selected && "hover:border-slate-700"
       )}
     >
       {emoji && <span className="mr-1">{emoji}</span>}
@@ -143,6 +162,19 @@ export function PhotoParams() {
     selectedNiche,
     influencerGender
   );
+  const contentLane: ContentLane = laneFromContentMode(params.contentMode);
+  const isPremium = contentLane === "premium";
+  const displayOutfitSuggestions = isPremium
+    ? [...PREMIUM_OUTFIT_SUGGESTIONS]
+    : outfitSuggestions;
+
+  const setContentLane = (lane: ContentLane) => {
+    if (lane === "premium") {
+      updateParams(getPremiumPhotoDefaults(params.pose));
+    } else {
+      updateParams(getSocialPhotoDefaults(params.pose));
+    }
+  };
   const portraitUrl =
     selectedInfluencer?.baseImageUrl?.trim() ||
     selectedInfluencer?.avatarUrl?.trim() ||
@@ -163,12 +195,52 @@ export function PhotoParams() {
     );
   }, [selectedNiche]);
 
+  const scenePoseInput = useMemo(
+    () => ({
+      scene: params.scene,
+      sceneDescription: params.sceneDescription,
+    }),
+    [params.scene, params.sceneDescription]
+  );
+
+  const compatiblePoseIds = useMemo(
+    () => getCompatiblePoseIds(scenePoseInput),
+    [scenePoseInput]
+  );
+
+  useEffect(() => {
+    if (!isPoseCompatibleWithScene(params.pose, scenePoseInput)) {
+      updateParams({
+        pose: pickDefaultPoseForScene(scenePoseInput, params.pose),
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.sceneDescription, params.scene]);
+
+  const applySceneInspiration = (presetId: string) => {
+    const description = getSceneInspirationText(presetId);
+    const nextPose = pickDefaultPoseForScene(
+      { scene: presetId, sceneDescription: description },
+      params.pose
+    );
+    updateParams({
+      scene: presetId,
+      sceneDescription: description,
+      pose: nextPose,
+    });
+  };
+
   const applyTemplate = (tpl: ContentTemplate) => {
     const gender = influencerGender;
     const outfit = gender === "male" ? tpl.params.outfitMale : tpl.params.outfitFemale;
+    const sceneDescription = getSceneInspirationText(tpl.params.scene);
     updateParams({
       scene: tpl.params.scene,
-      pose: tpl.params.pose,
+      sceneDescription,
+      pose: pickDefaultPoseForScene(
+        { scene: tpl.params.scene, sceneDescription },
+        tpl.params.pose
+      ),
       expression: tpl.params.expression,
       photoStyle: tpl.params.photoStyle,
       timeOfDay: tpl.params.timeOfDay,
@@ -230,6 +302,30 @@ export function PhotoParams() {
           )}
         </div>
 
+        {/* Content lane — Social vs OnlyFans Premium (suggestive only) */}
+        {params.influencerId && (
+          <div className="space-y-2 rounded-xl border border-slate-800/50 bg-slate-800/20 p-3">
+            <Label className="text-xs text-slate-400">{t("contentLaneLabel")}</Label>
+            <div className="flex flex-wrap gap-1.5">
+              <Chip
+                label={t("contentLaneSocial")}
+                emoji="📱"
+                selected={contentLane === "social"}
+                onClick={() => setContentLane("social")}
+              />
+              <Chip
+                label={t("contentLanePremium")}
+                emoji="🔒"
+                selected={contentLane === "premium"}
+                onClick={() => setContentLane("premium")}
+              />
+            </div>
+            <p className="text-[11px] leading-snug text-slate-500">
+              {isPremium ? t("contentLanePremiumHint") : t("contentLaneSocialHint")}
+            </p>
+          </div>
+        )}
+
         {/* Face reference (SFW + Flux image conditioning) */}
         {influencers.length > 0 && (
           <div className="space-y-2 rounded-xl border border-slate-800/50 bg-slate-800/20 p-3">
@@ -241,7 +337,7 @@ export function PhotoParams() {
               <Switch
                 checked={params.useFaceReference}
                 disabled={
-                  params.contentMode === "NSFW" ||
+                  isPremium ||
                   !(
                     Boolean(selectedInfluencer?.baseImageUrl?.trim()) ||
                     Boolean(selectedInfluencer?.avatarUrl?.trim())
@@ -251,8 +347,8 @@ export function PhotoParams() {
                 className="shrink-0"
               />
             </div>
-            {params.contentMode === "NSFW" ? (
-              <p className="text-xs text-amber-500/90">{t("faceReferenceNsfwNote")}</p>
+            {isPremium ? (
+              <p className="text-xs text-amber-500/90">{t("faceReferencePremiumNote")}</p>
             ) : !selectedInfluencer ? null : !(
                 selectedInfluencer.baseImageUrl?.trim() ||
                 selectedInfluencer.avatarUrl?.trim()
@@ -343,17 +439,34 @@ export function PhotoParams() {
           </div>
         </div>
 
-        {/* Scene */}
+        {/* Scene — free description (primary) */}
         <div className="space-y-2">
-          <Label className="text-xs text-slate-400">{t("scene")}</Label>
+          <Label className="text-xs text-slate-400">{t("sceneDescription")}</Label>
+          <Textarea
+            value={params.sceneDescription}
+            onChange={(e) =>
+              updateParams({
+                sceneDescription: e.target.value,
+                scene: "custom",
+              })
+            }
+            placeholder={t("sceneDescriptionPlaceholder")}
+            rows={4}
+            className="border-slate-800/50 bg-slate-800/30 text-sm text-white placeholder:text-slate-600"
+          />
+          <p className="text-xs text-slate-600">{t("sceneDescriptionHint")}</p>
+          <p className="text-xs text-slate-500">{t("sceneInspirationLabel")}</p>
           <div className="flex flex-wrap gap-1.5">
             {scenes.map((s) => (
               <Chip
                 key={s.value}
                 label={s.label}
                 emoji={s.emoji}
-                selected={params.scene === s.value}
-                onClick={() => updateParams({ scene: s.value })}
+                selected={
+                  params.scene === s.value &&
+                  params.sceneDescription === getSceneInspirationText(s.value)
+                }
+                onClick={() => applySceneInspiration(s.value)}
               />
             ))}
           </div>
@@ -390,20 +503,30 @@ export function PhotoParams() {
           </div>
         </div>
 
-        {/* Pose */}
+        {/* Pose — filtered by scene */}
         <div className="space-y-2">
           <Label className="text-xs text-slate-400">{t("pose")}</Label>
+          <p className="text-[11px] text-slate-600">{t("poseCompatibilityHint")}</p>
           <div className="flex flex-wrap gap-1.5">
-            {poses.map((p) => (
-              <Chip
-                key={p.value}
-                label={p.label}
-                selected={params.pose === p.value}
-                onClick={() => updateParams({ pose: p.value })}
-              />
-            ))}
+            {poses.map((p) => {
+              const allowed = compatiblePoseIds.includes(p.value);
+              return (
+                <Chip
+                  key={p.value}
+                  label={p.label}
+                  selected={params.pose === p.value}
+                  disabled={!allowed}
+                  onClick={() => updateParams({ pose: p.value })}
+                />
+              );
+            })}
           </div>
+          {poses.some((p) => !compatiblePoseIds.includes(p.value)) && (
+            <p className="text-[11px] text-amber-600/90">{t("poseFilteredHint")}</p>
+          )}
         </div>
+
+        <PhotoGenerationPreview params={params} />
 
         {/* Outfit */}
         <div className="space-y-2">
@@ -414,9 +537,9 @@ export function PhotoParams() {
             placeholder={t("outfitPlaceholder")}
             className="h-9 border-slate-800/50 bg-slate-800/30 text-sm text-white placeholder:text-slate-600"
           />
-          {outfitSuggestions.length > 0 && (
+          {displayOutfitSuggestions.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
-              {outfitSuggestions.map((s) => (
+              {displayOutfitSuggestions.map((s) => (
                 <button
                   key={s}
                   type="button"
@@ -479,41 +602,23 @@ export function PhotoParams() {
           </div>
         </div>
 
-        {/* NSFW section — hidden for now, will be re-enabled later */}
-        {false && selectedInfluencer?.isNsfw && (
-          <div className="space-y-3 rounded-xl border border-slate-800/50 bg-slate-800/20 p-3">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs text-slate-400">{t("contentMode")}</Label>
-              <div className="flex items-center gap-2">
-                <span className={cn("text-xs", params.contentMode === "SFW" ? "text-emerald-400" : "text-slate-500")}>
-                  SFW
-                </span>
-                <Switch
-                  checked={params.contentMode === "NSFW"}
-                  onCheckedChange={(v) =>
-                    updateParams({ contentMode: v ? "NSFW" : "SFW" })
-                  }
-                />
-                <span className={cn("text-xs", params.contentMode === "NSFW" ? "text-red-400" : "text-slate-500")}>
-                  NSFW
-                </span>
-              </div>
+        {/* Premium intensity — suggestive / soft only (no explicit) */}
+        {isPremium && (
+          <div className="space-y-2 rounded-xl border border-rose-500/20 bg-rose-500/5 p-3">
+            <Label className="text-xs text-rose-200/90">{t("premiumIntensity")}</Label>
+            <div className="flex flex-wrap gap-1.5">
+              <Chip
+                label={t("nsfwSuggestive")}
+                selected={params.nsfwLevel === "suggestive"}
+                onClick={() => updateParams({ nsfwLevel: "suggestive" })}
+              />
+              <Chip
+                label={t("nsfwSoft")}
+                selected={params.nsfwLevel === "soft"}
+                onClick={() => updateParams({ nsfwLevel: "soft" })}
+              />
             </div>
-            {params.contentMode === "NSFW" && (
-              <Select
-                value={params.nsfwLevel}
-                onValueChange={(v) => updateParams({ nsfwLevel: v })}
-              >
-                <SelectTrigger className="h-8 border-slate-700 bg-slate-800/50 text-xs text-white">
-                  <SelectValue placeholder={t("nsfwLevel")} />
-                </SelectTrigger>
-                <SelectContent className="border-slate-800 bg-slate-900">
-                  <SelectItem value="suggestive" className="text-slate-300 focus:bg-slate-800 focus:text-white text-xs">{t("nsfwSuggestive")}</SelectItem>
-                  <SelectItem value="soft" className="text-slate-300 focus:bg-slate-800 focus:text-white text-xs">{t("nsfwSoft")}</SelectItem>
-                  <SelectItem value="explicit" className="text-slate-300 focus:bg-slate-800 focus:text-white text-xs">{t("nsfwExplicit")}</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
+            <p className="text-[11px] text-slate-500">{t("premiumIntensityHint")}</p>
           </div>
         )}
 

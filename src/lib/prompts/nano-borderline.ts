@@ -29,13 +29,27 @@ export const BORDERLINE_KEYWORDS: readonly string[] = [
   "panties",
   "boudoir",
   "intimate",
-  // Bath / shower
+  // Bath / shower / GRWM
+  "bathroom",
+  "salle de bain",
   "bathtub",
   "shower",
   "bathrobe",
   "peignoir",
   "towel only",
   "wrapped in a towel",
+  "grwm",
+  "get ready",
+  "vanity",
+  "miroir",
+  "mirror selfie",
+  "trying on",
+  "try on",
+  "essayage",
+  "lace",
+  "dentelle",
+  "silk robe",
+  "robe de chambre",
   // Suggestive / body-forward (SFW but Nano-sensitive)
   "sarong",
   "see-through",
@@ -81,6 +95,7 @@ export const BORDERLINE_KEYWORDS: readonly string[] = [
 
 export interface BorderlinePromptFields {
   scene?: string;
+  sceneDescription?: string;
   outfit?: string;
   location?: string;
   customPrompt?: string;
@@ -91,6 +106,7 @@ export interface BorderlinePromptFields {
 export function buildPromptHaystack(fields: BorderlinePromptFields): string {
   return [
     fields.scene,
+    fields.sceneDescription,
     fields.outfit,
     fields.location,
     fields.customPrompt,

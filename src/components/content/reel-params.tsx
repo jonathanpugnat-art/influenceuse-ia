@@ -18,6 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import { trpc } from "@/lib/trpc";
 import { useReelCreator } from "@/hooks/use-reel-creator";
 import { cn } from "@/lib/utils";
+import { presetDefaultVideoModelLabel } from "@/lib/prompts/video-prompts";
 
 function Chip({
   label,
@@ -206,8 +207,13 @@ export function ReelParams() {
           <div className="flex flex-col gap-2">
             {(
               [
+                {
+                  key: "natural_motion" as const,
+                  title: t("reelStyleNatural"),
+                  desc: t("reelStyleNaturalDesc"),
+                  recommended: true,
+                },
                 { key: "stable_face" as const, title: t("reelStyleStable"), desc: t("reelStyleStableDesc") },
-                { key: "natural_motion" as const, title: t("reelStyleNatural"), desc: t("reelStyleNaturalDesc") },
                 { key: "creative" as const, title: t("reelStyleCreative"), desc: t("reelStyleCreativeDesc") },
               ] as const
             ).map((opt) => (
@@ -222,8 +228,20 @@ export function ReelParams() {
                     : "border-slate-700 bg-slate-800/30 hover:border-slate-600"
                 )}
               >
-                <div className="text-xs font-medium text-white">{opt.title}</div>
+                <div className="flex items-center gap-2">
+                  <div className="text-xs font-medium text-white">{opt.title}</div>
+                  {"recommended" in opt && opt.recommended && (
+                    <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
+                      {t("reelStyleRecommended")}
+                    </span>
+                  )}
+                </div>
                 <div className="text-xs text-slate-500">{opt.desc}</div>
+                <div className="mt-0.5 text-[10px] text-slate-600">
+                  {t("reelStyleEngine", {
+                    model: presetDefaultVideoModelLabel(opt.key),
+                  })}
+                </div>
               </button>
             ))}
           </div>
@@ -245,10 +263,32 @@ export function ReelParams() {
           </div>
         </div>
 
+        {/* Scene (first frame) */}
+        <div className="space-y-2 rounded-xl border border-violet-500/20 bg-violet-500/5 p-3">
+          <Label className="text-xs font-medium text-violet-300">
+            {t("reelSceneTitle")}
+          </Label>
+          <p className="text-xs text-slate-500">{t("reelSceneHint")}</p>
+          <p className="text-xs text-slate-600">{t("reelQualityNote")}</p>
+          <Textarea
+            value={params.sceneDescription}
+            onChange={(e) => updateParams({ sceneDescription: e.target.value })}
+            placeholder={t("reelScenePlaceholder")}
+            rows={3}
+            className="border-slate-800/50 bg-slate-800/30 text-sm text-white placeholder:text-slate-600"
+          />
+          <Input
+            value={params.outfit}
+            onChange={(e) => updateParams({ outfit: e.target.value })}
+            placeholder={t("reelOutfitPlaceholder")}
+            className="border-slate-800/50 bg-slate-800/30 text-sm text-white placeholder:text-slate-600"
+          />
+        </div>
+
         {/* Script */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <Label className="text-xs text-slate-400">Script / Scénario</Label>
+            <Label className="text-xs text-slate-400">{t("reelMotionLabel")}</Label>
             <button
               type="button"
               className="flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300"
@@ -260,7 +300,7 @@ export function ReelParams() {
           <Textarea
             value={params.script}
             onChange={(e) => updateParams({ script: e.target.value })}
-            placeholder="Décris ce que fait l'influenceuse dans la vidéo. Ex: Elle arrive dans un café, s'installe, sort son ordinateur, sourit à la caméra..."
+            placeholder={t("reelMotionPlaceholder")}
             rows={6}
             className="border-slate-800/50 bg-slate-800/30 text-sm text-white placeholder:text-slate-600"
           />

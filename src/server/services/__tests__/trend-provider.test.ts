@@ -97,6 +97,8 @@ describe("trend-provider", () => {
             hashtags: ["fitness", "running"],
             likesCount: 100,
             commentsCount: 5,
+            displayUrl: "https://cdn.example.com/post1.jpg",
+            type: "Image",
           },
           {
             inputUrl: "https://www.instagram.com/explore/tags/fitness/",
@@ -122,6 +124,9 @@ describe("trend-provider", () => {
           expect.arrayContaining(["fitness", "running", "gym"])
         );
         expect(fit!.sourceUrl).toContain("/explore/tags/fitness/");
+        expect(fit!.thumbnailUrl).toBe("https://cdn.example.com/post1.jpg");
+        expect(fit!.mediaUrls).toContain("https://cdn.example.com/post1.jpg");
+        expect(fit!.mediaKind).toBe("carousel");
       });
       it("returns empty array on empty input", () => {
         expect(__test__.aggregateInstagramPosts([])).toEqual([]);

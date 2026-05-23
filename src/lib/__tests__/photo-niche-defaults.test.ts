@@ -8,6 +8,7 @@ describe("photo-niche-defaults", () => {
   it("returns gym scene and outfit for FITNESS female", () => {
     const d = getNichePhotoDefaults("FITNESS", "female");
     expect(d.scene).toBe("gym");
+    expect(d.sceneDescription).toContain("gym");
     expect(d.outfit).toContain("Legging");
     expect(d.useFaceReference).toBe(true);
   });

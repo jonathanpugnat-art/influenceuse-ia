@@ -306,7 +306,9 @@ export async function generateCaption(
         { role: "system", content: systemPrompt },
         {
           role: "user",
-          content: `Génère une caption pour ce contenu : ${input.contentDescription}`,
+          content:
+            `Génère une caption qui correspond EXACTEMENT au contenu visuel décrit ci-dessous. ` +
+            `Ne change pas de lieu, d'activité ni de tenue.\n\n${input.contentDescription}`,
         },
       ],
       300,

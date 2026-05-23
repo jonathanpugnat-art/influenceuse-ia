@@ -3,6 +3,10 @@
 // ──────────────────────────────────────────────
 
 import type { ContentImageEngine } from "@/lib/prompts/nano-borderline";
+import {
+  inferSceneContext,
+  resolvePosePhrase,
+} from "@/lib/photo-scene-pose";
 
 export type Gender = "female" | "male" | "nonbinary";
 export type GenderedTemplate = { female: string; male: string; nonbinary: string };
@@ -235,6 +239,37 @@ export const SCENE_TEMPLATES: Record<string, string> = {
   pool: "normal pool area, concrete deck, pool towels on loungers, sunscreen bottle, other swimmers, bright midday sun, pool noodles",
 };
 
+/**
+ * Short English scene descriptions for the photo UI — filled into the
+ * user's textarea, not injected as hidden SCENE_TEMPLATES. Edit freely in-app.
+ */
+export const SCENE_INSPIRATIONS: Record<string, string> = {
+  studio:
+    "cozy corner at home, soft natural light from a window, everyday decor, casual indoor vibe",
+  beach:
+    "real beach in daylight, sand and ocean behind, casual beach day, natural sun on skin",
+  urban:
+    "on a real city sidewalk, shops and pedestrians in the background, outdoor street photo, no mirror",
+  gym:
+    "inside a normal gym, gym mirror on the wall for a workout selfie, other people training, fluorescent lights",
+  bedroom:
+    "real bedroom, unmade bed, cozy morning light, phone charger on nightstand, everyday life",
+  restaurant:
+    "restaurant table with real food and drinks, other diners softly visible, warm indoor lighting",
+  nature:
+    "park or hiking trail, trees and grass, natural daylight, casual outdoor walk",
+  cafe:
+    "coffee shop interior, iced latte on the table, laptop nearby, other customers in background",
+  rooftop:
+    "apartment rooftop at sunset, city skyline behind, drinks on a small table, casual evening",
+  pool:
+    "pool deck in bright midday sun, loungers and towels, relaxed summer pool day",
+};
+
+export function getSceneInspirationText(presetId: string): string {
+  return SCENE_INSPIRATIONS[presetId] ?? "";
+}
+
 /** Scene-specific accessories — gendered for realism (no cross-gender accessories) */
 export const SCENE_ACCESSORIES: Record<string, GenderedTemplate> = {
   studio: {
@@ -466,8 +501,10 @@ export const NEGATIVE_PROMPT_NSFW =
 
 /** NSFW level templates */
 export const NSFW_TEMPLATES: Record<string, string> = {
-  suggestive: "lingerie, seductive pose, alluring expression, boudoir photography, sensual",
-  soft: "artistic boudoir, sensual intimate pose, intimate setting, soft focus, skin visible",
+  suggestive:
+    "lingerie fully worn, seductive pose, alluring expression, boudoir photography, sensual, tasteful, not nude, not explicit",
+  soft:
+    "artistic boudoir, sensual intimate pose, intimate setting, soft focus, lingerie or silk robe, not nude, not explicit",
   explicit: "explicit content, adult content, nsfw, nude",
 };
 
@@ -538,6 +575,8 @@ export interface PromptBuildInput {
   bodyType?: string;
   fashionStyle?: string;
   scene?: string;
+  /** User-written environment; when set, replaces SCENE_TEMPLATES + accessories. */
+  sceneDescription?: string;
   pose?: string;
   expression?: string;
   style?: string;
@@ -687,7 +726,10 @@ export function buildFullPrompt(input: PromptBuildInput): string {
     );
   }
 
-  if (input.scene) {
+  const customScene = input.sceneDescription?.trim();
+  if (customScene && customScene.length > 0) {
+    parts.push(`setting and environment: ${customScene}`);
+  } else if (input.scene) {
     const scene = SCENE_TEMPLATES[input.scene] ?? input.scene;
     parts.push(scene);
     const accessoriesSet = SCENE_ACCESSORIES[input.scene];
@@ -706,9 +748,13 @@ export function buildFullPrompt(input: PromptBuildInput): string {
     else parts.push(input.expression);
   }
   if (input.pose) {
-    const poseSet = POSE_TEMPLATES[input.pose];
-    if (poseSet) parts.push(poseSet[gender]);
-    else parts.push(input.pose);
+    const sceneContext = inferSceneContext({
+      scene: input.scene,
+      sceneDescription: input.sceneDescription,
+    });
+    parts.push(
+      resolvePosePhrase(input.pose, gender, sceneContext, POSE_TEMPLATES)
+    );
   }
 
   // ── 7. Photography style (only if it doesn't fight the user outfit) ─────

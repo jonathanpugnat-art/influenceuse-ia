@@ -8,6 +8,9 @@ export interface ReelParams {
   format: "VERTICAL" | "SQUARE";
   videoType: string;
   script: string;
+  /** Explicit scene for the first frame (English recommended). */
+  sceneDescription: string;
+  outfit: string;
   music: string;
   effects: string[];
   textOverlay: string;
@@ -15,6 +18,8 @@ export interface ReelParams {
   nsfwLevel: string;
   /** Video identity / motion tradeoff (MiniMax prompt + optimizer). */
   reelStylePreset: "stable_face" | "natural_motion" | "creative";
+  /** Generate a scene photo before animating (recommended). */
+  generateSceneFrame: boolean;
 }
 
 interface ReelCreatorState {
@@ -52,12 +57,15 @@ const defaultParams: ReelParams = {
   format: "VERTICAL",
   videoType: "talking_head",
   script: "",
+  sceneDescription: "",
+  outfit: "",
   music: "",
+  generateSceneFrame: true,
   effects: [],
   textOverlay: "",
   contentMode: "SFW",
   nsfwLevel: "suggestive",
-  reelStylePreset: "stable_face",
+  reelStylePreset: "natural_motion",
 };
 
 export const useReelCreator = create<ReelCreatorState>()((set) => ({

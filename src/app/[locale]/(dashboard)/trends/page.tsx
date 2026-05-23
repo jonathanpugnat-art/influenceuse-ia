@@ -30,6 +30,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TrendCard } from "@/components/trends/trend-card";
 import { usePhotoCreator } from "@/hooks/use-photo-creator";
+import { useReelCreator } from "@/hooks/use-reel-creator";
 
 type PlatformFilter = "ALL" | "TIKTOK" | "INSTAGRAM";
 type SortMode = "growth" | "fresh";
@@ -52,7 +53,10 @@ type NicheFilter = (typeof NICHE_OPTIONS)[number];
 export default function TrendsPage() {
   const t = useTranslations("trends");
   const router = useRouter();
-  const applySeed = usePhotoCreator((s) => s.applySeed);
+  const applyPhotoSeed = usePhotoCreator((s) => s.applySeed);
+  const updateReelParams = useReelCreator((s) => s.updateParams);
+  const setReelCaption = useReelCreator((s) => s.setCaption);
+  const setReelHashtags = useReelCreator((s) => s.setHashtags);
 
   const [selectedInfluencerId, setSelectedInfluencerId] = useState<string>("");
   const [platform, setPlatform] = useState<PlatformFilter>("ALL");
@@ -64,6 +68,9 @@ export default function TrendsPage() {
   // Track which single card is being personalized so we can show a per-card
   // spinner instead of disabling the whole grid.
   const [personalizingTrendId, setPersonalizingTrendId] = useState<string | null>(null);
+  const [analyzingFormatTrendId, setAnalyzingFormatTrendId] = useState<
+    string | null
+  >(null);
 
   const config = trpc.trends.config.useQuery();
   const influencersQuery = trpc.influencer.getAll.useQuery({ limit: 50 });
@@ -134,9 +141,28 @@ export default function TrendsPage() {
 
   const applyMut = trpc.trends.applyToPhotoParams.useMutation({
     onSuccess: (blob) => {
-      applySeed({
+      if (blob.target === "reel") {
+        updateReelParams({
+          influencerId: blob.influencerId,
+          duration: blob.duration,
+          format: blob.format,
+          videoType: blob.videoType,
+          script: blob.script,
+          sceneDescription: blob.sceneDescription ?? "",
+          outfit: blob.outfit ?? "",
+          music: blob.music,
+          effects: blob.effects,
+          textOverlay: blob.textOverlay,
+        });
+        setReelCaption(blob.hook);
+        setReelHashtags(blob.hashtags);
+        router.push(`/content/reel?influencer=${blob.influencerId}`);
+        return;
+      }
+      applyPhotoSeed({
         influencerId: blob.influencerId,
         scene: blob.scene,
+        sceneDescription: blob.sceneDescription,
         pose: blob.pose,
         outfit: blob.outfit,
         expression: blob.expression,
@@ -144,11 +170,26 @@ export default function TrendsPage() {
         caption: blob.hook,
         hashtags: blob.hashtags,
       });
-      const target = blob.type === "REEL" ? "/content/reel" : "/content/photo";
-      router.push(target);
+      router.push(`/content/photo?influencer=${blob.influencerId}`);
     },
     onError: (e) => toast.error(e.message),
   });
+
+  const formatAnalyzeCost = config.data?.formatAnalyzeCost ?? 0.2;
+
+  const analyzeFormatMut = trpc.trends.analyzeFormat.useMutation({
+    onSettled: () => setAnalyzingFormatTrendId(null),
+    onSuccess: () => {
+      toast.success(t("formatAnalyzeSuccess"));
+      utils.trends.getFeed.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const onAnalyzeFormat = (trendItemId: string) => {
+    setAnalyzingFormatTrendId(trendItemId);
+    analyzeFormatMut.mutate({ trendItemId });
+  };
 
   const onApply = (recommendationId: string) => {
     if (!selectedInfluencerId) return;
@@ -383,6 +424,9 @@ export default function TrendsPage() {
                 isBusy={applyMut.isPending || dismissMut.isPending}
                 isPersonalizing={personalizingTrendId === trend.id}
                 personalizeOneCost={analysisOneCost}
+                onAnalyzeFormat={onAnalyzeFormat}
+                isAnalyzingFormat={analyzingFormatTrendId === trend.id}
+                formatAnalyzeCost={formatAnalyzeCost}
               />
             ))}
           </div>

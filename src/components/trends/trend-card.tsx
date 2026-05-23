@@ -43,6 +43,16 @@ export interface TrendCardProps {
     /** Optional creator handle ("@username") for attribution. */
     authorHandle?: string | null;
     fetchedAt: Date | string;
+    mediaKind?: string | null;
+    hasMedia?: boolean;
+    formatBrief?: {
+      contentType: string;
+      sceneDescription: string;
+      mood: string;
+      confidence: string;
+      analyzedFrom: string;
+    } | null;
+    formatAnalyzedAt?: Date | string | null;
     recommendation: {
       id: string;
       generatedHook: string;
@@ -65,6 +75,9 @@ export interface TrendCardProps {
   isPersonalizing?: boolean;
   /** Cost shown on the per-card "Personalize" CTA (defaults to 0.1). */
   personalizeOneCost?: number;
+  onAnalyzeFormat?: (trendItemId: string) => void;
+  isAnalyzingFormat?: boolean;
+  formatAnalyzeCost?: number;
 }
 
 function platformBadgeColor(p: TrendCardProps["trend"]["platform"]): string {
@@ -113,6 +126,9 @@ export function TrendCard({
   isBusy,
   isPersonalizing,
   personalizeOneCost = 0.1,
+  onAnalyzeFormat,
+  isAnalyzingFormat = false,
+  formatAnalyzeCost = 0.2,
 }: TrendCardProps) {
   const t = useTranslations("trends");
   const fields = readFields(trend.recommendation?.generatedFields);
@@ -227,6 +243,23 @@ export function TrendCard({
           )}
         </div>
 
+        {trend.formatBrief && (
+          <div className="mb-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
+            <p className="mb-1 text-xs font-medium text-emerald-300">
+              {t("formatBriefTitle")}
+            </p>
+            <p className="line-clamp-3 text-[11px] leading-snug text-slate-300">
+              {trend.formatBrief.sceneDescription}
+            </p>
+            <p className="mt-1 text-[10px] text-slate-500">
+              {trend.formatBrief.analyzedFrom === "vision"
+                ? t("formatAnalyzedFromVision")
+                : t("formatAnalyzedFromText")}{" "}
+              · {trend.formatBrief.confidence}
+            </p>
+          </div>
+        )}
+
         {hasRec && trend.recommendation && (
           <div className="mb-4 rounded-xl border border-violet-500/20 bg-violet-500/5 p-3">
             <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-violet-300">
@@ -268,7 +301,24 @@ export function TrendCard({
           </div>
         )}
 
-        <div className="mt-auto flex items-center gap-2">
+        <div className="mt-auto flex flex-col gap-2">
+          {!trend.formatBrief && onAnalyzeFormat && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full border-emerald-500/30 text-emerald-300"
+              disabled={isBusy || isAnalyzingFormat}
+              onClick={() => onAnalyzeFormat(trend.id)}
+            >
+              {isAnalyzingFormat ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              {t("analyzeFormatCta")} ({formatAnalyzeCost} cr)
+            </Button>
+          )}
+          <div className="flex items-center gap-2">
           {hasRec && trend.recommendation ? (
             <>
               <Button
@@ -331,6 +381,7 @@ export function TrendCard({
               <ExternalLink className="h-4 w-4" />
             </a>
           )}
+          </div>
         </div>
       </div>
     </motion.article>

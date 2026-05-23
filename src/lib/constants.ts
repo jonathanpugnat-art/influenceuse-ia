@@ -134,4 +134,6 @@ export const CREDIT_COSTS = {
    * without committing to the full 0.5-credit bulk pass.
    */
   TREND_ANALYSIS_ONE: 0.1,
+  /** Vision/text analysis of scraped post media (one trend). */
+  TREND_FORMAT_ANALYZE: 0.2,
 } as const;

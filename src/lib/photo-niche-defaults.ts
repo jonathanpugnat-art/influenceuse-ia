@@ -1,3 +1,5 @@
+import { getSceneInspirationText } from "@/lib/prompts/image-prompts";
+
 /** Outfit chips per niche + gender (photo creator). */
 type NicheSuggestionsByGender = {
   female: string[];
@@ -67,8 +69,10 @@ export function getNichePhotoDefaults(
   gender: InfluencerGender = "female"
 ) {
   const outfits = NICHE_OUTFIT_SUGGESTIONS[niche]?.[gender];
+  const scene = SCENE_BY_NICHE[niche] ?? "cafe";
   return {
-    scene: SCENE_BY_NICHE[niche] ?? "cafe",
+    scene,
+    sceneDescription: getSceneInspirationText(scene),
     pose: "selfie",
     expression: "natural",
     photoStyle: "natural",

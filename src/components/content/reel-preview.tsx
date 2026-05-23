@@ -24,6 +24,7 @@ import { trpc } from "@/lib/trpc";
 import { CREDIT_COSTS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { downloadMediaUrl } from "@/lib/download-media";
 import { useUpgradeOnLimitError } from "@/hooks/use-upgrade-on-limit-error";
 
 // We no longer expose the per-step labels to the user (they were too verbose
@@ -149,6 +150,7 @@ export function ReelPreview() {
     generationStep,
     generationProgress,
     videoUrl,
+    thumbnailUrl,
     setContentId,
     setIsGenerating,
     setGenerationStep,
@@ -182,6 +184,14 @@ export function ReelPreview() {
 
   useEffect(() => {
     if (!statusData || !isGenerating) return;
+    if (
+      statusData.status === "GENERATING" &&
+      statusData.thumbnailUrl &&
+      !videoUrl
+    ) {
+      setThumbnailUrl(statusData.thumbnailUrl);
+    }
+
     if (statusData.status === "READY" && statusData.mediaUrls.length > 0) {
       setVideoUrl(statusData.mediaUrls[0]);
       setThumbnailUrl(statusData.thumbnailUrl ?? null);
@@ -234,12 +244,15 @@ export function ReelPreview() {
       format: params.format,
       videoType: params.videoType,
       script: params.script,
+      sceneDescription: params.sceneDescription.trim() || undefined,
+      outfit: params.outfit.trim() || undefined,
       music: params.music || undefined,
       effects: params.effects.length > 0 ? params.effects : undefined,
       textOverlay: params.textOverlay || undefined,
       contentMode: params.contentMode,
       nsfwLevel: params.contentMode === "NSFW" ? params.nsfwLevel : undefined,
       reelStylePreset: params.reelStylePreset,
+      generateSceneFrame: params.generateSceneFrame,
     });
   }, [params, setIsGenerating, setVideoUrl, setGenerationProgress, setGenerationStep, generateMutation]);
 
@@ -275,8 +288,17 @@ export function ReelPreview() {
                 "relative overflow-hidden rounded-2xl border border-slate-800/50 bg-slate-800/30",
                 params.format === "VERTICAL" ? "aspect-[9/16]" : "aspect-square"
               )}>
-                <Skeleton className="h-full w-full bg-slate-700/30" />
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6">
+                {thumbnailUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={thumbnailUrl}
+                    alt=""
+                    className="h-full w-full object-cover opacity-90"
+                  />
+                ) : (
+                  <Skeleton className="h-full w-full bg-slate-700/30" />
+                )}
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/50 p-6">
                   <Video className="h-12 w-12 animate-pulse text-violet-400" />
 
                   <div className="w-full max-w-[200px]">
@@ -284,10 +306,12 @@ export function ReelPreview() {
                   </div>
 
                   <div className="text-center space-y-1">
-                    <p className="text-xs text-slate-500">Estimation : ~2-5 minutes</p>
-                    <p className="text-xs text-slate-600">
-                      Tu peux quitter cette page, tu seras notifié
+                    <p className="text-xs text-slate-300">
+                      {thumbnailUrl
+                        ? "Scène prête — animation vidéo en cours…"
+                        : "Étape 1/2 : création de la scène…"}
                     </p>
+                    <p className="text-xs text-slate-500">Estimation : ~2-5 minutes</p>
                   </div>
                 </div>
               </div>
@@ -305,9 +329,22 @@ export function ReelPreview() {
               {/* Action bar */}
               <div className="flex items-center justify-center gap-2">
                 <ActionBtn icon={RefreshCw} label="Regénérer" onClick={handleGenerate} />
-                <ActionBtn icon={Download} label="Télécharger" onClick={() => {
-                  if (videoUrl) window.open(videoUrl, "_blank");
-                }} />
+                <ActionBtn
+                  icon={Download}
+                  label="Télécharger"
+                  onClick={async () => {
+                    if (!videoUrl) return;
+                    try {
+                      await downloadMediaUrl(videoUrl, {
+                        kind: "video",
+                        filename: "aura-reel",
+                      });
+                      toast.success("Téléchargement lancé");
+                    } catch {
+                      toast.error("Impossible de télécharger la vidéo");
+                    }
+                  }}
+                />
                 <ActionBtn icon={Trash2} label="Supprimer" onClick={() => {
                   setVideoUrl(null);
                   toast.info("Vidéo supprimée");

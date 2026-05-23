@@ -50,7 +50,7 @@ export function formatGenerationErrorForUser(raw: string | null | undefined): st
 }
 
 export const NSFW_USER_MESSAGE =
-  "La génération a été bloquée par le filtre de sécurité. Essaie avec des paramètres différents (style, tenue).";
+  "Le moteur IA a refusé cette scène (filtre de sécurité). Réessaie en anglais avec des termes « mode / éditorial » : ex. « lace lounge outfit », « bathroom mirror fashion », « fully clothed » — évite les mots explicites.";
 
 /** Google Nano / Replicate E005 and similar moderation blocks. */
 export function isContentSafetyFilterError(error: unknown): boolean {

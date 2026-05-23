@@ -65,6 +65,10 @@ export interface RawTrendItem {
   isNsfw?: boolean;
   locale?: string;
   region?: string;
+  /** Direct media URLs from scraped posts (for format analysis). */
+  mediaUrls?: string[];
+  /** image | video | carousel | hashtag_signal */
+  mediaKind?: string;
 }
 
 export interface ProviderContext {
@@ -541,6 +545,10 @@ export class CuratedTrendsProvider implements TrendsProvider {
         authorHandle: undefined,
         nicheTags: c.nicheTags,
         isNsfw: false,
+        mediaKind: "image",
+        mediaUrls: [c.thumbnailUrl, c.thumbnailUrlAlt].filter(
+          (u): u is string => Boolean(u)
+        ),
         locale,
         region: ctx?.region,
       };
@@ -823,6 +831,8 @@ function mapTikTokRow(
     nicheTags: niches,
     isNsfw: false,
     region: ctx.country,
+    mediaKind: "hashtag_signal",
+    mediaUrls: [],
   };
 }
 
@@ -838,6 +848,27 @@ interface InstagramPostRow {
   playCount?: number;
   type?: string; // "Image" | "Video" | "Sidecar"
   inputUrl?: string;
+  displayUrl?: string;
+  videoUrl?: string;
+  thumbnailSrc?: string;
+  images?: string[];
+}
+
+/** Collect public media URLs from one IG post row (Apify shape). */
+export function extractPostMediaUrls(post: InstagramPostRow): string[] {
+  const urls = new Set<string>();
+  for (const u of [
+    post.displayUrl,
+    post.videoUrl,
+    post.thumbnailSrc,
+    post.url,
+  ]) {
+    if (u?.startsWith("http")) urls.add(u);
+  }
+  for (const img of post.images ?? []) {
+    if (img?.startsWith("http")) urls.add(img);
+  }
+  return [...urls];
 }
 
 /**
@@ -888,6 +919,13 @@ function aggregateInstagramPosts(
         "en-US"
       )} combined likes+comments.`;
 
+    const mediaUrls = [
+      ...new Set(top.flatMap((p) => extractPostMediaUrls(p))),
+    ].slice(0, 8);
+    const isVideo = top.some((p) => p.type?.toLowerCase() === "video");
+    const thumb = mediaUrls[0];
+    const thumbAlt = mediaUrls[1];
+
     out.push({
       externalId: `apify-instagram-${tag}`,
       platform: "INSTAGRAM",
@@ -896,8 +934,13 @@ function aggregateInstagramPosts(
       hashtags: Array.from(allHashtags).slice(0, 12),
       growthScore: viewsToGrowthScore(totalEng),
       sourceUrl: `https://www.instagram.com/explore/tags/${encodeURIComponent(tag)}/`,
+      thumbnailUrl: thumb,
+      thumbnailUrlAlt: thumbAlt,
+      embedUrl: samplePost?.url?.startsWith("http") ? samplePost.url : undefined,
       nicheTags: inferNicheFromHashtags(Array.from(allHashtags)),
       isNsfw: false,
+      mediaUrls,
+      mediaKind: isVideo ? "video" : top.length > 1 ? "carousel" : "image",
     });
   }
   return out;
@@ -1014,6 +1057,7 @@ export const ApifyProvider = ApifyTrendsProvider;
 export const __test__ = {
   mapTikTokRow,
   aggregateInstagramPosts,
+  extractPostMediaUrls,
   mapTikTokIndustryToNiche,
   inferNicheFromHashtags,
   viewsToGrowthScore,

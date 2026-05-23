@@ -31,6 +31,9 @@ export interface VideoGenerationInput {
   /** Comma-separated effect keys (see video-prompts). */
   effects?: string;
   reelStylePreset?: ReelStylePreset;
+  sceneDescription?: string;
+  /** Scene still already contains the face — do not attach a second identity ref. */
+  sceneFrameOnly?: boolean;
   isNsfw: boolean;
   /**
    * Sprint 10 — when `reelStylePreset === "lip_sync"`, this audio URL is
@@ -144,20 +147,23 @@ export async function generateVideo(
     );
   }
 
-  const preset: ReelStylePreset = input.reelStylePreset ?? "stable_face";
+  const preset: ReelStylePreset = input.reelStylePreset ?? "natural_motion";
   const prompt = buildVideoPrompt({
     videoType: input.videoType,
     script: input.script,
     effects: input.effects,
     reelStylePreset: preset,
+    sceneDescription: input.sceneDescription,
+    sceneFrameOnly: input.sceneFrameOnly,
   });
 
   // Caller may pass a separate avatarUrl as `subjectReferenceUrl`. When it's
   // omitted OR equals the first frame, we treat it as "no extra subject ref"
-  // — important because MiniMax rejects identical refs (E006). The field
-  // mapping itself is handled by `buildVideoModelInputs` so two providers
-  // can disagree on naming without leaking into this caller.
-  const subjectRefRaw = input.subjectReferenceUrl?.trim();
+  // — important because MiniMax rejects identical refs (E006). When
+  // `sceneFrameOnly` is set we NEVER attach a second ref (avoids portrait→scene morph).
+  const subjectRefRaw = input.sceneFrameOnly
+    ? undefined
+    : input.subjectReferenceUrl?.trim();
   const subjectRef =
     subjectRefRaw && subjectRefRaw !== firstFrame ? subjectRefRaw : undefined;
   const hasReferenceImage = Boolean(firstFrame);
@@ -166,7 +172,10 @@ export async function generateVideo(
   // reference image (some models like Runway Gen-4 don't accept one).
   const modelDesc = resolveReplicateVideoModel({ preset, hasReferenceImage });
   const model = modelDesc.id;
-  const usePromptOptimizer = preset === "creative" && modelDesc.internalPromptOptimizer;
+  const usePromptOptimizer =
+    preset === "creative" &&
+    modelDesc.internalPromptOptimizer &&
+    !input.sceneFrameOnly;
 
   const params: Record<string, unknown> = {
     prompt,

@@ -37,7 +37,7 @@ describe("image-prompts", () => {
       expect(result).toContain("slim build");
       expect(result).toContain("wearing summer dress");
       expect(result).toContain("real beach");
-      expect(result).toContain("OOTD");
+      expect(result).toContain("no mirror");
       expect(result).toContain("genuine big smile");
       expect(result).toContain("golden hour");
       expect(result).toContain("iPhone");
@@ -142,6 +142,22 @@ describe("image-prompts", () => {
       expect(result).toContain("custom_scene");
       expect(result).toContain("custom_pose");
       expect(result).toContain("custom_expr");
+    });
+
+    it("prefers sceneDescription over preset SCENE_TEMPLATES", () => {
+      const result = buildFullPrompt({
+        gender: "female",
+        scene: "urban",
+        sceneDescription:
+          "quiet hotel lobby, marble floor, soft ambient light, no street, no mirror",
+        pose: "candid",
+        expression: "natural",
+      });
+      expect(result).toContain(
+        "setting and environment: quiet hotel lobby"
+      );
+      expect(result).not.toContain("real city sidewalk");
+      expect(result).not.toContain("designer sunglasses");
     });
 
     it("includes identity lock when useReferenceFace is true", () => {

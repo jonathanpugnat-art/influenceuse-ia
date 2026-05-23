@@ -30,6 +30,7 @@ import {
   getMatchedBorderlineKeywords,
   type ContentImageEngine,
 } from "@/lib/prompts/nano-borderline";
+import { softenPromptForEditorial } from "@/lib/prompts/safety-soften";
 
 // ──────────────────────────────────────────────
 // Types
@@ -50,6 +51,7 @@ export interface ImageGenerationInput {
   /** When true (default), use reference image + identity prompts when a URL is present. */
   useReferenceFace?: boolean;
   scene: string;
+  sceneDescription?: string;
   pose: string;
   outfit: string;
   expression: string;
@@ -67,6 +69,12 @@ export interface ImageGenerationInput {
    * and feed posts.
    */
   appearanceVariations?: AppearanceVariation;
+  /**
+   * When true, skip credit check/deduction (e.g. reel pipeline already charged REEL).
+   */
+  omitCreditBilling?: boolean;
+  /** Reel first-frame: always Flux Kontext (Nano/Google blocks bathroom, lace, GRWM). */
+  isReelSceneFrame?: boolean;
 }
 
 export interface ImageGenerationOutput {
@@ -435,11 +443,13 @@ export async function generateContentImage(
 ): Promise<ImageGenerationOutput> {
   const numImages = Math.min(input.numberOfImages, 4);
   const cost = CREDIT_COSTS.PHOTO * numImages;
-  const hasCredits = await checkCredits(userId, cost);
-  if (!hasCredits) {
-    throw new Error(
-      `Crédits insuffisants. Coût : ${cost} crédits. Passez à un plan supérieur.`
-    );
+  if (!input.omitCreditBilling) {
+    const hasCredits = await checkCredits(userId, cost);
+    if (!hasCredits) {
+      throw new Error(
+        `Crédits insuffisants. Coût : ${cost} crédits. Passez à un plan supérieur.`
+      );
+    }
   }
 
   const wantFaceLock = input.useReferenceFace !== false;
@@ -450,13 +460,16 @@ export async function generateContentImage(
 
   const borderlineFields = {
     scene: input.scene,
+    sceneDescription: input.sceneDescription,
     outfit: input.outfit,
     location: input.location,
     customPrompt: input.customPrompt,
     pose: input.pose,
     expression: input.expression,
   };
-  const borderline = !input.isNsfw && shouldRouteToKontext(borderlineFields);
+  const borderline =
+    !input.isNsfw &&
+    (input.isReelSceneFrame || shouldRouteToKontext(borderlineFields));
   const matchedKeywords = borderline
     ? getMatchedBorderlineKeywords(borderlineFields)
     : [];
@@ -471,6 +484,7 @@ export async function generateContentImage(
       bodyType: influencerStyle.bodyType,
       fashionStyle: influencerStyle.fashionStyle,
       scene: input.scene,
+      sceneDescription: input.sceneDescription,
       pose: input.pose,
       expression: input.expression,
       style: input.style,
@@ -485,7 +499,8 @@ export async function generateContentImage(
       contentEngine: engine,
     });
 
-  const primaryEngine: ContentImageEngine = borderline ? "kontext" : "nano";
+  const primaryEngine: ContentImageEngine =
+    input.isReelSceneFrame && !input.isNsfw ? "kontext" : borderline ? "kontext" : "nano";
   let usedEngine: ContentImageEngine = primaryEngine;
   let prompt = buildPromptForEngine(primaryEngine);
   const negativePrompt = buildNegativePrompt(input.isNsfw, influencerStyle.gender ?? "female", {
@@ -584,6 +599,24 @@ export async function generateContentImage(
         usedParams = { ...plan.fallback.params, prompt: kontextPrompt };
         prompt = kontextPrompt;
         usedEngine = "kontext";
+      } else if (
+        isContentSafetyFilterError(err) &&
+        plan.model === MODEL_SFW_KONTEXT
+      ) {
+        console.warn(
+          "[ai-image] Kontext blocked by safety filter, retrying with editorial-softened prompt…"
+        );
+        const softPrompt = softenPromptForEditorial(
+          buildPromptForEngine("kontext")
+        );
+        outputUrls = await runMultiplePredictions(
+          MODEL_SFW_KONTEXT,
+          { ...kontextPlan.params, prompt: softPrompt },
+          numImages
+        );
+        usedParams = { ...kontextPlan.params, prompt: softPrompt };
+        prompt = softPrompt;
+        usedEngine = "kontext";
       } else {
         throw err;
       }
@@ -596,7 +629,9 @@ export async function generateContentImage(
       })
     );
 
-    await deductCredits(userId, cost);
+    if (!input.omitCreditBilling) {
+      await deductCredits(userId, cost);
+    }
 
     return {
       imageUrls: storedUrls,

@@ -27,6 +27,7 @@ import { InstagramIcon, TikTokIcon } from "@/components/ui/social-icons";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { ContentLibraryDetailModal } from "@/components/content/content-library-detail-modal";
 
 const statusLabels: Record<string, { label: string; color: string }> = {
   DRAFT: { label: "Brouillon", color: "bg-slate-600 text-slate-200" },
@@ -52,6 +53,7 @@ export default function ContentLibraryPage() {
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [page, setPage] = useState(1);
+  const [selectedContentId, setSelectedContentId] = useState<string | null>(null);
 
   const { data: influencersData } = trpc.influencer.getAll.useQuery({ limit: 50 });
   const influencers = influencersData?.influencers ?? [];
@@ -67,8 +69,13 @@ export default function ContentLibraryPage() {
     { placeholderData: (prev) => prev }
   );
 
+  const utils = trpc.useUtils();
+
   const deleteMutation = trpc.content.deleteContent.useMutation({
-    onSuccess: () => toast.success("Contenu supprimé"),
+    onSuccess: () => {
+      toast.success("Contenu supprimé");
+      utils.content.getAll.invalidate();
+    },
   });
 
   const updateMutation = trpc.content.updateContent.useMutation({
@@ -174,10 +181,19 @@ export default function ContentLibraryPage() {
             return (
               <motion.div
                 key={content.id}
+                role="button"
+                tabIndex={0}
                 variants={itemVariants}
                 whileHover={{ scale: 1.02, boxShadow: "0 20px 25px -5px rgb(0 0 0 / 0.2), 0 0 0 1px rgb(139 92 246 / 0.1)" }}
                 transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                className="group relative aspect-square cursor-pointer overflow-hidden rounded-xl border border-slate-800/50 bg-slate-800/30 transition-colors hover:border-slate-700"
+                className="group relative aspect-square cursor-pointer overflow-hidden rounded-xl border border-slate-800/50 bg-slate-800/30 transition-colors hover:border-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+                onClick={() => setSelectedContentId(content.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelectedContentId(content.id);
+                  }
+                }}
               >
                 {/* Thumbnail */}
                 {content.thumbnailUrl || content.mediaUrls[0] ? (
@@ -298,6 +314,13 @@ export default function ContentLibraryPage() {
           </button>
         </div>
       )}
+
+      <ContentLibraryDetailModal
+        contentId={selectedContentId}
+        open={!!selectedContentId}
+        onClose={() => setSelectedContentId(null)}
+        onDeleted={() => utils.content.getAll.invalidate()}
+      />
     </motion.div>
   );
 }

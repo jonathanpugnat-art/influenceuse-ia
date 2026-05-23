@@ -81,6 +81,20 @@ export interface TrendForPrompt {
   hashtags: string[];
   soundName?: string;
   growthScore?: number;
+  /** Optional vision/text format analysis from scraped posts. */
+  formatBrief?: {
+    contentType: string;
+    sceneDescription: string;
+    pose: string;
+    expression: string;
+    outfit: string;
+    mood: string;
+    hook: string;
+    videoType?: string;
+    reelStoryboard?: { startSec: number; endSec: number; visual: string }[];
+    confidence: string;
+    analyzedFrom: string;
+  };
 }
 
 const TREND_JSON_SCHEMA_DESCRIPTION = `Return STRICT JSON. The output is an array, one object per input trend, in the same order:
@@ -140,6 +154,7 @@ export function buildTrendPersonalizationPrompt(
 
   const userPrompt = [
     `Here are ${trends.length} trend(s). For each one, produce one recommendation object. Output the JSON array now, in the same order as the input, and nothing else.`,
+    `When \`formatBrief\` is present, treat it as the primary visual source: reuse sceneDescription in customPrompt (English), align pose/outfit/type with it. Do NOT copy real people.`,
     ``,
     `Trends:`,
     JSON.stringify(trends, null, 2),
