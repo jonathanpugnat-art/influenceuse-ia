@@ -26,6 +26,10 @@ import {
 } from "@/lib/photo-scene-pose";
 import { PhotoGenerationPreview } from "@/components/content/photo-generation-preview";
 import {
+  CreatorHybridPanel,
+  useCreatorExpertMode,
+} from "@/components/content/creator-hybrid-panel";
+import {
   getPremiumPhotoDefaults,
   getSocialPhotoDefaults,
   laneFromContentMode,
@@ -49,6 +53,7 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { trpc } from "@/lib/trpc";
 import { usePhotoCreator } from "@/hooks/use-photo-creator";
+import { PLANS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 // ──────────────────────────────────────────────
@@ -99,6 +104,17 @@ export function PhotoParams() {
   const { params, updateParams } = usePhotoCreator();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const planQuery = trpc.billing.getCurrentPlan.useQuery();
+  const canSceneFirst = planQuery.data
+    ? PLANS[planQuery.data.plan as keyof typeof PLANS].hasSceneFirstPipeline
+    : false;
+  const { expert: expertMode } = useCreatorExpertMode("photo");
+
+  useEffect(() => {
+    if (!canSceneFirst && params.sceneFirst) {
+      updateParams({ sceneFirst: false });
+    }
+  }, [canSceneFirst, params.sceneFirst, updateParams]);
 
   const scenes = useMemo(
     () => [
@@ -256,11 +272,19 @@ export function PhotoParams() {
 
   return (
     <div className="h-full overflow-y-auto border-r border-slate-800/50 bg-slate-900/30 p-4 scrollbar-thin">
-      <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-slate-500">
+      <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-slate-500">
         {t("params")}
       </h2>
+      <p className="mb-4 text-[11px] text-slate-600">{t("paramsStudioSubtitle")}</p>
 
       <div className="space-y-5">
+        <CreatorHybridPanel
+          variant="photo"
+          influencerId={params.influencerId}
+          influencerGender={influencerGender}
+          influencerNiche={selectedNiche}
+        />
+
         {/* Influencer selector */}
         <div className="space-y-2">
           <Label className="text-xs text-slate-400">{t("influencerLabel")}</Label>
@@ -330,8 +354,8 @@ export function PhotoParams() {
           </div>
         )}
 
-        {/* Scene-first pipeline (SFW) */}
-        {influencers.length > 0 && !isPremium && (
+        {/* Scene-first pipeline (Pro / Agency, SFW) */}
+        {influencers.length > 0 && !isPremium && canSceneFirst && (
           <div className="space-y-2 rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
@@ -351,6 +375,11 @@ export function PhotoParams() {
               <p className="text-[11px] text-amber-600/90">{t("sceneFirstNeedsFaceRef")}</p>
             )}
           </div>
+        )}
+        {influencers.length > 0 && !isPremium && !canSceneFirst && planQuery.isSuccess && (
+          <p className="rounded-lg border border-slate-800/60 bg-slate-900/40 px-3 py-2 text-[11px] leading-snug text-slate-500">
+            {t("sceneFirstProOnly")}
+          </p>
         )}
 
         {/* Face reference (SFW + Flux image conditioning) */}
@@ -429,7 +458,8 @@ export function PhotoParams() {
           </div>
         )}
 
-        {/* Templates */}
+        {/* Templates — expert */}
+        {expertMode && (
         <div className="space-y-2">
           <button
             type="button"
@@ -461,6 +491,7 @@ export function PhotoParams() {
             </div>
           )}
         </div>
+        )}
 
         {/* Number of images */}
         <div className="space-y-2">
@@ -477,7 +508,8 @@ export function PhotoParams() {
           </div>
         </div>
 
-        {/* Scene — free description (primary) */}
+        {/* Scene — expert (simple mode uses hybrid brief bar) */}
+        {expertMode && (
         <div className="space-y-2">
           <Label className="text-xs text-slate-400">{t("sceneDescription")}</Label>
           <Textarea
@@ -509,7 +541,10 @@ export function PhotoParams() {
             ))}
           </div>
         </div>
+        )}
 
+        {expertMode && (
+        <>
         {/* Location */}
         <div className="space-y-2">
           <Label className="flex items-center gap-1.5 text-xs text-slate-400">
@@ -564,6 +599,9 @@ export function PhotoParams() {
           )}
         </div>
 
+        </>
+        )}
+
         <PhotoGenerationPreview params={params} />
 
         {/* Outfit */}
@@ -591,6 +629,8 @@ export function PhotoParams() {
           )}
         </div>
 
+        {expertMode && (
+        <>
         {/* Expression */}
         <div className="space-y-2">
           <Label className="text-xs text-slate-400">{t("expression")}</Label>
@@ -691,6 +731,8 @@ export function PhotoParams() {
             </div>
           )}
         </div>
+        </>
+        )}
       </div>
     </div>
   );

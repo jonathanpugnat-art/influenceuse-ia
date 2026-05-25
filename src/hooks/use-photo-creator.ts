@@ -90,7 +90,7 @@ const defaultParams: PhotoParams = {
   customPrompt: "",
   numberOfImages: 1,
   useFaceReference: true,
-  sceneFirst: true,
+  sceneFirst: false,
   contentMode: "SFW",
   nsfwLevel: "suggestive",
 };

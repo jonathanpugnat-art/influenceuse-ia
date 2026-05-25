@@ -56,6 +56,8 @@ const sectionVariants: Variants = {
 export default function CalendarPage() {
   const searchParams = useSearchParams();
   const filterInfluencerId = searchParams.get("influencer") ?? undefined;
+  const openScheduleFromUrl = searchParams.get("schedule") === "1";
+  const fromTrend = searchParams.get("fromTrend") === "1";
 
   const t = useTranslations("calendar");
   const tCommon = useTranslations("common");
@@ -70,6 +72,12 @@ export default function CalendarPage() {
   // that lets the user assign one of their READY contents to that day.
   const [scheduleDay, setScheduleDay] = useState<Date | null>(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const openedScheduleFromUrl = useRef(false);
+
+  const suggestedSlotQuery = trpc.analytics.suggestSlots.useQuery(
+    { influencerId: filterInfluencerId!, count: 1 },
+    { enabled: Boolean(filterInfluencerId) && openScheduleFromUrl }
+  );
 
   const hasSetMobileView = useRef(false);
   useEffect(() => {
@@ -78,6 +86,38 @@ export default function CalendarPage() {
       queueMicrotask(() => setView("list"));
     }
   }, [isMobile]);
+
+  useEffect(() => {
+    if (!openScheduleFromUrl || !filterInfluencerId || openedScheduleFromUrl.current) {
+      return;
+    }
+    if (suggestedSlotQuery.isLoading) return;
+
+    openedScheduleFromUrl.current = true;
+    const slot = suggestedSlotQuery.data?.[0];
+    const day = slot
+      ? new Date(slot.at)
+      : (() => {
+          const d = new Date();
+          d.setDate(d.getDate() + 1);
+          d.setHours(19, 0, 0, 0);
+          return d;
+        })();
+
+    setCurrentDate(day);
+    setScheduleDay(day);
+    setScheduleOpen(true);
+    if (fromTrend) {
+      toast.info(t("fromTrendScheduleHint"));
+    }
+  }, [
+    openScheduleFromUrl,
+    filterInfluencerId,
+    suggestedSlotQuery.isLoading,
+    suggestedSlotQuery.data,
+    fromTrend,
+    t,
+  ]);
 
   // Compute date range based on view
   const dateRange = useMemo(() => {

@@ -49,6 +49,35 @@ export function formatGenerationErrorForUser(raw: string | null | undefined): st
   return cleaned.length > 20 ? cleaned : "La génération a échoué. Réessayez.";
 }
 
+/** Coaching copy for the scene-first photo step (décor seul). */
+export function formatPhotoSceneErrorForUser(
+  raw: string | null | undefined
+): string {
+  const msg = raw?.trim() ?? "";
+
+  if (
+    /person|people|face|character|humain|crowd|foule|man|woman|girl|boy/i.test(
+      msg
+    )
+  ) {
+    return "Décrivez surtout le lieu (lumière, mobilier, ambiance) sans personnages visibles, puis regénérez le décor (1 crédit).";
+  }
+
+  if (isContentSafetyFilterError(msg)) {
+    return "Le décor a été filtré. Reformulez en mode éditorial (lieu, lumière, style) sans termes explicites, puis regénérez (1 crédit).";
+  }
+
+  if (/429|rate.?limit|throttle/i.test(msg)) {
+    return "Beaucoup de générations en cours. Attendez une minute, puis regénérez le décor.";
+  }
+
+  if (msg.includes("Crédits insuffisants")) {
+    return msg;
+  }
+
+  return "Le décor n'a pas donné le résultat espéré. Simplifiez la scène (lieu + lumière), évitez les foules, puis regénérez le décor (1 crédit).";
+}
+
 export const NSFW_USER_MESSAGE =
   "Le moteur IA a refusé cette scène (filtre de sécurité). Réessaie en anglais avec des termes « mode / éditorial » : ex. « lace lounge outfit », « bathroom mirror fashion », « fully clothed » — évite les mots explicites.";
 

@@ -1,17 +1,17 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   Sparkles,
-  Globe,
   X,
   Calendar,
-  Clock,
   Package,
-  AlertTriangle,
   Info,
+  Instagram,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -33,7 +33,28 @@ import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-export function PhotoPublish() {
+function toDateInputValue(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function toTimeInputValue(d: Date): string {
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function mergeScheduleDateTime(dateStr: string, timeStr: string): Date | null {
+  if (!dateStr) return null;
+  const [h, min] = (timeStr || "19:00").split(":").map(Number);
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setHours(h || 19, min || 0, 0, 0);
+  return d;
+}
+
+export function PhotoPublish({ mobileSheet = false }: { mobileSheet?: boolean }) {
+  const t = useTranslations("content");
   const {
     params,
     contentId,
@@ -51,6 +72,8 @@ export function PhotoPublish() {
   const [captionPlatform, setCaptionPlatform] = useState("INSTAGRAM");
   const [hashtagInput, setHashtagInput] = useState("");
   const [scheduleMode, setScheduleMode] = useState<"now" | "schedule">("now");
+  const [scheduleDate, setScheduleDate] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("19:00");
   const [isGenCaption, setIsGenCaption] = useState(false);
   const [isGenHashtags, setIsGenHashtags] = useState(false);
   // Sprint 8 — A/B variants of the caption.
@@ -82,8 +105,53 @@ export function PhotoPublish() {
       staleTime: 30_000,
     }
   );
-  const failingChecks =
-    readinessQuery.data?.checks.filter((c) => !c.ok) ?? [];
+  const instagramSelected = platforms.includes("INSTAGRAM");
+  const instagramCheck = readinessQuery.data?.checks.find(
+    (c) => c.platform === "INSTAGRAM"
+  );
+
+  const slotsQuery = trpc.analytics.suggestSlots.useQuery(
+    {
+      influencerId: params.influencerId,
+      count: 1,
+    },
+    {
+      enabled:
+        scheduleMode === "schedule" &&
+        Boolean(params.influencerId) &&
+        instagramSelected,
+      staleTime: 60_000,
+    }
+  );
+
+  useEffect(() => {
+    if (scheduleMode !== "schedule") return;
+    const slot = slotsQuery.data?.[0];
+    if (!slot) return;
+    const at = new Date(slot.at);
+    setScheduleDate(toDateInputValue(at));
+    setScheduleTime(toTimeInputValue(at));
+    setScheduledAt(at);
+  }, [scheduleMode, slotsQuery.data, setScheduledAt]);
+
+  useEffect(() => {
+    if (scheduleMode !== "schedule") return;
+    const merged = mergeScheduleDateTime(scheduleDate, scheduleTime);
+    if (merged) setScheduledAt(merged);
+  }, [scheduleDate, scheduleTime, scheduleMode, setScheduledAt]);
+
+  const publishReminders = useMemo(() => {
+    const items: string[] = [];
+    if (!contentId) items.push(t("publishReminderNeedMedia"));
+    if (platforms.length === 0) items.push(t("publishReminderNeedPlatform"));
+    if (instagramSelected && instagramCheck && !instagramCheck.ok) {
+      items.push(instagramCheck.reason ?? t("publishConnectInstagram"));
+    }
+    if (instagramSelected && !caption.trim()) {
+      items.push(t("publishReminderCaption"));
+    }
+    return items;
+  }, [contentId, platforms.length, instagramSelected, instagramCheck, caption, t]);
 
   const photoContentDescription = useCallback(
     () =>
@@ -268,11 +336,23 @@ export function PhotoPublish() {
     <motion.div
       initial={{ x: 50, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
-      className="h-full overflow-y-auto border-l border-slate-800/50 bg-slate-900/30 p-4 scrollbar-thin"
+      className={cn(
+        "h-full overflow-y-auto bg-slate-900/30 p-4 scrollbar-thin",
+        mobileSheet ? "" : "border-l border-slate-800/50"
+      )}
     >
-      <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-slate-500">
-        Publication
+      {mobileSheet && (
+        <div
+          className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-600"
+          aria-hidden
+        />
+      )}
+      <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-slate-500">
+        {t("publishPanelTitle")}
       </h2>
+      <p className="mb-4 text-[11px] leading-snug text-slate-600">
+        {t("publishPanelStudioHint")}
+      </p>
 
       <div className="space-y-5">
         {/* Caption */}
@@ -437,20 +517,32 @@ export function PhotoPublish() {
             </div>
           )}
 
-          {/* Pre-flight failures — shown only when a real blocker exists
-              (server creds missing, account not linked, token expired). */}
-          {failingChecks.length > 0 && (
-            <div className="space-y-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5">
-              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-amber-300">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                Action requise avant publication
+          {instagramSelected && params.influencerId && (
+            <div className="flex items-start gap-2 rounded-lg border border-pink-500/25 bg-pink-500/5 p-2.5 text-[11px] text-pink-100/90">
+              <Instagram className="mt-0.5 h-3.5 w-3.5 shrink-0 text-pink-400" />
+              <div className="space-y-1.5">
+                <p className="leading-snug">{t("publishInstagramApiHint")}</p>
+                {instagramCheck && !instagramCheck.ok && (
+                  <Link
+                    href={`/influencers/${params.influencerId}?tab=social`}
+                    className="inline-flex font-medium text-pink-300 underline-offset-2 hover:underline"
+                  >
+                    {t("publishConnectInstagram")}
+                  </Link>
+                )}
               </div>
-              <ul className="space-y-1 text-[11px] text-amber-100/90">
-                {failingChecks.map((c) => (
-                  <li key={c.platform} className="flex gap-1.5">
-                    <span className="font-semibold">{c.platform}:</span>
-                    <span className="text-amber-100/80">{c.reason}</span>
-                  </li>
+            </div>
+          )}
+
+          {publishReminders.length > 0 && (
+            <div className="space-y-1.5 rounded-lg border border-slate-700/60 bg-slate-800/30 p-2.5">
+              <div className="flex items-center gap-2 text-[11px] font-medium text-slate-400">
+                <Info className="h-3.5 w-3.5" />
+                {t("publishSoftRemindersTitle")}
+              </div>
+              <ul className="list-inside list-disc space-y-0.5 text-[11px] text-slate-500">
+                {publishReminders.map((line) => (
+                  <li key={line}>{line}</li>
                 ))}
               </ul>
             </div>
@@ -488,20 +580,28 @@ export function PhotoPublish() {
             </button>
           </div>
           {scheduleMode === "schedule" && (
-            <div className="flex gap-2">
-              <Input
-                type="date"
-                onChange={(e) => {
-                  const d = e.target.value ? new Date(e.target.value) : null;
-                  setScheduledAt(d);
-                }}
-                className="h-8 flex-1 border-slate-700 bg-slate-800/50 text-xs text-white"
-              />
-              <Input
-                type="time"
-                defaultValue="09:00"
-                className="h-8 w-24 border-slate-700 bg-slate-800/50 text-xs text-white"
-              />
+            <div className="space-y-2">
+              {slotsQuery.data?.[0] && (
+                <p className="text-[10px] text-violet-400/90">
+                  {t("publishSlotSuggested", {
+                    time: toTimeInputValue(new Date(slotsQuery.data[0].at)),
+                  })}
+                </p>
+              )}
+              <div className="flex gap-2">
+                <Input
+                  type="date"
+                  value={scheduleDate}
+                  onChange={(e) => setScheduleDate(e.target.value)}
+                  className="h-8 flex-1 border-slate-700 bg-slate-800/50 text-xs text-white"
+                />
+                <Input
+                  type="time"
+                  value={scheduleTime}
+                  onChange={(e) => setScheduleTime(e.target.value)}
+                  className="h-8 w-24 border-slate-700 bg-slate-800/50 text-xs text-white"
+                />
+              </div>
             </div>
           )}
         </div>
@@ -520,15 +620,7 @@ export function PhotoPublish() {
             type="button"
             onClick={() => handleSave(true)}
             disabled={
-              !contentId ||
-              updateMutation.isPending ||
-              platforms.length === 0 ||
-              failingChecks.length > 0
-            }
-            title={
-              failingChecks.length > 0
-                ? "Corrigez les problèmes ci-dessus avant de publier."
-                : undefined
+              !contentId || updateMutation.isPending || platforms.length === 0
             }
             className="w-full rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
           >

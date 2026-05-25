@@ -15,6 +15,7 @@ import {
   Video as VideoIcon,
   Loader2,
   Play,
+  Calendar,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
@@ -62,6 +63,7 @@ export interface TrendCardProps {
   /** When true, the card shows a "personalize" CTA instead of "apply". */
   needsPersonalization: boolean;
   onApply: (recommendationId: string) => void;
+  onSchedule?: (recommendationId: string) => void;
   onDismiss: (recommendationId: string) => void;
   /**
    * Sprint 13.1 — per-card personalization. When passed, clicking
@@ -121,6 +123,7 @@ export function TrendCard({
   trend,
   needsPersonalization,
   onApply,
+  onSchedule,
   onDismiss,
   onPersonalize,
   isBusy,
@@ -318,27 +321,42 @@ export function TrendCard({
               {t("analyzeFormatCta")} ({formatAnalyzeCost} cr)
             </Button>
           )}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-2">
           {hasRec && trend.recommendation ? (
             <>
-              <Button
-                size="sm"
-                className="flex-1 bg-violet-500 hover:bg-violet-600"
-                disabled={isBusy}
-                onClick={() => onApply(trend.recommendation!.id)}
-              >
-                <Wand2 className="mr-1.5 h-3.5 w-3.5" />
-                {t("applyCta")}
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                disabled={isBusy}
-                onClick={() => onDismiss(trend.recommendation!.id)}
-                aria-label={t("dismiss")}
-              >
-                <X className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  className="min-h-9 flex-1 bg-violet-500 hover:bg-violet-600"
+                  disabled={isBusy}
+                  onClick={() => onApply(trend.recommendation!.id)}
+                >
+                  <Wand2 className="mr-1.5 h-3.5 w-3.5" />
+                  {t("applyCta")}
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="min-h-9 min-w-9 shrink-0"
+                  disabled={isBusy}
+                  onClick={() => onDismiss(trend.recommendation!.id)}
+                  aria-label={t("dismiss")}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              {onSchedule && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="min-h-9 w-full border-slate-600 text-slate-300"
+                  disabled={isBusy}
+                  onClick={() => onSchedule(trend.recommendation!.id)}
+                >
+                  <Calendar className="mr-1.5 h-3.5 w-3.5" />
+                  {t("scheduleCta")}
+                </Button>
+              )}
             </>
           ) : (
             <Button

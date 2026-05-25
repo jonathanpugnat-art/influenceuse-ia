@@ -121,7 +121,8 @@ export async function generateReelNarration(
   }
 
   const cost = reelNarrationCreditCost();
-  if (!options?.omitCreditBilling) {
+  const billable = cost > 0 && !options?.omitCreditBilling;
+  if (billable) {
     const ok = await checkCredits(userId, cost);
     if (!ok) {
       throw new Error(`Crédits insuffisants. Coût narration : ${cost} crédit.`);
@@ -144,7 +145,7 @@ export async function generateReelNarration(
 
   const stored = await uploadFromUrl(remote, `narration-${nanoid(8)}.mp3`);
 
-  if (!options?.omitCreditBilling) {
+  if (billable) {
     await deductCredits(userId, cost);
   }
 

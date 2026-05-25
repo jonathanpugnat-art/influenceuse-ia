@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import {
@@ -139,11 +139,11 @@ export default function TrendsPage() {
     onError: (e) => toast.error(e.message),
   });
 
+  const applyDestinationRef = useRef<"creator" | "calendar">("creator");
+
   const applyMut = trpc.trends.applyToPhotoParams.useMutation({
     onSuccess: (blob) => {
       if (blob.target === "reel") {
-        const isTalking =
-          blob.videoType === "talking_head" || blob.videoType === "day_in_life";
         updateReelParams({
           influencerId: blob.influencerId,
           duration: blob.duration,
@@ -156,27 +156,34 @@ export default function TrendsPage() {
           effects: blob.effects,
           textOverlay: blob.textOverlay,
           generateSceneFrame: true,
-          ...(isTalking
-            ? { reelStylePreset: "lip_sync" as const }
-            : { reelStylePreset: "natural_motion" as const }),
         });
         setReelCaption(blob.hook);
         setReelHashtags(blob.hashtags);
-        router.push(`/content/reel?influencer=${blob.influencerId}`);
+      } else {
+        applyPhotoSeed({
+          influencerId: blob.influencerId,
+          scene: blob.scene,
+          sceneDescription: blob.sceneDescription,
+          pose: blob.pose,
+          outfit: blob.outfit,
+          expression: blob.expression,
+          customPrompt: blob.customPrompt,
+          caption: blob.hook,
+          hashtags: blob.hashtags,
+        });
+      }
+      if (applyDestinationRef.current === "calendar") {
+        router.push(
+          `/calendar?influencer=${blob.influencerId}&schedule=1&fromTrend=1`
+        );
+        toast.success(t("scheduleFromTrendSuccess"));
         return;
       }
-      applyPhotoSeed({
-        influencerId: blob.influencerId,
-        scene: blob.scene,
-        sceneDescription: blob.sceneDescription,
-        pose: blob.pose,
-        outfit: blob.outfit,
-        expression: blob.expression,
-        customPrompt: blob.customPrompt,
-        caption: blob.hook,
-        hashtags: blob.hashtags,
-      });
-      router.push(`/content/photo?influencer=${blob.influencerId}`);
+      if (blob.target === "reel") {
+        router.push(`/content/reel?influencer=${blob.influencerId}`);
+      } else {
+        router.push(`/content/photo?influencer=${blob.influencerId}`);
+      }
     },
     onError: (e) => toast.error(e.message),
   });
@@ -199,6 +206,12 @@ export default function TrendsPage() {
 
   const onApply = (recommendationId: string) => {
     if (!selectedInfluencerId) return;
+    applyDestinationRef.current = "creator";
+    applyMut.mutate({ influencerId: selectedInfluencerId, recommendationId });
+  };
+  const onSchedule = (recommendationId: string) => {
+    if (!selectedInfluencerId) return;
+    applyDestinationRef.current = "calendar";
     applyMut.mutate({ influencerId: selectedInfluencerId, recommendationId });
   };
   const onDismiss = (recommendationId: string) => {
@@ -425,6 +438,7 @@ export default function TrendsPage() {
                 trend={trend}
                 needsPersonalization={!planLocked}
                 onApply={onApply}
+                onSchedule={planLocked ? undefined : onSchedule}
                 onDismiss={onDismiss}
                 onPersonalize={onPersonalizeOne}
                 isBusy={applyMut.isPending || dismissMut.isPending}

@@ -11,6 +11,7 @@ import {
 import { ReelParams } from "@/components/content/reel-params";
 import { ReelPreview } from "@/components/content/reel-preview";
 import { PhotoPublish } from "@/components/content/photo-publish";
+import { StudioProStrip } from "@/components/content/studio-pro-strip";
 import { useReelCreator } from "@/hooks/use-reel-creator";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
@@ -56,7 +57,7 @@ export default function ReelCreatorPage() {
       </div>
 
       {/* Center column — Preview */}
-      <div className="flex flex-1 flex-col overflow-hidden bg-slate-950">
+      <div className="flex flex-1 flex-col overflow-hidden bg-slate-950 pb-4 lg:pb-0">
         <ReelPreview />
       </div>
 
@@ -78,11 +79,9 @@ export default function ReelCreatorPage() {
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 100, opacity: 0 }}
               transition={{ type: "spring", bounce: 0.2 }}
-              className="fixed bottom-0 left-0 right-0 z-40 max-h-[85vh] overflow-y-auto border-t border-slate-800/50 bg-slate-900 shadow-lg lg:hidden"
+              className="fixed bottom-0 left-0 right-0 z-40 max-h-[min(85vh,100dvh)] overflow-y-auto border-t border-slate-800/50 bg-slate-900 pb-[env(safe-area-inset-bottom)] shadow-lg lg:hidden"
             >
-              <div className="pb-safe">
-                <PhotoPublish />
-              </div>
+              <PhotoPublish mobileSheet />
             </motion.div>
           </>
         )}

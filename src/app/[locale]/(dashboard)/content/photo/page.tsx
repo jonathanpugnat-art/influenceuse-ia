@@ -13,6 +13,7 @@ import { PhotoParams } from "@/components/content/photo-params";
 import { PhotoPreview } from "@/components/content/photo-preview";
 import { PhotoPublish } from "@/components/content/photo-publish";
 import { PhotoWelcomeBanner } from "@/components/content/photo-welcome-banner";
+import { StudioProStrip } from "@/components/content/studio-pro-strip";
 import { usePhotoCreator } from "@/hooks/use-photo-creator";
 import {
   getNichePhotoDefaults,
@@ -81,6 +82,8 @@ export default function PhotoCreatorPage() {
         />
       )}
 
+      <StudioProStrip variant="photo" />
+
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         <div className="hidden w-[320px] shrink-0 md:block">
           <PhotoParams />
@@ -112,7 +115,7 @@ export default function PhotoCreatorPage() {
           </Collapsible>
         </div>
 
-        <div className="flex flex-1 flex-col overflow-hidden bg-slate-950">
+        <div className="flex flex-1 flex-col overflow-hidden bg-slate-950 pb-4 lg:pb-0">
           <PhotoPreview isWelcomeFlow={isWelcomeFlow} />
         </div>
 
@@ -133,11 +136,9 @@ export default function PhotoCreatorPage() {
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: 100, opacity: 0 }}
                 transition={{ type: "spring", bounce: 0.2 }}
-                className="fixed bottom-0 left-0 right-0 z-40 max-h-[85vh] overflow-y-auto border-t border-slate-800/50 bg-slate-900 shadow-lg lg:hidden"
+                className="fixed bottom-0 left-0 right-0 z-40 max-h-[min(85vh,100dvh)] overflow-y-auto border-t border-slate-800/50 bg-slate-900 pb-[env(safe-area-inset-bottom)] shadow-lg lg:hidden"
               >
-                <div className="pb-8">
-                  <PhotoPublish />
-                </div>
+                <PhotoPublish mobileSheet />
               </motion.div>
             </>
           )}

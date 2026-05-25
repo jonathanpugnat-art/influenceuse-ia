@@ -26,6 +26,10 @@ import { toast } from "sonner";
 import { MediaViewerDialog } from "@/components/media/media-viewer-dialog";
 import { downloadMediaUrl } from "@/lib/download-media";
 import { WorkflowSteps } from "@/components/content/workflow-steps";
+import {
+  formatGenerationErrorForUser,
+  formatPhotoSceneErrorForUser,
+} from "@/lib/generation-errors";
 
 function photoPayload(params: PhotoParams) {
   return {
@@ -109,7 +113,9 @@ export function PhotoPreview({
       setGenerationStep("scene");
     },
     onError: (err) => {
-      if (!handleUpgrade(err.message)) toast.error(err.message);
+      if (!handleUpgrade(err.message)) {
+        toast.error(formatPhotoSceneErrorForUser(err.message), { duration: 9000 });
+      }
       setIsGenerating(false);
       setGenerationStep("");
     },
@@ -158,7 +164,11 @@ export function PhotoPreview({
     }
 
     if (statusData.status === "FAILED") {
-      const errMsg = statusData.errorMessage ?? t("generationFailed");
+      const errMsg =
+        statusData.errorMessage ??
+        (phase === "scene_generating" || generationStep === "scene"
+          ? formatPhotoSceneErrorForUser(null)
+          : formatGenerationErrorForUser(null));
       toast.error(errMsg, { duration: 8000 });
       setIsGenerating(false);
       setGenerationStep("");
@@ -166,6 +176,7 @@ export function PhotoPreview({
   }, [
     statusData,
     isGenerating,
+    generationStep,
     setGeneratedUrls,
     setGenerationStep,
     setIsGenerating,

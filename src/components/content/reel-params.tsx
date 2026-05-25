@@ -24,6 +24,10 @@ import {
   reelStyleSelectSideEffects,
 } from "@/lib/reel-style-options";
 import { ReelAudioPanel } from "@/components/content/reel-audio-panel";
+import {
+  CreatorHybridPanel,
+  useCreatorExpertMode,
+} from "@/components/content/creator-hybrid-panel";
 
 function Chip({
   label,
@@ -61,6 +65,7 @@ export function ReelParams() {
   const { params, updateParams } = useReelCreator();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [activeExampleId, setActiveExampleId] = useState<string | null>(null);
+  const { expert: expertMode } = useCreatorExpertMode("reel");
 
   const { data: influencersData } = trpc.influencer.getAll.useQuery(
     { limit: 50 },
@@ -107,6 +112,23 @@ export function ReelParams() {
       <p className="mb-4 text-xs text-slate-600">{t("reelCreatorIntro")}</p>
 
       <div className="space-y-5">
+        <CreatorHybridPanel
+          variant="reel"
+          influencerId={params.influencerId}
+        />
+
+        {!expertMode && (
+          <div className="space-y-2">
+            <Label className="text-xs text-slate-400">{t("outfit")}</Label>
+            <Input
+              value={params.outfit}
+              onChange={(e) => updateParams({ outfit: e.target.value })}
+              placeholder={t("reelOutfitPlaceholder")}
+              className="border-slate-800/50 bg-slate-800/30 text-sm text-white placeholder:text-slate-600"
+            />
+          </div>
+        )}
+
         {/* Influencer */}
         <div className="space-y-2">
           <Label className="text-xs text-slate-400">{t("influencerLabel")}</Label>
@@ -180,6 +202,8 @@ export function ReelParams() {
           </div>
         </div>
 
+        {expertMode && (
+        <>
         {/* Real IG examples — replaces abstract "video types" */}
         <div className="space-y-2">
           <Label className="text-xs text-slate-400">{t("reelExamplesTitle")}</Label>
@@ -263,6 +287,9 @@ export function ReelParams() {
           />
         </div>
 
+        </>
+        )}
+
         {/* 3 — How it moves (IG-friendly style labels) */}
         <div className="space-y-2">
           <div className="flex items-center gap-2">
@@ -316,6 +343,8 @@ export function ReelParams() {
           <ReelAudioPanel
             influencerId={params.influencerId}
             script={params.script}
+            sceneDescription={params.sceneDescription}
+            outfit={params.outfit}
             audioUrl={params.audioUrl}
             onAudioUrlChange={(url) => updateParams({ audioUrl: url })}
           />
@@ -330,7 +359,7 @@ export function ReelParams() {
           </div>
         </div>
 
-        {/* Advanced — effects + overlay notes */}
+        {expertMode && (
         <div className="space-y-2">
           <button
             type="button"
@@ -380,6 +409,7 @@ export function ReelParams() {
             </div>
           )}
         </div>
+        )}
 
         {false && selectedInfluencer?.isNsfw && null}
       </div>

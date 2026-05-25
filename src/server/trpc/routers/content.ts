@@ -29,6 +29,7 @@ import type { Plan } from "@/generated/prisma/client";
 import { getDbUser } from "@/server/helpers/get-db-user";
 import {
   formatGenerationErrorForUser,
+  formatPhotoSceneErrorForUser,
   LOCALHOST_REF_MESSAGE,
 } from "@/lib/generation-errors";
 import { resolvePublicMediaUrl } from "@/server/lib/resolve-public-media-url";
@@ -995,7 +996,9 @@ export const contentRouter = createTRPCRouter({
         photoPhase,
         scenePlateUrl,
         errorMessage: job?.error
-          ? formatGenerationErrorForUser(job.error)
+          ? photoPhase === "scene_generating"
+            ? formatPhotoSceneErrorForUser(job.error)
+            : formatGenerationErrorForUser(job.error)
           : null,
       };
     }),
@@ -1014,7 +1017,9 @@ export const contentRouter = createTRPCRouter({
   generateReelNarration: protectedProcedure
     .input(
       z.object({
-        script: z.string().min(10).max(1200),
+        script: z.string().max(1200).optional(),
+        sceneDescription: z.string().max(800).optional(),
+        outfit: z.string().max(400).optional(),
         language: z.enum(["fr", "en"]).default("fr"),
         voice: z.string().max(80).optional(),
       })
@@ -1028,8 +1033,21 @@ export const contentRouter = createTRPCRouter({
           message: "La narration vocale nécessite le plan Pro ou Agency.",
         });
       }
+      const { buildReelNarrationText } = await import("@/lib/reel-narration");
+      const text = buildReelNarrationText({
+        script: input.script,
+        sceneDescription: input.sceneDescription,
+        outfit: input.outfit,
+      });
+      if (text.length < 10) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Ajoutez au moins 10 caractères dans le script ou la description de scène pour générer une voix.",
+        });
+      }
       const result = await generateReelNarration(user.id, {
-        text: input.script,
+        text,
         language: input.language,
         voice: input.voice,
       });

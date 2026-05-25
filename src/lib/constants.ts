@@ -32,6 +32,7 @@ export const PLANS = {
     maxInfluencers: 1,
     credits: 500,
     hasVideo: false,
+    hasSceneFirstPipeline: false,
     hasNsfw: false,
     hasAutoPublish: false,
     hasAdvancedAnalytics: false,
@@ -48,6 +49,7 @@ export const PLANS = {
     maxInfluencers: 2,
     credits: 500,
     hasVideo: false,
+    hasSceneFirstPipeline: false,
     hasNsfw: false,
     hasAutoPublish: true,
     hasAdvancedAnalytics: false,
@@ -63,6 +65,8 @@ export const PLANS = {
     maxInfluencers: 5,
     credits: 1500,
     hasVideo: true,
+    /** Two-step photo pipeline (scene plate → compose). */
+    hasSceneFirstPipeline: true,
     hasNsfw: true,
     hasAutoPublish: true,
     hasAdvancedAnalytics: false,
@@ -78,6 +82,7 @@ export const PLANS = {
     maxInfluencers: Infinity,
     credits: 5000,
     hasVideo: true,
+    hasSceneFirstPipeline: true,
     hasNsfw: true,
     hasAutoPublish: true,
     hasAdvancedAnalytics: true,
@@ -112,8 +117,8 @@ export function getPlanDisplayName(plan: keyof typeof PLANS): string {
 export const CREDIT_COSTS = {
   PHOTO: 1,
   REEL: 8,
-  /** TTS narration for talking reels (Replicate Kokoro or REPLICATE_TTS_MODEL). */
-  REEL_NARRATION: 0.5,
+  /** TTS narration for talking reels — included (0) for Pro studio workflow. */
+  REEL_NARRATION: 0,
   CAPTION: 0.5,
   BASE_IMAGE: 2,
   /** 3 extra Kontext angles from the chosen wizard portrait (profile, 3/4, full body). */
