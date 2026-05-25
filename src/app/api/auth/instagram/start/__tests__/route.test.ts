@@ -81,7 +81,9 @@ describe("GET /api/auth/instagram/start", () => {
       throw new Error("INSTAGRAM_APP_ID non configuré.");
     });
     const res = await GET(makeReq("?influencerId=inf-1"));
-    expect(res.headers.get("location")).toContain("instagram_error=");
-    expect(res.headers.get("location")).toContain("INSTAGRAM_APP_ID");
+    const location = res.headers.get("location") ?? "";
+    expect(location).toContain("tab=social");
+    expect(location).toContain("instagram_error=");
+    expect(location).toContain("/fr/influencers/inf-1");
   });
 });

@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/server/db";
+import { defaultLocale } from "@/i18n";
+import {
+  formatInstagramOAuthError,
+  instagramSocialRedirectUrl,
+} from "@/lib/instagram-oauth-errors";
 import * as instagram from "@/server/services/instagram.service";
+import { getAppUrl, getInstagramOAuthRedirectUri } from "@/lib/app-url";
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+const APP_URL = getAppUrl();
 
 /**
  * GET /api/auth/instagram/start?influencerId=<id>
@@ -24,20 +30,20 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 export async function GET(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) {
-    return NextResponse.redirect(new URL("/sign-in", APP_URL));
+    return NextResponse.redirect(new URL(`/${defaultLocale}/sign-in`, APP_URL));
   }
 
   const influencerId = req.nextUrl.searchParams.get("influencerId");
   if (!influencerId) {
     return NextResponse.redirect(
-      new URL("/influencers?instagram_error=missing_influencer_id", APP_URL)
+      new URL(`/${defaultLocale}/influencers?instagram_error=missing_influencer_id`, APP_URL)
     );
   }
 
   const user = await db.user.findUnique({ where: { clerkId: userId } });
   if (!user) {
     return NextResponse.redirect(
-      new URL("/influencers?instagram_error=user_not_found", APP_URL)
+      new URL(`/${defaultLocale}/influencers?instagram_error=user_not_found`, APP_URL)
     );
   }
 
@@ -47,21 +53,19 @@ export async function GET(req: NextRequest) {
   });
   if (!influencer || influencer.userId !== user.id) {
     return NextResponse.redirect(
-      new URL("/influencers?instagram_error=invalid_influencer", APP_URL)
+      new URL(`/${defaultLocale}/influencers?instagram_error=invalid_influencer`, APP_URL)
     );
   }
 
   try {
-    const redirectUri = `${APP_URL}/api/auth/instagram`;
+    const redirectUri = getInstagramOAuthRedirectUri();
     const authUrl = instagram.getAuthUrl(redirectUri, influencerId);
     return NextResponse.redirect(authUrl);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    const friendly = formatInstagramOAuthError(message);
     return NextResponse.redirect(
-      new URL(
-        `/influencers/${influencerId}/edit?instagram_error=${encodeURIComponent(message)}`,
-        APP_URL
-      )
+      instagramSocialRedirectUrl(APP_URL, influencerId, { instagram_error: friendly })
     );
   }
 }

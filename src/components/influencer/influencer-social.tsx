@@ -17,6 +17,7 @@ import {
   OnlyFansIcon,
 } from "@/components/ui/social-icons";
 import { trpc } from "@/lib/trpc";
+import { formatInstagramOAuthError } from "@/lib/instagram-oauth-errors";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -83,9 +84,12 @@ export function InfluencerSocial({ influencerId }: { influencerId: string }) {
   const [connectingPlatform, setConnectingPlatform] = useState<Platform | null>(
     null
   );
+  const [showMetaHelp, setShowMetaHelp] = useState(false);
 
   const { data: accounts, isLoading } =
     trpc.publish.getConnectedAccounts.useQuery({ influencerId });
+
+  const { data: oauthSetup } = trpc.publish.getInstagramOAuthSetup.useQuery();
 
   const connectInstagramMut = trpc.publish.connectInstagram.useMutation({
     onSuccess: (res) => {
@@ -115,10 +119,12 @@ export function InfluencerSocial({ influencerId }: { influencerId: string }) {
     if (connected === "connected") {
       toast.success("Instagram connecté avec succès !");
       utils.publish.getConnectedAccounts.invalidate({ influencerId });
-      router.replace(window.location.pathname);
+      setShowMetaHelp(false);
+      router.replace(`/fr/influencers/${influencerId}?tab=social`);
     } else if (error) {
-      toast.error(`Erreur Instagram : ${decodeURIComponent(error)}`);
-      router.replace(window.location.pathname);
+      toast.error(formatInstagramOAuthError(error), { duration: 12000 });
+      setShowMetaHelp(true);
+      router.replace(`/fr/influencers/${influencerId}?tab=social`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
@@ -172,6 +178,103 @@ export function InfluencerSocial({ influencerId }: { influencerId: string }) {
           </ul>
         </div>
       </div>
+
+      {oauthSetup && (
+        <div className="rounded-xl border border-slate-700/60 bg-slate-900/60 p-4 text-sm">
+          <p className="font-semibold text-white">URI Meta (à copier dans la liste du haut)</p>
+          <p className="mt-1 text-xs text-slate-400">
+            Pas le validateur en bas seul — section{" "}
+            <strong className="text-slate-300">URI de redirection OAuth valides</strong>, puis
+            Enregistrer.
+          </p>
+          <code className="mt-2 block break-all rounded-lg bg-black/40 px-2 py-2 text-xs text-emerald-300">
+            {oauthSetup.redirectUri}
+          </code>
+          {oauthSetup.alternateRedirectUris.length > 0 && (
+            <p className="mt-2 text-xs text-amber-200/90">
+              Ajoute aussi (ton site redirige www ↔ sans www) :{" "}
+              {oauthSetup.alternateRedirectUris.map((u) => (
+                <code key={u} className="mt-1 block break-all text-amber-100/80">
+                  {u}
+                </code>
+              ))}
+            </p>
+          )}
+          <p className="mt-2 text-xs text-slate-500">
+            Vercel : NEXT_PUBLIC_APP_URL = {oauthSetup.appUrl}
+          </p>
+          {!oauthSetup.hasCredentials && (
+            <p className="mt-2 rounded-lg bg-red-500/15 px-2 py-1.5 text-xs font-medium text-red-200">
+              Clés Meta absentes sur le serveur (INSTAGRAM_APP_ID / SECRET sur Vercel + redeploy).
+              Tant que c’est rouge, Connecter ne peut pas marcher même si Meta est OK.
+            </p>
+          )}
+          <p className="mt-2 text-xs text-slate-500">
+            Vérif prod :{" "}
+            <a
+              href="/api/health"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-violet-400 underline"
+            >
+              /api/health
+            </a>{" "}
+            → <code className="text-slate-400">instagramOAuth.credentialsConfigured</code> doit être{" "}
+            <code className="text-slate-400">true</code>
+          </p>
+        </div>
+      )}
+
+      {(showMetaHelp || searchParams.get("instagram_error")) && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+          <p className="font-semibold text-amber-50">
+            Meta bloque la connexion ?
+          </p>
+          <p className="mt-1 text-xs text-amber-200/90">
+            « Confirmez votre compte » puis « Service indisponible » vient presque
+            toujours de l’app Facebook, pas d’Aura.
+          </p>
+          <ol className="mt-3 list-inside list-decimal space-y-1.5 text-xs text-amber-100/90">
+            <li>
+              Dans{" "}
+              <a
+                href="https://developers.facebook.com/apps/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-violet-300 underline"
+              >
+                Meta for Developers
+              </a>
+              , ajoute ton compte Facebook en <strong>Testeur</strong> si l’app
+              est en mode Développement.
+            </li>
+            <li>
+              Termine la vérification « Confirmez votre compte » dans l’app
+              Facebook (sécurité / checkpoint).
+            </li>
+            <li>
+              URI Meta = celle affichée dans l’encadré gris ci-dessus (pas l’URL de la page
+              influenceuse avec /fr/…).
+            </li>
+            <li>
+              Instagram Pro + Page Facebook liée (voir encadré violet ci-dessus).
+            </li>
+            <li>
+              En attendant : génère le contenu dans Aura et publie à la main dans
+              l’app Instagram (téléchargement + légende).
+            </li>
+          </ol>
+          <a
+            href="https://developers.facebook.com/docs/instagram-platform/instagram-api-with-facebook-login"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-violet-300 hover:underline"
+          >
+            Documentation Meta (connexion + publication)
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
+      )}
 
       {(Object.keys(PLATFORM_META) as Platform[]).map((platform) => {
         const meta = PLATFORM_META[platform];

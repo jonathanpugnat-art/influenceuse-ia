@@ -84,6 +84,8 @@ export function PhotoPublish({ mobileSheet = false }: { mobileSheet?: boolean })
   const variantsMutation = trpc.content.generateCaptionVariants.useMutation();
   const hashtagMutation = trpc.content.generateHashtags.useMutation();
   const updateMutation = trpc.content.updateContent.useMutation();
+  const publishNowMutation = trpc.publish.publishNow.useMutation();
+  const scheduleMutation = trpc.publish.scheduleContent.useMutation();
   const bundleMutation = trpc.content.prepareOnlyFansBundle.useMutation();
 
   const influencersQuery = trpc.influencer.getAll.useQuery({ limit: 50 });
@@ -292,31 +294,70 @@ export function PhotoPublish({ mobileSheet = false }: { mobileSheet?: boolean })
     );
   };
 
-  // Save / Publish
+  // Save / Publish — Instagram immédiat passe par publishNow (API Meta), pas un simple statut PUBLISHED.
   const handleSave = async (publish: boolean) => {
     if (!contentId) return;
+    const platformList =
+      platforms.length > 0
+        ? (platforms as ("INSTAGRAM" | "TIKTOK" | "ONLYFANS")[])
+        : [];
+
     try {
       await updateMutation.mutateAsync({
         contentId,
         caption: caption || undefined,
         hashtags: hashtags.length > 0 ? hashtags : undefined,
-        platforms: platforms.length > 0 ? (platforms as ["INSTAGRAM"]) : undefined,
-        status: publish
-          ? scheduleMode === "schedule" && scheduledAt
-            ? "SCHEDULED"
-            : "PUBLISHED"
-          : "DRAFT",
-        scheduledAt: scheduleMode === "schedule" ? scheduledAt : undefined,
+        platforms: platformList.length > 0 ? platformList : undefined,
+        status: publish ? "READY" : "DRAFT",
+        scheduledAt: null,
       });
-      toast.success(
-        publish
-          ? scheduleMode === "schedule"
-            ? "Contenu programmé !"
-            : "Contenu publié !"
-          : "Brouillon sauvegardé !"
-      );
-    } catch {
-      toast.error("Erreur lors de la sauvegarde");
+
+      if (!publish) {
+        toast.success("Brouillon sauvegardé !");
+        return;
+      }
+
+      if (scheduleMode === "schedule" && scheduledAt) {
+        if (platformList.length === 0) {
+          toast.error("Choisis au moins une plateforme");
+          return;
+        }
+        await scheduleMutation.mutateAsync({
+          contentId,
+          platforms: platformList,
+          scheduledAt: scheduledAt.toISOString(),
+        });
+        toast.success("Contenu programmé !");
+        return;
+      }
+
+      const igPlatforms = platformList.filter((p) => p === "INSTAGRAM");
+      if (igPlatforms.length > 0) {
+        if (instagramCheck && !instagramCheck.ok) {
+          toast.error(
+            instagramCheck.reason ??
+              "Instagram n’est pas prêt (connexion ou média manquant)."
+          );
+          return;
+        }
+        const { results } = await publishNowMutation.mutateAsync({
+          contentId,
+          platforms: igPlatforms,
+        });
+        const failed = results.filter((r) => r.status === "FAILED");
+        if (failed.length > 0) {
+          toast.error(failed[0]?.error ?? "Échec de publication Instagram");
+          return;
+        }
+        toast.success("Publié sur Instagram !");
+        return;
+      }
+
+      await updateMutation.mutateAsync({ contentId, status: "PUBLISHED" });
+      toast.success("Contenu enregistré — publication manuelle sur les apps");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erreur lors de la sauvegarde";
+      toast.error(msg);
     }
   };
 

@@ -45,19 +45,31 @@ function handleError(err: unknown): never {
 
 /**
  * Génère l'URL d'autorisation OAuth Instagram (Facebook Login pour Instagram).
- * Scopes: instagram_basic, instagram_content_publish.
+ * Scopes requis pour lister les Pages et publier via l'API Graph.
  * state: à passer au callback (ex: influencerId).
  */
 export function getAuthUrl(redirectUri: string, state?: string): string {
   if (!APP_ID) throw new InstagramApiError("INSTAGRAM_APP_ID (ou FACEBOOK_APP_ID) non configuré.");
-  const scopes = ["instagram_basic", "instagram_content_publish"].join(",");
   const params = new URLSearchParams({
     client_id: APP_ID,
     redirect_uri: redirectUri,
-    scope: scopes,
     response_type: "code",
     state: state ?? "instagram_connect",
   });
+  const configId = process.env.FACEBOOK_LOGIN_CONFIG_ID;
+  if (configId) {
+    // Facebook Login for Business — scope must not be used with config_id
+    params.set("config_id", configId);
+    params.set("override_default_response_type", "true");
+  } else {
+    const scopes = [
+      "instagram_basic",
+      "instagram_content_publish",
+      "pages_show_list",
+      "pages_read_engagement",
+    ].join(",");
+    params.set("scope", scopes);
+  }
   return `https://www.facebook.com/${API_VERSION}/dialog/oauth?${params.toString()}`;
 }
 
@@ -116,17 +128,25 @@ export async function exchangeCode(
       params: { access_token: longLived.access_token },
     })
     .then((r) => r.data)
-    .catch(() => ({ data: [] }));
+    .catch(handleError);
 
-  let igUserId = me.id;
-  if (pages.data?.length) {
+  if (!pages.data?.length) {
+    throw new InstagramApiError(
+      "Aucune Page Facebook liée à ce compte. Crée une Page et relie-la à Instagram Professionnel.",
+      "NO_FB_PAGE"
+    );
+  }
+
+  let igUserId: string | null = null;
+  let pageToken = longLived.access_token;
+  for (const page of pages.data) {
     const igAccount = await axios
       .get<{ instagram_business_account?: { id: string } }>(
-        `${FB_BASE}/${API_VERSION}/${pages.data[0].id}`,
+        `${FB_BASE}/${API_VERSION}/${page.id}`,
         {
           params: {
             fields: "instagram_business_account",
-            access_token: pages.data[0].access_token,
+            access_token: page.access_token,
           },
         }
       )
@@ -134,14 +154,23 @@ export async function exchangeCode(
       .catch(() => null);
     if (igAccount?.instagram_business_account?.id) {
       igUserId = igAccount.instagram_business_account.id;
+      pageToken = page.access_token;
+      break;
     }
   }
 
+  if (!igUserId) {
+    throw new InstagramApiError(
+      "Aucun compte Instagram Professionnel trouvé sur tes Pages Facebook. Passe Instagram en mode Pro et lie-le à ta Page.",
+      "NO_IG_BUSINESS"
+    );
+  }
+
   const igUser = await axios
-    .get<{ username?: string }>(`${BASE}/${API_VERSION}/${igUserId}`, {
+    .get<{ username?: string }>(`${FB_BASE}/${API_VERSION}/${igUserId}`, {
       params: {
         fields: "username",
-        access_token: longLived.access_token,
+        access_token: pageToken,
       },
     })
     .then((r) => r.data)

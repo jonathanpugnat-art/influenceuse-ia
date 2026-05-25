@@ -6,12 +6,16 @@ import * as instagram from "@/server/services/instagram.service";
 import * as tiktok from "@/server/services/tiktok.service";
 
 import { getDbUser } from "@/server/helpers/get-db-user";
+import {
+  buildAlternateInstagramRedirectUris,
+  getAppUrl,
+  getInstagramOAuthRedirectUri,
+  getTikTokOAuthRedirectUri,
+} from "@/lib/app-url";
 
 // ──────────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────────
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
 async function verifyContentOwnership(contentId: string, userId: string) {
   const content = await db.content.findUnique({
@@ -182,13 +186,33 @@ export const publishRouter = createTRPCRouter({
    * connectInstagram — Retourne l'URL d'autorisation OAuth Instagram.
    * Le client redirige l'utilisateur vers cette URL. state = influencerId.
    */
+  /**
+   * URI exacte à coller dans Meta (Facebook Login → Paramètres → liste en haut).
+   */
+  getInstagramOAuthSetup: protectedProcedure.query(() => {
+    const redirectUri = getInstagramOAuthRedirectUri();
+    const appUrl = getAppUrl();
+    const hasCredentials = Boolean(
+      (process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID) &&
+        (process.env.INSTAGRAM_APP_SECRET || process.env.FACEBOOK_APP_SECRET)
+    );
+    return {
+      redirectUri,
+      appUrl,
+      hasCredentials,
+      hasFacebookLoginConfigId: Boolean(process.env.FACEBOOK_LOGIN_CONFIG_ID),
+      /** Also register www if users browse with www but env is apex (or vice versa). */
+      alternateRedirectUris: buildAlternateInstagramRedirectUris(redirectUri),
+    };
+  }),
+
   connectInstagram: protectedProcedure
     .input(z.object({ influencerId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       await verifyInfluencerOwnership(input.influencerId, ctx.userId);
-      const redirectUri = `${APP_URL}/api/auth/instagram`;
+      const redirectUri = getInstagramOAuthRedirectUri();
       const url = instagram.getAuthUrl(redirectUri, input.influencerId);
-      return { url };
+      return { url, redirectUri };
     }),
 
   /**
@@ -198,7 +222,7 @@ export const publishRouter = createTRPCRouter({
     .input(z.object({ influencerId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       await verifyInfluencerOwnership(input.influencerId, ctx.userId);
-      const redirectUri = `${APP_URL}/api/auth/tiktok`;
+      const redirectUri = getTikTokOAuthRedirectUri();
       const url = tiktok.getAuthUrl(redirectUri, input.influencerId);
       return { url };
     }),

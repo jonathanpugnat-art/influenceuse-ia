@@ -3,8 +3,10 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "@/server/db";
 import { encrypt } from "@/lib/encryption";
 import * as tiktok from "@/server/services/tiktok.service";
+import { defaultLocale } from "@/i18n";
+import { getAppUrl } from "@/lib/app-url";
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+const APP_URL = getAppUrl();
 
 /**
  * GET /api/auth/tiktok
@@ -14,7 +16,7 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 export async function GET(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) {
-    return NextResponse.redirect(new URL("/sign-in", APP_URL));
+    return NextResponse.redirect(new URL(`/${defaultLocale}/sign-in`, APP_URL));
   }
 
   const searchParams = req.nextUrl.searchParams;
@@ -25,13 +27,13 @@ export async function GET(req: NextRequest) {
   if (error) {
     const errorDesc = searchParams.get("error_description") ?? error;
     return NextResponse.redirect(
-      new URL(`/influencers?tiktok_error=${encodeURIComponent(errorDesc)}`, APP_URL)
+      new URL(`/${defaultLocale}/influencers?tiktok_error=${encodeURIComponent(errorDesc)}`, APP_URL)
     );
   }
 
   if (!code || !state) {
     return NextResponse.redirect(
-      new URL("/influencers?tiktok_error=missing_code_or_state", APP_URL)
+      new URL(`/${defaultLocale}/influencers?tiktok_error=missing_code_or_state`, APP_URL)
     );
   }
 
@@ -40,14 +42,18 @@ export async function GET(req: NextRequest) {
 
   const user = await db.user.findUnique({ where: { clerkId: userId } });
   if (!user) {
-    return NextResponse.redirect(new URL("/influencers?tiktok_error=user_not_found", APP_URL));
+    return NextResponse.redirect(
+      new URL(`/${defaultLocale}/influencers?tiktok_error=user_not_found`, APP_URL)
+    );
   }
 
   const influencer = await db.influencer.findUnique({
     where: { id: influencerId },
   });
   if (!influencer || influencer.userId !== user.id) {
-    return NextResponse.redirect(new URL("/influencers?tiktok_error=invalid_influencer", APP_URL));
+    return NextResponse.redirect(
+      new URL(`/${defaultLocale}/influencers?tiktok_error=invalid_influencer`, APP_URL)
+    );
   }
 
   try {
@@ -80,12 +86,12 @@ export async function GET(req: NextRequest) {
     });
 
     return NextResponse.redirect(
-      new URL(`/influencers/${influencerId}/edit?tiktok=connected`, APP_URL)
+      new URL(`/${defaultLocale}/influencers/${influencerId}?tab=social&tiktok=connected`, APP_URL)
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.redirect(
-      new URL(`/influencers?tiktok_error=${encodeURIComponent(message)}`, APP_URL)
+      new URL(`/${defaultLocale}/influencers?tiktok_error=${encodeURIComponent(message)}`, APP_URL)
     );
   }
 }

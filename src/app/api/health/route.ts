@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { db } from "@/server/db";
+import {
+  buildAlternateInstagramRedirectUris,
+  getAppUrl,
+  getInstagramOAuthRedirectUri,
+} from "@/lib/app-url";
 
 /**
  * Auto-publish readiness: the publication pipeline (cron + OAuth + APIs) is
@@ -30,6 +35,7 @@ function getAutoPublishReadiness() {
       Boolean(process.env.R2_SECRET_ACCESS_KEY);
     const r2Public = Boolean(process.env.R2_PUBLIC_URL?.trim());
 
+    const redirectUri = getInstagramOAuthRedirectUri();
     return {
       cron,
       encryption,
@@ -39,6 +45,13 @@ function getAutoPublishReadiness() {
         instagram,
         tiktok,
         onlyfans: r2 || !process.env.VERCEL,
+      },
+      instagramOAuth: {
+        appUrl: getAppUrl(),
+        redirectUri,
+        alternateRedirectUris: buildAlternateInstagramRedirectUris(redirectUri),
+        credentialsConfigured: instagram,
+        facebookLoginConfigIdSet: Boolean(process.env.FACEBOOK_LOGIN_CONFIG_ID),
       },
       ready: cron && encryption && replicate && (r2Public || !process.env.VERCEL),
     };
