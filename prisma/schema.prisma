@@ -183,6 +183,8 @@ model SocialAccount {
   accessToken    String?
   refreshToken   String?
   tokenExpiresAt DateTime?
+  /// instagram_login | facebook_login — how the token was obtained (refresh differs).
+  oauthProvider  String?
   isConnected    Boolean   @default(false)
   followers      Int       @default(0)
 

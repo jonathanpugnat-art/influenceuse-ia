@@ -12,6 +12,12 @@ import {
   getInstagramOAuthRedirectUri,
   getTikTokOAuthRedirectUri,
 } from "@/lib/app-url";
+import {
+  getInstagramLoginAppId,
+  getInstagramLoginAppSecret,
+  getInstagramOAuthProvider,
+  usesInstagramDirectLogin,
+} from "@/lib/instagram-oauth-config";
 
 // ──────────────────────────────────────────────
 // Helpers
@@ -152,6 +158,7 @@ export const publishRouter = createTRPCRouter({
                   refreshToken: true,
                   platformUserId: true,
                   tokenExpiresAt: true,
+                  oauthProvider: true,
                   isConnected: true,
                 },
               },
@@ -192,19 +199,28 @@ export const publishRouter = createTRPCRouter({
   getInstagramOAuthSetup: protectedProcedure.query(() => {
     const redirectUri = getInstagramOAuthRedirectUri();
     const appUrl = getAppUrl();
-    const hasCredentials = Boolean(
-      (process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID) &&
-        (process.env.INSTAGRAM_APP_SECRET || process.env.FACEBOOK_APP_SECRET)
-    );
+    const oauthMode = getInstagramOAuthProvider();
+    const instagramLogin = usesInstagramDirectLogin();
+    const hasCredentials = instagramLogin
+      ? Boolean(getInstagramLoginAppId() && getInstagramLoginAppSecret())
+      : Boolean(
+          (process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID) &&
+            (process.env.INSTAGRAM_APP_SECRET || process.env.FACEBOOK_APP_SECRET)
+        );
     return {
       redirectUri,
       appUrl,
+      oauthMode,
+      instagramLogin,
       hasCredentials,
+      metaRedirectHint: instagramLogin
+        ? "Meta → Instagram → API setup with Instagram login → Business login → OAuth redirect URIs"
+        : "Meta → Facebook Login for Business → Paramètres → URI de redirection OAuth valides",
       hasFacebookLoginConfigId: Boolean(process.env.FACEBOOK_LOGIN_CONFIG_ID?.trim()),
       requiresFacebookLoginConfigId:
-        process.env.INSTAGRAM_REQUIRE_LOGIN_CONFIG_ID === "true" ||
-        Boolean(process.env.FACEBOOK_LOGIN_CONFIG_ID?.trim()),
-      /** Also register www if users browse with www but env is apex (or vice versa). */
+        !instagramLogin &&
+        (process.env.INSTAGRAM_REQUIRE_LOGIN_CONFIG_ID === "true" ||
+          Boolean(process.env.FACEBOOK_LOGIN_CONFIG_ID?.trim())),
       alternateRedirectUris: buildAlternateInstagramRedirectUris(redirectUri),
     };
   }),
@@ -313,10 +329,12 @@ export const publishRouter = createTRPCRouter({
         },
       });
 
-      const serverHasInstagramCreds = Boolean(
-        (process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID) &&
-          (process.env.INSTAGRAM_APP_SECRET || process.env.FACEBOOK_APP_SECRET)
-      );
+      const serverHasInstagramCreds = usesInstagramDirectLogin()
+        ? Boolean(getInstagramLoginAppId() && getInstagramLoginAppSecret())
+        : Boolean(
+            (process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID) &&
+              (process.env.INSTAGRAM_APP_SECRET || process.env.FACEBOOK_APP_SECRET)
+          );
       const serverHasTiktokCreds = Boolean(
         process.env.TIKTOK_CLIENT_KEY && process.env.TIKTOK_CLIENT_SECRET
       );

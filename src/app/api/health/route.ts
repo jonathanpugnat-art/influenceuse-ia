@@ -5,6 +5,12 @@ import {
   getAppUrl,
   getInstagramOAuthRedirectUri,
 } from "@/lib/app-url";
+import {
+  getInstagramLoginAppId,
+  getInstagramLoginAppSecret,
+  getInstagramOAuthProvider,
+  usesInstagramDirectLogin,
+} from "@/lib/instagram-oauth-config";
 
 /**
  * Auto-publish readiness: the publication pipeline (cron + OAuth + APIs) is
@@ -14,10 +20,12 @@ import {
  * before users do.
  */
 function getAutoPublishReadiness() {
-  const instagram = Boolean(
-    (process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID) &&
-      (process.env.INSTAGRAM_APP_SECRET || process.env.FACEBOOK_APP_SECRET)
-  );
+  const instagram = usesInstagramDirectLogin()
+    ? Boolean(getInstagramLoginAppId() && getInstagramLoginAppSecret())
+    : Boolean(
+        (process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID) &&
+          (process.env.INSTAGRAM_APP_SECRET || process.env.FACEBOOK_APP_SECRET)
+      );
   const tiktok = Boolean(
     process.env.TIKTOK_CLIENT_KEY && process.env.TIKTOK_CLIENT_SECRET
   );
@@ -47,11 +55,12 @@ function getAutoPublishReadiness() {
         onlyfans: r2 || !process.env.VERCEL,
       },
       instagramOAuth: {
+        mode: getInstagramOAuthProvider(),
         appUrl: getAppUrl(),
         redirectUri,
         alternateRedirectUris: buildAlternateInstagramRedirectUris(redirectUri),
         credentialsConfigured: instagram,
-        facebookLoginConfigIdSet: Boolean(process.env.FACEBOOK_LOGIN_CONFIG_ID),
+        facebookLoginConfigIdSet: Boolean(process.env.FACEBOOK_LOGIN_CONFIG_ID?.trim()),
       },
       ready: cron && encryption && replicate && (r2Public || !process.env.VERCEL),
     };

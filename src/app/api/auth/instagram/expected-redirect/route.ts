@@ -4,33 +4,61 @@ import {
   getAppUrl,
   getInstagramOAuthRedirectUri,
 } from "@/lib/app-url";
+import {
+  getInstagramLoginAppId,
+  getInstagramLoginAppSecret,
+  getInstagramOAuthProvider,
+  usesInstagramDirectLogin,
+} from "@/lib/instagram-oauth-config";
+import * as instagram from "@/server/services/instagram.service";
 
 /**
  * GET /api/auth/instagram/expected-redirect
- * Public: exact OAuth redirect URI(s) Aura sends to Meta (for dashboard copy-paste).
+ * Public: OAuth redirect URI + mode (for Meta dashboard copy-paste).
  */
 export async function GET() {
   const redirectUri = getInstagramOAuthRedirectUri();
-  const hasCredentials = Boolean(
-    (process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID) &&
-      (process.env.INSTAGRAM_APP_SECRET || process.env.FACEBOOK_APP_SECRET)
-  );
+  const instagramLogin = usesInstagramDirectLogin();
+  const hasCredentials = instagramLogin
+    ? Boolean(getInstagramLoginAppId() && getInstagramLoginAppSecret())
+    : Boolean(
+        (process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID) &&
+          (process.env.INSTAGRAM_APP_SECRET || process.env.FACEBOOK_APP_SECRET)
+      );
+
+  let sampleAuthUrl: string | null = null;
+  try {
+    sampleAuthUrl = instagram.getAuthUrl(redirectUri, "preview");
+  } catch {
+    sampleAuthUrl = null;
+  }
+
+  const metaChecklist = instagramLogin
+    ? [
+        "Meta → Instagram → API setup with Instagram login → Business login settings",
+        `OAuth redirect URIs : ${redirectUri}`,
+        "Instagram App ID + Instagram App Secret (section Business login, pas seulement App ID Facebook)",
+        "Vercel : INSTAGRAM_OAUTH_MODE=instagram, INSTAGRAM_LOGIN_APP_ID, INSTAGRAM_LOGIN_APP_SECRET (ou INSTAGRAM_APP_ID/SECRET)",
+        "Compte Instagram Professionnel requis",
+      ]
+    : [
+        "Facebook Login for Business → Paramètres → URI de redirection OAuth valides",
+        `Ajouter : ${redirectUri}`,
+        "FACEBOOK_LOGIN_CONFIG_ID sur Vercel si Login for Business",
+        "Rôles → Testeur (app en Développement)",
+      ];
 
   return NextResponse.json(
     {
       redirectUri,
       alternateRedirectUris: buildAlternateInstagramRedirectUris(redirectUri),
       appUrl: getAppUrl(),
+      oauthMode: getInstagramOAuthProvider(),
+      instagramLogin,
       credentialsConfigured: hasCredentials,
-      facebookLoginConfigIdSet: Boolean(process.env.FACEBOOK_LOGIN_CONFIG_ID),
-      metaChecklist: [
-        "Paramètres de l'app → De base → Domaines de l'app : aurainfluenceai.com",
-        "Facebook Login for Business → Paramètres → URI de redirection OAuth valides (liste EN HAUT, pas seulement le validateur)",
-        "Ajouter redirectUri + alternateRedirectUris ci-dessus, puis Enregistrer",
-        "Rôles → Testeur : ton compte Facebook (app en Développement)",
-        "Vercel : INSTAGRAM_APP_ID, INSTAGRAM_APP_SECRET, NEXT_PUBLIC_APP_URL puis Redeploy",
-        "Si Login for Business : Configurations → config Instagram → noter config_id → FACEBOOK_LOGIN_CONFIG_ID sur Vercel",
-      ],
+      sampleAuthUrl,
+      facebookLoginConfigIdSet: Boolean(process.env.FACEBOOK_LOGIN_CONFIG_ID?.trim()),
+      metaChecklist,
     },
     { headers: { "Cache-Control": "no-store" } }
   );

@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const data = await instagram.exchangeCode(code, redirectUri);
+    const data = await instagram.exchangeCode(instagram.normalizeOAuthCode(code), redirectUri);
     const encryptedAccess = encrypt(data.accessToken);
     const encryptedRefresh = data.refreshToken ? encrypt(data.refreshToken) : null;
 
@@ -88,6 +88,7 @@ export async function GET(req: NextRequest) {
         accessToken: encryptedAccess,
         refreshToken: encryptedRefresh,
         tokenExpiresAt: data.expiresAt,
+        oauthProvider: data.oauthProvider,
         isConnected: true,
       },
       update: {
@@ -96,6 +97,7 @@ export async function GET(req: NextRequest) {
         accessToken: encryptedAccess,
         refreshToken: encryptedRefresh,
         tokenExpiresAt: data.expiresAt,
+        oauthProvider: data.oauthProvider,
         isConnected: true,
       },
     });

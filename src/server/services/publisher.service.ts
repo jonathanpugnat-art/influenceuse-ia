@@ -21,13 +21,19 @@ const IG_REFRESH_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
 async function ensureFreshIgToken(
   accountId: string,
   decryptedToken: string,
-  expiresAt?: Date | null
+  expiresAt?: Date | null,
+  oauthProvider?: string | null
 ): Promise<string> {
   if (!expiresAt) return decryptedToken;
   const remaining = expiresAt.getTime() - Date.now();
   if (remaining > IG_REFRESH_THRESHOLD_MS) return decryptedToken;
   try {
-    const refreshed = await instagram.refreshToken(decryptedToken);
+    const refreshed = await instagram.refreshToken(
+      decryptedToken,
+      oauthProvider === "instagram_login" || oauthProvider === "facebook_login"
+        ? oauthProvider
+        : null
+    );
     await db.socialAccount.update({
       where: { id: accountId },
       data: {
@@ -65,6 +71,7 @@ type ContentWithInfluencer = {
       refreshToken: string | null;
       platformUserId: string | null;
       tokenExpiresAt?: Date | null;
+      oauthProvider?: string | null;
       isConnected: boolean;
     }>;
   };
@@ -157,7 +164,8 @@ export async function publishContent(content: ContentWithInfluencer): Promise<Pu
           accessToken = await ensureFreshIgToken(
             account.id,
             accessToken,
-            account.tokenExpiresAt
+            account.tokenExpiresAt,
+            account.oauthProvider
           );
           if (!igUserId) {
             results.push({

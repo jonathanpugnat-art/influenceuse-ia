@@ -37,6 +37,7 @@ export async function checkAndPublish(): Promise<{
                 refreshToken: true,
                 platformUserId: true,
                 tokenExpiresAt: true,
+                oauthProvider: true,
                 isConnected: true,
               },
             },

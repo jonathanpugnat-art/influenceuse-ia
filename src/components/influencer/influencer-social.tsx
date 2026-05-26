@@ -160,33 +160,29 @@ export function InfluencerSocial({ influencerId }: { influencerId: string }) {
           </p>
           <ul className="list-inside list-disc space-y-1 text-xs text-slate-400">
             <li>
-              Ton compte Instagram doit être en mode{" "}
-              <strong>Professionnel</strong> (Business ou Creator)
+              Compte Instagram en mode <strong>Professionnel</strong> (Business ou
+              Creator)
             </li>
-            <li>
-              Il doit être lié à une <strong>Page Facebook</strong> (même
-              vide)
-            </li>
-            <li>
-              Tu autoriseras Aura à publier en ton nom — révocable à tout
-              moment
-            </li>
-            <li>
-              Publication via l’<strong>API officielle Meta</strong> — pas de
-              likes automatisés ni de bots (réduit le risque de sanction)
-            </li>
+            {oauthSetup?.instagramLogin === false && (
+              <li>
+                Lié à une <strong>Page Facebook</strong> (mode connexion Facebook)
+              </li>
+            )}
+            {oauthSetup?.instagramLogin !== false && (
+              <li>
+                Connexion <strong>directe via Instagram</strong> — pas de Page
+                Facebook obligatoire
+              </li>
+            )}
+            <li>Autorisation révocable à tout moment dans les réglages Instagram</li>
           </ul>
         </div>
       </div>
 
       {oauthSetup && (
         <div className="rounded-xl border border-slate-700/60 bg-slate-900/60 p-4 text-sm">
-          <p className="font-semibold text-white">URI Meta (à copier dans la liste du haut)</p>
-          <p className="mt-1 text-xs text-slate-400">
-            Pas le validateur en bas seul — section{" "}
-            <strong className="text-slate-300">URI de redirection OAuth valides</strong>, puis
-            Enregistrer.
-          </p>
+          <p className="font-semibold text-white">URI Meta (à copier)</p>
+          <p className="mt-1 text-xs text-slate-400">{oauthSetup.metaRedirectHint}</p>
           <code className="mt-2 block break-all rounded-lg bg-black/40 px-2 py-2 text-xs text-emerald-300">
             {oauthSetup.redirectUri}
           </code>
@@ -208,13 +204,14 @@ export function InfluencerSocial({ influencerId }: { influencerId: string }) {
               Clés Meta absentes sur le serveur (INSTAGRAM_APP_ID / SECRET sur Vercel + redeploy).
             </p>
           )}
-          {oauthSetup.hasCredentials && !oauthSetup.hasFacebookLoginConfigId && (
-            <p className="mt-2 rounded-lg bg-amber-500/15 px-2 py-1.5 text-xs text-amber-100">
-              App <strong>Facebook Login for Business</strong> : ajoute{" "}
-              <code className="text-amber-50">FACEBOOK_LOGIN_CONFIG_ID</code> sur Vercel (Meta →
-              Configurations → ID de config Instagram), puis redeploy. Sans ça : « Invalid Scopes ».
-            </p>
-          )}
+          {oauthSetup.hasCredentials &&
+            !oauthSetup.instagramLogin &&
+            !oauthSetup.hasFacebookLoginConfigId && (
+              <p className="mt-2 rounded-lg bg-amber-500/15 px-2 py-1.5 text-xs text-amber-100">
+                Mode Facebook : ajoute <code className="text-amber-50">FACEBOOK_LOGIN_CONFIG_ID</code>{" "}
+                sur Vercel.
+              </p>
+            )}
           <p className="mt-2 text-xs text-slate-500">
             Vérif prod :{" "}
             <a

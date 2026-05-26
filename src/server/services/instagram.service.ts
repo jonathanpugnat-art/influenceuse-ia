@@ -1,18 +1,38 @@
 /**
  * Instagram Graph API — OAuth, publication (photo, carousel, reel), insights.
- * Requiert un compte Instagram professionnel (Business/Creator) lié à une Page Facebook.
  *
- * Env: INSTAGRAM_APP_ID, INSTAGRAM_APP_SECRET, NEXT_PUBLIC_APP_URL
+ * OAuth modes (INSTAGRAM_OAUTH_MODE):
+ * - instagram (default) — Instagram Login, pas de Page Facebook obligatoire
+ * - facebook — Facebook Login for Business + config_id ou scopes classiques
+ *
+ * Env: INSTAGRAM_LOGIN_APP_ID/SECRET ou INSTAGRAM_APP_ID/SECRET, NEXT_PUBLIC_APP_URL
  */
 
 import axios, { type AxiosError } from "axios";
+import {
+  getFacebookLoginAppId,
+  getFacebookLoginAppSecret,
+  getInstagramLoginAppId,
+  getInstagramLoginAppSecret,
+  getInstagramOAuthProvider,
+  INSTAGRAM_LOGIN_SCOPES,
+  usesInstagramDirectLogin,
+  type InstagramOAuthProvider,
+} from "@/lib/instagram-oauth-config";
 
 const BASE = "https://graph.instagram.com";
 const FB_BASE = "https://graph.facebook.com";
+const IG_OAUTH_BASE = "https://api.instagram.com";
 const API_VERSION = "v21.0";
 
-const APP_ID = process.env.INSTAGRAM_APP_ID ?? process.env.FACEBOOK_APP_ID;
-const APP_SECRET = process.env.INSTAGRAM_APP_SECRET ?? process.env.FACEBOOK_APP_SECRET;
+export type InstagramExchangeResult = {
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt: Date;
+  igUserId: string;
+  username?: string;
+  oauthProvider: InstagramOAuthProvider;
+};
 
 export class InstagramApiError extends Error {
   constructor(
@@ -28,10 +48,18 @@ export class InstagramApiError extends Error {
 
 function handleError(err: unknown): never {
   if (axios.isAxiosError(err)) {
-    const ax = err as AxiosError<{ error?: { message?: string; code?: number; error_subcode?: number } }>;
+    const ax = err as AxiosError<{
+      error?: { message?: string; code?: number; error_subcode?: number };
+      error_message?: string;
+      error_type?: string;
+    }>;
     const status = ax.response?.status;
     const body = ax.response?.data?.error;
-    const msg = body?.message ?? ax.message ?? "Instagram API error";
+    const msg =
+      body?.message ??
+      ax.response?.data?.error_message ??
+      ax.message ??
+      "Instagram API error";
     if (status === 429) {
       throw new InstagramApiError("Rate limit dépassé. Réessayez plus tard.", "RATE_LIMIT", 429);
     }
@@ -43,29 +71,50 @@ function handleError(err: unknown): never {
   throw err;
 }
 
-/**
- * Génère l'URL d'autorisation OAuth Instagram (Facebook Login pour Instagram).
- * Scopes requis pour lister les Pages et publier via l'API Graph.
- * state: à passer au callback (ex: influencerId).
- */
+/** Nettoie le code OAuth (Meta ajoute parfois #_ en fin d’URL). */
+export function normalizeOAuthCode(code: string): string {
+  return code.replace(/#_.*$/, "").trim();
+}
+
 export function getAuthUrl(redirectUri: string, state?: string): string {
   assertInstagramOAuthReady();
-  if (!APP_ID) {
+  return usesInstagramDirectLogin()
+    ? buildInstagramLoginAuthUrl(redirectUri, state)
+    : buildFacebookLoginAuthUrl(redirectUri, state);
+}
+
+function buildInstagramLoginAuthUrl(redirectUri: string, state?: string): string {
+  const appId = getInstagramLoginAppId();
+  if (!appId) {
+    throw new InstagramApiError("INSTAGRAM_LOGIN_APP_ID (ou INSTAGRAM_APP_ID) non configuré.");
+  }
+  const params = new URLSearchParams({
+    client_id: appId,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: INSTAGRAM_LOGIN_SCOPES.join(","),
+    state: state ?? "instagram_connect",
+    enable_fb_login: "0",
+  });
+  return `https://www.instagram.com/oauth/authorize?${params.toString()}`;
+}
+
+function buildFacebookLoginAuthUrl(redirectUri: string, state?: string): string {
+  const appId = getFacebookLoginAppId();
+  if (!appId) {
     throw new InstagramApiError("INSTAGRAM_APP_ID (ou FACEBOOK_APP_ID) non configuré.");
   }
   const params = new URLSearchParams({
-    client_id: APP_ID,
+    client_id: appId,
     redirect_uri: redirectUri,
     response_type: "code",
     state: state ?? "instagram_connect",
   });
   const configId = process.env.FACEBOOK_LOGIN_CONFIG_ID?.trim();
   if (configId) {
-    // Facebook Login for Business — ne pas envoyer scope avec config_id
     params.set("config_id", configId);
     params.set("override_default_response_type", "true");
   } else {
-    // Instagram API with Facebook Login (apps classiques uniquement)
     const scopes = (
       process.env.INSTAGRAM_OAUTH_SCOPES ??
       "instagram_basic,instagram_content_publish,pages_read_engagement,pages_show_list"
@@ -79,9 +128,16 @@ export function getAuthUrl(redirectUri: string, state?: string): string {
   return `https://www.facebook.com/${API_VERSION}/dialog/oauth?${params.toString()}`;
 }
 
-/** Message si l’app Meta est en Login for Business sans FACEBOOK_LOGIN_CONFIG_ID. */
 export function assertInstagramOAuthReady(): void {
-  if (!APP_ID) {
+  if (usesInstagramDirectLogin()) {
+    if (!getInstagramLoginAppId() || !getInstagramLoginAppSecret()) {
+      throw new InstagramApiError(
+        "INSTAGRAM_LOGIN_APP_ID et INSTAGRAM_LOGIN_APP_SECRET requis (Meta → Instagram → Business login)."
+      );
+    }
+    return;
+  }
+  if (!getFacebookLoginAppId()) {
     throw new InstagramApiError("INSTAGRAM_APP_ID (ou FACEBOOK_APP_ID) non configuré.");
   }
   const configId = process.env.FACEBOOK_LOGIN_CONFIG_ID?.trim();
@@ -89,29 +145,100 @@ export function assertInstagramOAuthReady(): void {
     process.env.INSTAGRAM_REQUIRE_LOGIN_CONFIG_ID === "true" || Boolean(configId);
   if (requireConfig && !configId) {
     throw new InstagramApiError(
-      "FACEBOOK_LOGIN_CONFIG_ID manquant. Meta → Facebook Login for Business → Configurations → crée une config « Instagram » (jeton utilisateur) → copie l’ID dans Vercel, puis redeploy.",
+      "FACEBOOK_LOGIN_CONFIG_ID manquant. Meta → Facebook Login for Business → Configurations.",
       "MISSING_CONFIG_ID"
     );
   }
 }
 
-/**
- * Échange le code d'autorisation contre un access token (court terme).
- * Puis échange contre un long-lived token et récupère l'IG User ID.
- */
-export async function exchangeCode(
+export async function exchangeCode(code: string, redirectUri: string): Promise<InstagramExchangeResult> {
+  const normalized = normalizeOAuthCode(code);
+  return usesInstagramDirectLogin()
+    ? exchangeCodeInstagramLogin(normalized, redirectUri)
+    : exchangeCodeFacebookLogin(normalized, redirectUri);
+}
+
+async function exchangeCodeInstagramLogin(
   code: string,
   redirectUri: string
-): Promise<{ accessToken: string; refreshToken?: string; expiresAt: Date; igUserId: string; username?: string }> {
-  if (!APP_ID || !APP_SECRET) {
+): Promise<InstagramExchangeResult> {
+  const appId = getInstagramLoginAppId();
+  const appSecret = getInstagramLoginAppSecret();
+  if (!appId || !appSecret) {
+    throw new InstagramApiError("INSTAGRAM_LOGIN_APP_ID et INSTAGRAM_LOGIN_APP_SECRET requis.");
+  }
+
+  const form = new URLSearchParams({
+    client_id: appId,
+    client_secret: appSecret,
+    grant_type: "authorization_code",
+    redirect_uri: redirectUri,
+    code,
+  });
+
+  const tokenRes = await axios
+    .post<
+      | { access_token: string; user_id: string }
+      | { data: Array<{ access_token: string; user_id: string }> }
+    >(`${IG_OAUTH_BASE}/oauth/access_token`, form, {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    })
+    .then((r) => r.data)
+    .catch(handleError);
+
+  const shortToken =
+    "data" in tokenRes && tokenRes.data?.[0]
+      ? tokenRes.data[0].access_token
+      : (tokenRes as { access_token: string }).access_token;
+  const igUserId =
+    "data" in tokenRes && tokenRes.data?.[0]
+      ? tokenRes.data[0].user_id
+      : (tokenRes as { user_id: string }).user_id;
+
+  const longLived = await axios
+    .get<{ access_token: string; expires_in: number }>(`${BASE}/access_token`, {
+      params: {
+        grant_type: "ig_exchange_token",
+        client_secret: appSecret,
+        access_token: shortToken,
+      },
+    })
+    .then((r) => r.data)
+    .catch(handleError);
+
+  const expiresAt = new Date(Date.now() + (longLived.expires_in ?? 60 * 24 * 60 * 60) * 1000);
+
+  const profile = await axios
+    .get<{ username?: string; user_id?: string }>(`${BASE}/${API_VERSION}/me`, {
+      params: { fields: "user_id,username", access_token: longLived.access_token },
+    })
+    .then((r) => r.data)
+    .catch(() => null);
+
+  return {
+    accessToken: longLived.access_token,
+    expiresAt,
+    igUserId: profile?.user_id ?? igUserId,
+    username: profile?.username,
+    oauthProvider: "instagram_login",
+  };
+}
+
+async function exchangeCodeFacebookLogin(
+  code: string,
+  redirectUri: string
+): Promise<InstagramExchangeResult> {
+  const appId = getFacebookLoginAppId();
+  const appSecret = getFacebookLoginAppSecret();
+  if (!appId || !appSecret) {
     throw new InstagramApiError("INSTAGRAM_APP_ID et INSTAGRAM_APP_SECRET requis.");
   }
 
   const shortLived = await axios
     .get<{ access_token: string }>(`${FB_BASE}/${API_VERSION}/oauth/access_token`, {
       params: {
-        client_id: APP_ID,
-        client_secret: APP_SECRET,
+        client_id: appId,
+        client_secret: appSecret,
         redirect_uri: redirectUri,
         code,
       },
@@ -125,8 +252,8 @@ export async function exchangeCode(
     .get<{ access_token: string; expires_in: number }>(`${FB_BASE}/${API_VERSION}/oauth/access_token`, {
       params: {
         grant_type: "fb_exchange_token",
-        client_id: APP_ID,
-        client_secret: APP_SECRET,
+        client_id: appId,
+        client_secret: appSecret,
         fb_exchange_token: shortToken,
       },
     })
@@ -204,22 +331,43 @@ export async function exchangeCode(
     expiresAt,
     igUserId,
     username: "username" in igUser ? igUser.username : undefined,
+    oauthProvider: "facebook_login",
   };
 }
 
 /**
  * Rafraîchit un token long-lived Instagram (valide ~60 jours).
  */
-export async function refreshToken(token: string): Promise<{ accessToken: string; expiresAt: Date }> {
-  if (!APP_ID || !APP_SECRET) {
+export async function refreshToken(
+  token: string,
+  oauthProvider?: InstagramOAuthProvider | null
+): Promise<{ accessToken: string; expiresAt: Date }> {
+  const provider = oauthProvider ?? getInstagramOAuthProvider();
+  if (provider === "instagram_login") {
+    const res = await axios
+      .get<{ access_token: string; expires_in: number }>(`${BASE}/refresh_access_token`, {
+        params: {
+          grant_type: "ig_refresh_token",
+          access_token: token,
+        },
+      })
+      .then((r) => r.data)
+      .catch(handleError);
+    const expiresAt = new Date(Date.now() + (res.expires_in ?? 60 * 24 * 60 * 60) * 1000);
+    return { accessToken: res.access_token, expiresAt };
+  }
+
+  const appId = getFacebookLoginAppId();
+  const appSecret = getFacebookLoginAppSecret();
+  if (!appId || !appSecret) {
     throw new InstagramApiError("INSTAGRAM_APP_ID et INSTAGRAM_APP_SECRET requis.");
   }
   const res = await axios
     .get<{ access_token: string; expires_in: number }>(`${FB_BASE}/${API_VERSION}/oauth/access_token`, {
       params: {
         grant_type: "fb_exchange_token",
-        client_id: APP_ID,
-        client_secret: APP_SECRET,
+        client_id: appId,
+        client_secret: appSecret,
         fb_exchange_token: token,
       },
     })
