@@ -206,7 +206,13 @@ export function InfluencerSocial({ influencerId }: { influencerId: string }) {
           {!oauthSetup.hasCredentials && (
             <p className="mt-2 rounded-lg bg-red-500/15 px-2 py-1.5 text-xs font-medium text-red-200">
               Clés Meta absentes sur le serveur (INSTAGRAM_APP_ID / SECRET sur Vercel + redeploy).
-              Tant que c’est rouge, Connecter ne peut pas marcher même si Meta est OK.
+            </p>
+          )}
+          {oauthSetup.hasCredentials && !oauthSetup.hasFacebookLoginConfigId && (
+            <p className="mt-2 rounded-lg bg-amber-500/15 px-2 py-1.5 text-xs text-amber-100">
+              App <strong>Facebook Login for Business</strong> : ajoute{" "}
+              <code className="text-amber-50">FACEBOOK_LOGIN_CONFIG_ID</code> sur Vercel (Meta →
+              Configurations → ID de config Instagram), puis redeploy. Sans ça : « Invalid Scopes ».
             </p>
           )}
           <p className="mt-2 text-xs text-slate-500">

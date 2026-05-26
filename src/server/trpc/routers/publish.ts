@@ -200,7 +200,10 @@ export const publishRouter = createTRPCRouter({
       redirectUri,
       appUrl,
       hasCredentials,
-      hasFacebookLoginConfigId: Boolean(process.env.FACEBOOK_LOGIN_CONFIG_ID),
+      hasFacebookLoginConfigId: Boolean(process.env.FACEBOOK_LOGIN_CONFIG_ID?.trim()),
+      requiresFacebookLoginConfigId:
+        process.env.INSTAGRAM_REQUIRE_LOGIN_CONFIG_ID === "true" ||
+        Boolean(process.env.FACEBOOK_LOGIN_CONFIG_ID?.trim()),
       /** Also register www if users browse with www but env is apex (or vice versa). */
       alternateRedirectUris: buildAlternateInstagramRedirectUris(redirectUri),
     };

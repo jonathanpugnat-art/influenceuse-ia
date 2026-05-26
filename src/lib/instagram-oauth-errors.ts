@@ -29,6 +29,16 @@ const META_PATTERNS: Array<{ test: RegExp; message: string }> = [
     message:
       "La connexion Instagram n’est pas configurée côté serveur (clés Meta manquantes). Contacte le support Aura.",
   },
+  {
+    test: /MISSING_CONFIG_ID|FACEBOOK_LOGIN_CONFIG_ID/i,
+    message:
+      "Ajoute FACEBOOK_LOGIN_CONFIG_ID sur Vercel : Meta → Facebook Login for Business → Configurations → config Instagram → copie l’ID, puis redeploy.",
+  },
+  {
+    test: /Invalid Scopes/i,
+    message:
+      "Scopes OAuth invalides pour ton type d’app Meta. Utilise FACEBOOK_LOGIN_CONFIG_ID (Login for Business) au lieu des permissions dans l’URL.",
+  },
 ];
 
 export function formatInstagramOAuthError(raw: string): string {

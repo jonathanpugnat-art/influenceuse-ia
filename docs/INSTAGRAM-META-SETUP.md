@@ -63,15 +63,25 @@ Si le login échoue pour tout le monde sauf le propriétaire de l’app :
 
 Attente possible : **24–48 h** après mise à jour des infos Business.
 
-### 6. Facebook Login for Business (optionnel)
+### 6. Facebook Login for Business (obligatoire pour Aura Influence AI)
 
-Si tu as activé **Facebook Login for Business**, crée une **configuration** dans le tableau de bord et définis sur Vercel :
+Si ton app a le produit **Facebook Login for Business** (cas d’usage Instagram), les scopes
+`instagram_basic`, `pages_show_list`, etc. dans l’URL OAuth provoquent **Invalid Scopes**.
+
+1. Menu **Facebook Login for Business** → **Configurations**
+2. **Créer une configuration** (ou modifier) → type **Jeton d’accès utilisateur** (User access token)
+3. Permissions : publication Instagram + Pages (selon l’assistant Meta)
+4. Copie l’**ID de configuration** (nombre long)
+5. Vercel :
 
 ```
-FACEBOOK_LOGIN_CONFIG_ID=<id de la configuration>
+FACEBOOK_LOGIN_CONFIG_ID=1234567890123456
 ```
 
-Sans ce `config_id`, certains comptes voient « application non disponible ».
+6. **Redeploy** — Aura n’envoie plus de `scope` invalide, seulement `config_id`.
+
+Sans `FACEBOOK_LOGIN_CONFIG_ID`, tu verras :  
+`Invalid Scopes: instagram_basic, instagram_content_publish...`
 
 ## Variables d’environnement (Vercel)
 

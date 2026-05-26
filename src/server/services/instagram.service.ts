@@ -49,28 +49,47 @@ function handleError(err: unknown): never {
  * state: à passer au callback (ex: influencerId).
  */
 export function getAuthUrl(redirectUri: string, state?: string): string {
-  if (!APP_ID) throw new InstagramApiError("INSTAGRAM_APP_ID (ou FACEBOOK_APP_ID) non configuré.");
+  assertInstagramOAuthReady();
   const params = new URLSearchParams({
     client_id: APP_ID,
     redirect_uri: redirectUri,
     response_type: "code",
     state: state ?? "instagram_connect",
   });
-  const configId = process.env.FACEBOOK_LOGIN_CONFIG_ID;
+  const configId = process.env.FACEBOOK_LOGIN_CONFIG_ID?.trim();
   if (configId) {
-    // Facebook Login for Business — scope must not be used with config_id
+    // Facebook Login for Business — ne pas envoyer scope avec config_id
     params.set("config_id", configId);
     params.set("override_default_response_type", "true");
   } else {
-    const scopes = [
-      "instagram_basic",
-      "instagram_content_publish",
-      "pages_show_list",
-      "pages_read_engagement",
-    ].join(",");
+    // Instagram API with Facebook Login (apps classiques uniquement)
+    const scopes = (
+      process.env.INSTAGRAM_OAUTH_SCOPES ??
+      "instagram_basic,instagram_content_publish,pages_read_engagement,pages_show_list"
+    )
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .join(",");
     params.set("scope", scopes);
   }
   return `https://www.facebook.com/${API_VERSION}/dialog/oauth?${params.toString()}`;
+}
+
+/** Message si l’app Meta est en Login for Business sans FACEBOOK_LOGIN_CONFIG_ID. */
+export function assertInstagramOAuthReady(): void {
+  if (!APP_ID) {
+    throw new InstagramApiError("INSTAGRAM_APP_ID (ou FACEBOOK_APP_ID) non configuré.");
+  }
+  const configId = process.env.FACEBOOK_LOGIN_CONFIG_ID?.trim();
+  const requireConfig =
+    process.env.INSTAGRAM_REQUIRE_LOGIN_CONFIG_ID === "true" || Boolean(configId);
+  if (requireConfig && !configId) {
+    throw new InstagramApiError(
+      "FACEBOOK_LOGIN_CONFIG_ID manquant. Meta → Facebook Login for Business → Configurations → crée une config « Instagram » (jeton utilisateur) → copie l’ID dans Vercel, puis redeploy.",
+      "MISSING_CONFIG_ID"
+    );
+  }
 }
 
 /**
