@@ -50,6 +50,9 @@ function handleError(err: unknown): never {
  */
 export function getAuthUrl(redirectUri: string, state?: string): string {
   assertInstagramOAuthReady();
+  if (!APP_ID) {
+    throw new InstagramApiError("INSTAGRAM_APP_ID (ou FACEBOOK_APP_ID) non configuré.");
+  }
   const params = new URLSearchParams({
     client_id: APP_ID,
     redirect_uri: redirectUri,
