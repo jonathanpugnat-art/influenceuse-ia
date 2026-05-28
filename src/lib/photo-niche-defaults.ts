@@ -82,9 +82,40 @@ export function getNichePhotoDefaults(
   };
 }
 
+const GENERIC_OUTFIT_SUGGESTIONS: NicheSuggestionsByGender = {
+  female: [
+    "Robe noire élégante",
+    "Jean + top blanc",
+    "Tenue loungewear",
+    "Robe été fluide",
+    "Blazer + jean",
+  ],
+  male: [
+    "Chemise + jean",
+    "Tenue casual chic",
+    "Jogging premium",
+    "T-shirt + chino",
+    "Veste + pantalon",
+  ],
+  nonbinary: [
+    "Jean + chemise décontractée",
+    "Tenue loungewear",
+    "Streetwear neutre",
+    "Blazer + pantalon",
+    "Hoodie + jean",
+  ],
+};
+
+/** Niche-specific chips first, then generic fallbacks (always non-empty). */
 export function getOutfitSuggestionsForNiche(
   niche: string,
   gender: InfluencerGender
 ): string[] {
-  return NICHE_OUTFIT_SUGGESTIONS[niche]?.[gender] ?? [];
+  const nicheList = NICHE_OUTFIT_SUGGESTIONS[niche]?.[gender] ?? [];
+  const generic = GENERIC_OUTFIT_SUGGESTIONS[gender] ?? GENERIC_OUTFIT_SUGGESTIONS.female;
+  const merged = [...nicheList];
+  for (const item of generic) {
+    if (!merged.includes(item)) merged.push(item);
+  }
+  return merged.slice(0, 8);
 }

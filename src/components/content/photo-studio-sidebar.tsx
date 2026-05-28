@@ -8,7 +8,6 @@ import {
   ChevronUp,
   Dna,
   MapPin,
-  Shirt,
   SlidersHorizontal,
   Sparkles,
   Users,
@@ -32,16 +31,14 @@ import {
 import { usePhotoCreator } from "@/hooks/use-photo-creator";
 import { useCreatorExpertMode } from "@/hooks/use-creator-expert-mode";
 import { PhotoParams } from "@/components/content/photo-params";
+import { PhotoStudioOutfitSection } from "@/components/content/photo-studio-outfit-section";
 import { CONTENT_TEMPLATES } from "@/lib/templates/content-templates";
 import {
   PHOTO_QUICK_INTENTS,
   applyPhotoQuickIntent,
   type PhotoQuickIntentId,
 } from "@/lib/content-quick-intents";
-import {
-  getOutfitSuggestionsForNiche,
-  type InfluencerGender,
-} from "@/lib/photo-niche-defaults";
+import { type InfluencerGender } from "@/lib/photo-niche-defaults";
 import {
   getCompatiblePoseIds,
   pickDefaultPoseForScene,
@@ -51,6 +48,8 @@ import { PLANS } from "@/lib/constants";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+
+const PRIMARY_INTENTS: PhotoQuickIntentId[] = ["cafe", "ootd", "gym", "lifestyle"];
 
 const LIGHTING_TILES = [
   { id: "golden_hour", emoji: "🌅", labelKey: "studioLightGolden" },
@@ -132,6 +131,7 @@ export function PhotoStudioSidebar() {
   const { params, updateParams } = usePhotoCreator();
   const { expert, setExpert, hydrated } = useCreatorExpertMode("photo");
   const [propsText, setPropsText] = useState("");
+  const [sceneTweaksOpen, setSceneTweaksOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const planQuery = trpc.billing.getCurrentPlan.useQuery();
@@ -149,7 +149,7 @@ export function PhotoStudioSidebar() {
   const niche = selected?.niche ?? "";
   const portraitUrl =
     selected?.baseImageUrl?.trim() || selected?.avatarUrl?.trim() || null;
-  const outfits = getOutfitSuggestionsForNiche(niche, gender);
+  const hasInfluencer = Boolean(params.influencerId);
 
   const templates = useMemo(() => {
     const filtered = niche
@@ -157,7 +157,7 @@ export function PhotoStudioSidebar() {
           (tpl) => tpl.niches.length === 0 || tpl.niches.includes(niche)
         )
       : CONTENT_TEMPLATES;
-    return filtered.slice(0, 6);
+    return filtered.slice(0, 5);
   }, [niche]);
 
   const applyTemplate = (templateId: string) => {
@@ -190,8 +190,11 @@ export function PhotoStudioSidebar() {
   const applyProps = (raw: string) => {
     setPropsText(raw);
     const trimmed = raw.trim();
-    if (!trimmed) return;
     const base = params.sceneDescription.replace(/\s*\[Props:.*?\]\s*$/i, "").trim();
+    if (!trimmed) {
+      updateParams({ sceneDescription: base, scene: params.scene === "custom" ? "studio" : params.scene });
+      return;
+    }
     updateParams({
       sceneDescription: `${base} [Props: ${trimmed}]`.trim(),
       scene: "custom",
@@ -205,12 +208,12 @@ export function PhotoStudioSidebar() {
     <div className="flex h-full flex-col overflow-hidden border-r border-slate-800/50 bg-slate-900/40">
       <div className="shrink-0 border-b border-slate-800/50 px-4 py-4">
         <h1 className="text-lg font-bold text-white">{t("studioTitle")}</h1>
-        <p className="mt-0.5 text-xs text-slate-500">{t("studioSubtitle")}</p>
+        <p className="mt-0.5 text-xs text-slate-500">{t("studioSubtitleSimple")}</p>
       </div>
 
       <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4 scrollbar-thin">
-        {/* Pilier 1 — ADN */}
-        <Pillar icon={Dna} title={t("studioPillarDna")}>
+        {/* Pilier 1 — Qui */}
+        <Pillar icon={Dna} title={t("studioPillarWho")} defaultOpen>
           {influencers.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-700 p-4 text-center">
               <Users className="mx-auto h-6 w-6 text-slate-600" />
@@ -238,14 +241,11 @@ export function PhotoStudioSidebar() {
           )}
 
           {selected && portraitUrl && (
-            <div className="flex items-center gap-3 rounded-xl border border-violet-500/20 bg-violet-500/5 p-3">
-              <div className="relative h-14 w-11 shrink-0 overflow-hidden rounded-lg border border-violet-500/30">
+            <div className="flex items-center gap-3 rounded-xl border border-violet-500/20 bg-violet-500/5 p-2.5">
+              <div className="relative h-12 w-10 shrink-0 overflow-hidden rounded-lg border border-violet-500/30">
                 <Image src={portraitUrl} alt="" fill className="object-cover" unoptimized />
               </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-violet-200">{t("identityLockTitle")}</p>
-                <p className="text-[10px] text-slate-500">{t("studioDnaLocked")}</p>
-              </div>
+              <p className="text-[11px] text-slate-400">{t("studioDnaLocked")}</p>
             </div>
           )}
 
@@ -262,65 +262,48 @@ export function PhotoStudioSidebar() {
               }
             />
           </div>
-
-          {outfits.length > 0 && (
-            <div className="space-y-1.5">
-              <Label className="flex items-center gap-1 text-xs text-slate-400">
-                <Shirt className="h-3 w-3" />
-                {t("studioWardrobe")}
-              </Label>
-              <div className="flex flex-wrap gap-1.5">
-                {outfits.slice(0, 6).map((o) => (
-                  <button
-                    key={o}
-                    type="button"
-                    onClick={() => updateParams({ outfit: o })}
-                    className={cn(
-                      "rounded-lg border px-2 py-1 text-[10px] transition-colors",
-                      params.outfit === o
-                        ? "border-violet-500 bg-violet-500/20 text-violet-200"
-                        : "border-slate-700 text-slate-500 hover:border-slate-600"
-                    )}
-                  >
-                    {o.length > 28 ? `${o.slice(0, 26)}…` : o}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </Pillar>
 
-        {/* Pilier 2 — Contexte */}
-        <Pillar icon={MapPin} title={t("studioPillarScene")}>
-          <div className="space-y-1.5">
-            <Label className="text-xs text-slate-400">{t("studioQuickPosts")}</Label>
-            <div className="grid grid-cols-3 gap-1.5">
-              {PHOTO_QUICK_INTENTS.filter((i) => i.id !== "surprise").map(
-                (intent) => (
-                  <Tile
-                    key={intent.id}
-                    emoji={intent.emoji}
-                    label={t(`quickIntents.photo.${intent.id}.title`)}
-                    selected={false}
-                    onClick={() => onQuickIntent(intent.id as PhotoQuickIntentId)}
-                  />
-                )
-              )}
-            </div>
+        {/* Tenue — toujours visible */}
+        <PhotoStudioOutfitSection
+          niche={niche}
+          gender={gender}
+          disabled={!hasInfluencer}
+        />
+
+        {/* Pilier 2 — Où / quoi (simplifié) */}
+        <Pillar icon={MapPin} title={t("studioPillarScene")} defaultOpen>
+          <p className="text-[11px] text-slate-500">{t("studioSceneHint")}</p>
+
+          <div className="grid grid-cols-2 gap-1.5">
+            {PRIMARY_INTENTS.map((id) => {
+              const intent = PHOTO_QUICK_INTENTS.find((i) => i.id === id);
+              if (!intent) return null;
+              return (
+                <Tile
+                  key={id}
+                  emoji={intent.emoji}
+                  label={t(`quickIntents.photo.${id}.title`)}
+                  selected={false}
+                  onClick={() => onQuickIntent(id)}
+                  className="min-h-[52px]"
+                />
+              );
+            })}
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs text-slate-400">{t("templatesTitle")}</Label>
+            <Label className="text-[11px] text-slate-500">{t("templatesTitle")}</Label>
             <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
               {templates.map((tpl) => (
                 <button
                   key={tpl.id}
                   type="button"
                   onClick={() => applyTemplate(tpl.id)}
-                  className="flex w-24 shrink-0 flex-col gap-0.5 rounded-xl border border-slate-700/80 bg-slate-800/30 p-2 text-left hover:border-violet-500/50"
+                  className="flex w-[4.5rem] shrink-0 flex-col items-center gap-0.5 rounded-xl border border-slate-700/80 bg-slate-800/30 p-2 hover:border-violet-500/50"
                 >
                   <span className="text-base">{tpl.emoji}</span>
-                  <span className="line-clamp-2 text-[10px] font-medium text-white">
+                  <span className="line-clamp-2 text-center text-[9px] font-medium text-white">
                     {tpl.name}
                   </span>
                 </button>
@@ -328,59 +311,55 @@ export function PhotoStudioSidebar() {
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <Label className="text-xs text-slate-400">{t("studioLighting")}</Label>
-            <div className="grid grid-cols-4 gap-1.5">
-              {LIGHTING_TILES.map((tile) => (
-                <Tile
-                  key={tile.id}
-                  emoji={tile.emoji}
-                  label={t(tile.labelKey)}
-                  selected={params.timeOfDay === tile.id}
-                  onClick={() => updateParams({ timeOfDay: tile.id })}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-xs text-slate-400">{t("studioCameraAngle")}</Label>
-            <div className="grid grid-cols-2 gap-1.5">
-              {CAMERA_ANGLES.map((a) => {
-                const allowed = compatiblePoses.includes(a.pose);
-                return (
+          <Collapsible open={sceneTweaksOpen} onOpenChange={setSceneTweaksOpen}>
+            <CollapsibleTrigger className="flex w-full items-center justify-between rounded-lg border border-slate-800/50 px-2.5 py-2 text-[11px] text-slate-500 hover:bg-slate-800/30">
+              <span>{t("studioSceneTweaks")}</span>
+              {sceneTweaksOpen ? (
+                <ChevronUp className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronDown className="h-3.5 w-3.5" />
+              )}
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-2 space-y-3">
+              <div className="grid grid-cols-4 gap-1.5">
+                {LIGHTING_TILES.map((tile) => (
                   <Tile
-                    key={a.pose}
-                    label={t(a.labelKey)}
-                    selected={params.pose === a.pose}
-                    onClick={() => allowed && updateParams({ pose: a.pose })}
-                    className={!allowed ? "opacity-35" : undefined}
+                    key={tile.id}
+                    emoji={tile.emoji}
+                    label={t(tile.labelKey)}
+                    selected={params.timeOfDay === tile.id}
+                    onClick={() => updateParams({ timeOfDay: tile.id })}
                   />
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-xs text-slate-400">{t("studioProps")}</Label>
-            <Input
-              value={propsText}
-              onChange={(e) => setPropsText(e.target.value)}
-              onBlur={(e) => applyProps(e.target.value)}
-              placeholder={t("studioPropsPlaceholder")}
-              className="h-9 border-slate-800/50 bg-slate-800/30 text-sm text-white"
-            />
-          </div>
-
-          <Input
-            value={params.outfit}
-            onChange={(e) => updateParams({ outfit: e.target.value })}
-            placeholder={t("outfitPlaceholder")}
-            className="h-9 border-slate-800/50 bg-slate-800/30 text-sm text-white"
-          />
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {CAMERA_ANGLES.map((a) => {
+                  const allowed = compatiblePoses.includes(a.pose);
+                  return (
+                    <Tile
+                      key={a.pose}
+                      label={t(a.labelKey)}
+                      selected={params.pose === a.pose}
+                      onClick={() => allowed && updateParams({ pose: a.pose })}
+                      className={!allowed ? "opacity-35" : undefined}
+                    />
+                  );
+                })}
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px] text-slate-500">{t("studioProps")}</Label>
+                <Input
+                  value={propsText}
+                  onChange={(e) => setPropsText(e.target.value)}
+                  onBlur={(e) => applyProps(e.target.value)}
+                  placeholder={t("studioPropsPlaceholder")}
+                  className="h-9 border-slate-800/50 bg-slate-800/30 text-sm text-white"
+                />
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
         </Pillar>
 
-        {/* Options avancées */}
         <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
           <CollapsibleTrigger className="flex w-full items-center justify-between rounded-xl border border-slate-800/60 px-3 py-2.5 text-xs text-slate-400 hover:bg-slate-800/30">
             <span className="flex items-center gap-2">

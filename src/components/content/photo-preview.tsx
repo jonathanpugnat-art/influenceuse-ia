@@ -210,6 +210,10 @@ export function PhotoPreview({
       toast.error(t("selectInfluencerFirst"));
       return;
     }
+    if (!params.outfit.trim()) {
+      toast.error(t("studioOutfitEmpty"), { duration: 5000 });
+      return;
+    }
     resetForNewRun();
     setScenePlateUrl(null);
     setContentId(null);
@@ -234,6 +238,10 @@ export function PhotoPreview({
   const handleClassicGenerate = () => {
     if (!params.influencerId) {
       toast.error(t("selectInfluencerFirst"));
+      return;
+    }
+    if (!params.outfit.trim()) {
+      toast.error(t("studioOutfitEmpty"), { duration: 5000 });
       return;
     }
     resetForNewRun();
@@ -332,17 +340,27 @@ export function PhotoPreview({
         )}
 
         <div className="flex flex-1 flex-col items-center justify-center gap-6">
-          <PhotoInstagramFeedMock
-            username={igUsername}
-            avatarUrl={avatarUrl}
-            imageUrl={hasFinalImages ? currentImage : null}
-            scenePreviewUrl={awaitingSceneApproval ? displaySceneUrl : null}
-            caption={caption}
-            hashtags={hashtags}
-            isLoading={isGenerating}
-            loadingLabel={loadingLabel}
-            aspect="square"
-          />
+          <div className="w-full max-w-[380px] space-y-2">
+            <PhotoInstagramFeedMock
+              username={igUsername}
+              avatarUrl={avatarUrl}
+              imageUrl={hasFinalImages ? currentImage : null}
+              scenePreviewUrl={awaitingSceneApproval ? displaySceneUrl : null}
+              caption={caption}
+              hashtags={hashtags}
+              isLoading={isGenerating}
+              loadingLabel={loadingLabel}
+              aspect="square"
+            />
+            {params.outfit.trim() ? (
+              <p className="rounded-lg border border-slate-800/60 bg-slate-900/50 px-3 py-2 text-center text-[11px] text-slate-400">
+                <span className="font-medium text-violet-300">{t("outfit")}:</span>{" "}
+                <span className="text-slate-300">{params.outfit}</span>
+              </p>
+            ) : (
+              <p className="text-center text-[11px] text-amber-500/90">{t("studioOutfitEmpty")}</p>
+            )}
+          </div>
 
           {hasFinalImages && generatedUrls.length > 1 && (
             <div className="flex gap-2">

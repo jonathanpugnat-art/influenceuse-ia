@@ -17,4 +17,10 @@ describe("photo-niche-defaults", () => {
     const male = getOutfitSuggestionsForNiche("FITNESS", "male");
     expect(male[0]).toContain("débardeur");
   });
+
+  it("falls back to generic outfits when niche is unknown", () => {
+    const list = getOutfitSuggestionsForNiche("UNKNOWN_NICHE", "female");
+    expect(list.length).toBeGreaterThan(0);
+    expect(list.some((o) => o.includes("Robe") || o.includes("Jean"))).toBe(true);
+  });
 });
