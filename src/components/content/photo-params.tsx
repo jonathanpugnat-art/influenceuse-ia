@@ -99,7 +99,7 @@ const lightingStops = ["golden_hour", "natural", "blue_hour", "neon"] as const;
 // Component
 // ──────────────────────────────────────────────
 
-export function PhotoParams() {
+export function PhotoParams({ embeddedExpert = false }: { embeddedExpert?: boolean }) {
   const t = useTranslations("content");
   const { params, updateParams } = usePhotoCreator();
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -109,6 +109,7 @@ export function PhotoParams() {
     ? PLANS[planQuery.data.plan as keyof typeof PLANS].hasSceneFirstPipeline
     : false;
   const { expert: expertMode } = useCreatorExpertMode("photo");
+  const showExpertFields = embeddedExpert || expertMode;
 
   useEffect(() => {
     if (!canSceneFirst && params.sceneFirst) {
@@ -271,20 +272,34 @@ export function PhotoParams() {
   };
 
   return (
-    <div className="h-full overflow-y-auto border-r border-slate-800/50 bg-slate-900/30 p-4 scrollbar-thin">
-      <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-slate-500">
-        {t("params")}
-      </h2>
-      <p className="mb-4 text-[11px] text-slate-600">{t("paramsStudioSubtitle")}</p>
+    <div
+      className={
+        embeddedExpert
+          ? "space-y-5"
+          : "h-full overflow-y-auto border-r border-slate-800/50 bg-slate-900/30 p-4 scrollbar-thin"
+      }
+    >
+      {!embeddedExpert && (
+        <>
+          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-slate-500">
+            {t("params")}
+          </h2>
+          <p className="mb-4 text-[11px] text-slate-600">{t("paramsStudioSubtitle")}</p>
+        </>
+      )}
 
       <div className="space-y-5">
+        {!embeddedExpert && (
         <CreatorHybridPanel
           variant="photo"
           influencerId={params.influencerId}
           influencerGender={influencerGender}
           influencerNiche={selectedNiche}
         />
+        )}
 
+        {!embeddedExpert && (
+        <>
         {/* Influencer selector */}
         <div className="space-y-2">
           <Label className="text-xs text-slate-400">{t("influencerLabel")}</Label>
@@ -458,8 +473,11 @@ export function PhotoParams() {
           </div>
         )}
 
+        </>
+        )}
+
         {/* Templates — expert */}
-        {expertMode && (
+        {showExpertFields && !embeddedExpert && (
         <div className="space-y-2">
           <button
             type="button"
@@ -509,7 +527,7 @@ export function PhotoParams() {
         </div>
 
         {/* Scene — expert (simple mode uses hybrid brief bar) */}
-        {expertMode && (
+        {showExpertFields && (
         <div className="space-y-2">
           <Label className="text-xs text-slate-400">{t("sceneDescription")}</Label>
           <Textarea
@@ -543,7 +561,7 @@ export function PhotoParams() {
         </div>
         )}
 
-        {expertMode && (
+        {showExpertFields && (
         <>
         {/* Location */}
         <div className="space-y-2">
@@ -602,9 +620,10 @@ export function PhotoParams() {
         </>
         )}
 
-        <PhotoGenerationPreview params={params} />
+        {!embeddedExpert && <PhotoGenerationPreview params={params} />}
 
         {/* Outfit */}
+        {!embeddedExpert && (
         <div className="space-y-2">
           <Label className="text-xs text-slate-400">{t("outfit")}</Label>
           <Input
@@ -628,8 +647,9 @@ export function PhotoParams() {
             </div>
           )}
         </div>
+        )}
 
-        {expertMode && (
+        {showExpertFields && (
         <>
         {/* Expression */}
         <div className="space-y-2">

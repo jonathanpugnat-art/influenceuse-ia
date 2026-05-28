@@ -3,17 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronDown, ChevronUp, Settings2 } from "lucide-react";
+import { Settings2 } from "lucide-react";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { PhotoParams } from "@/components/content/photo-params";
 import { PhotoPreview } from "@/components/content/photo-preview";
 import { PhotoPublish } from "@/components/content/photo-publish";
 import { PhotoWelcomeBanner } from "@/components/content/photo-welcome-banner";
-import { StudioProStrip } from "@/components/content/studio-pro-strip";
+import { PhotoStudioSidebar } from "@/components/content/photo-studio-sidebar";
+import { PhotoFeedGridStrip } from "@/components/content/photo-feed-grid-strip";
 import { usePhotoCreator } from "@/hooks/use-photo-creator";
 import {
   getNichePhotoDefaults,
@@ -29,7 +29,7 @@ export default function PhotoCreatorPage() {
   const { generatedUrls, isGenerating, params, updateParams } =
     usePhotoCreator();
   const showPublish = generatedUrls.length > 0 && !isGenerating;
-  const [paramsOpen, setParamsOpen] = useState(false);
+  const [mobileConfigOpen, setMobileConfigOpen] = useState(false);
   const [welcomeDismissed, setWelcomeDismissed] = useState(false);
   const seededRef = useRef(false);
 
@@ -62,9 +62,10 @@ export default function PhotoCreatorPage() {
     const defaults = getNichePhotoDefaults(welcomeInfluencer.niche, gender);
     updateParams({
       influencerId: welcomeInfluencer.id,
+      sceneFirst: false,
       ...defaults,
     });
-    setParamsOpen(true);
+    setMobileConfigOpen(true);
   }, [isWelcomeFlow, welcomeInfluencer, updateParams]);
 
   const portraitUrl =
@@ -82,68 +83,74 @@ export default function PhotoCreatorPage() {
         />
       )}
 
-      <StudioProStrip variant="photo" />
-
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        <div className="hidden w-[320px] shrink-0 md:block">
-          <PhotoParams />
-        </div>
-
-        <div className="border-b border-slate-800/50 md:hidden">
-          <Collapsible open={paramsOpen} onOpenChange={setParamsOpen}>
-            <CollapsibleTrigger
-              className={cn(
-                "flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-slate-300 hover:bg-slate-800/30 hover:text-white",
-                paramsOpen && "bg-slate-800/30"
-              )}
-            >
-              <span className="flex items-center gap-2">
-                <Settings2 className="h-4 w-4" />
-                {t("params")}
-              </span>
-              {paramsOpen ? (
-                <ChevronUp className="h-4 w-4" />
-              ) : (
-                <ChevronDown className="h-4 w-4" />
-              )}
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <div className="max-h-[60vh] overflow-y-auto border-t border-slate-800/50 bg-slate-900/30 px-4 py-3">
-                <PhotoParams />
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
-        </div>
-
-        <div className="flex flex-1 flex-col overflow-hidden bg-slate-950 pb-4 lg:pb-0">
-          <PhotoPreview isWelcomeFlow={isWelcomeFlow} />
-        </div>
-
-        <AnimatePresence>
-          {showPublish && (
-            <>
-              <motion.div
-                initial={{ width: 0, opacity: 0 }}
-                animate={{ width: 350, opacity: 1 }}
-                exit={{ width: 0, opacity: 0 }}
-                transition={{ type: "spring" as const, bounce: 0.1, duration: 0.4 }}
-                className="hidden shrink-0 overflow-hidden lg:block"
-              >
-                <PhotoPublish />
-              </motion.div>
-              <motion.div
-                initial={{ y: 100, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={{ y: 100, opacity: 0 }}
-                transition={{ type: "spring", bounce: 0.2 }}
-                className="fixed bottom-0 left-0 right-0 z-40 max-h-[min(85vh,100dvh)] overflow-y-auto border-t border-slate-800/50 bg-slate-900 pb-[env(safe-area-inset-bottom)] shadow-lg lg:hidden"
-              >
-                <PhotoPublish mobileSheet />
-              </motion.div>
-            </>
-          )}
-        </AnimatePresence>
+      {/* Mobile config drawer */}
+      <div className="border-b border-slate-800/50 lg:hidden">
+        <Collapsible open={mobileConfigOpen} onOpenChange={setMobileConfigOpen}>
+          <CollapsibleTrigger
+            className={cn(
+              "flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-slate-300",
+              mobileConfigOpen && "bg-slate-800/30"
+            )}
+          >
+            <span className="flex items-center gap-2">
+              <Settings2 className="h-4 w-4" />
+              {t("studioMobileConfig")}
+            </span>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="max-h-[55vh] overflow-y-auto border-t border-slate-800/50">
+              <PhotoStudioSidebar />
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       </div>
+
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+        {/* Left — 40% config */}
+        <div className="hidden w-full max-w-[400px] shrink-0 lg:flex lg:w-[38%] lg:max-w-[420px]">
+          <PhotoStudioSidebar />
+        </div>
+
+        {/* Right — 60% canvas + publish */}
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row">
+            <div className="flex min-h-0 flex-1 flex-col bg-slate-950">
+              <PhotoPreview layout="studio" isWelcomeFlow={isWelcomeFlow} />
+            </div>
+
+            <AnimatePresence>
+              {showPublish && (
+                <motion.aside
+                  initial={{ width: 0, opacity: 0 }}
+                  animate={{ width: 360, opacity: 1 }}
+                  exit={{ width: 0, opacity: 0 }}
+                  transition={{ type: "spring", bounce: 0.08, duration: 0.35 }}
+                  className="hidden shrink-0 overflow-hidden border-l border-slate-800/50 xl:block"
+                >
+                  <PhotoPublish />
+                </motion.aside>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <PhotoFeedGridStrip influencerId={params.influencerId} />
+        </div>
+      </div>
+
+      {/* Mobile publish sheet */}
+      <AnimatePresence>
+        {showPublish && (
+          <motion.div
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: "spring", bounce: 0.15 }}
+            className="fixed inset-x-0 bottom-0 z-50 max-h-[min(88vh,100dvh)] overflow-y-auto border-t border-slate-800/60 bg-slate-900 shadow-2xl lg:hidden"
+          >
+            <PhotoPublish mobileSheet />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

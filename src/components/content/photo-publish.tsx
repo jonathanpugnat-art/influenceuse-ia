@@ -29,6 +29,11 @@ import {
 } from "@/components/ui/social-icons";
 import { usePhotoCreator } from "@/hooks/use-photo-creator";
 import { buildPhotoContentDescription } from "@/lib/photo-content-context";
+import {
+  CAPTION_TONES,
+  captionToneHint,
+  type CaptionToneId,
+} from "@/lib/caption-tones";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -79,6 +84,7 @@ export function PhotoPublish({ mobileSheet = false }: { mobileSheet?: boolean })
   // Sprint 8 — A/B variants of the caption.
   const [variants, setVariants] = useState<string[] | null>(null);
   const [isGenVariants, setIsGenVariants] = useState(false);
+  const [captionTone, setCaptionTone] = useState<CaptionToneId>("casual");
 
   const captionMutation = trpc.content.generateCaption.useMutation();
   const variantsMutation = trpc.content.generateCaptionVariants.useMutation();
@@ -186,6 +192,11 @@ export function PhotoPublish({ mobileSheet = false }: { mobileSheet?: boolean })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only when entering Premium lane
   }, [params.contentMode]);
 
+  const captionDescriptionWithTone = useCallback(
+    () => `${photoContentDescription()}\n\nTone: ${captionToneHint(captionTone)}`,
+    [photoContentDescription, captionTone]
+  );
+
   // Generate caption
   const handleGenCaption = useCallback(async () => {
     if (!params.influencerId) return;
@@ -193,7 +204,7 @@ export function PhotoPublish({ mobileSheet = false }: { mobileSheet?: boolean })
     try {
       const result = await captionMutation.mutateAsync({
         influencerId: params.influencerId,
-        contentDescription: photoContentDescription(),
+        contentDescription: captionDescriptionWithTone(),
         platform: captionPlatform as "INSTAGRAM",
         language,
       });
@@ -215,7 +226,7 @@ export function PhotoPublish({ mobileSheet = false }: { mobileSheet?: boolean })
     language,
     captionMutation,
     setCaption,
-    photoContentDescription,
+    captionDescriptionWithTone,
   ]);
 
   // Sprint 8 — Generate 2 A/B caption variants the user can pick from.
@@ -226,7 +237,7 @@ export function PhotoPublish({ mobileSheet = false }: { mobileSheet?: boolean })
     try {
       const result = await variantsMutation.mutateAsync({
         influencerId: params.influencerId,
-        contentDescription: photoContentDescription(),
+        contentDescription: captionDescriptionWithTone(),
         platform: captionPlatform as "INSTAGRAM",
         language,
       });
@@ -241,7 +252,7 @@ export function PhotoPublish({ mobileSheet = false }: { mobileSheet?: boolean })
     captionPlatform,
     language,
     variantsMutation,
-    photoContentDescription,
+    captionDescriptionWithTone,
   ]);
 
   const pickVariant = (text: string) => {
@@ -398,6 +409,24 @@ export function PhotoPublish({ mobileSheet = false }: { mobileSheet?: boolean })
       <div className="space-y-5">
         {/* Caption */}
         <div className="space-y-2">
+          <Label className="text-xs text-slate-400">{t("studioToneLabel")}</Label>
+          <div className="flex flex-wrap gap-1.5">
+            {CAPTION_TONES.map((tone) => (
+              <button
+                key={tone.id}
+                type="button"
+                onClick={() => setCaptionTone(tone.id)}
+                className={cn(
+                  "rounded-lg border px-2 py-1 text-[10px] font-medium transition-colors",
+                  captionTone === tone.id
+                    ? "border-violet-500 bg-violet-500/20 text-violet-200"
+                    : "border-slate-700 text-slate-500 hover:border-slate-600"
+                )}
+              >
+                {tone.labelFr}
+              </button>
+            ))}
+          </div>
           <div className="flex items-center justify-between">
             <Label className="text-xs text-slate-400">Caption</Label>
             <div className="flex items-center gap-3">

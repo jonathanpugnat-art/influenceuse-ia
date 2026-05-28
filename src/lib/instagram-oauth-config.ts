@@ -22,6 +22,18 @@ export function getInstagramLoginAppId(): string | undefined {
   );
 }
 
+/** Which env var supplies the Instagram Login client_id (for diagnostics). */
+export function getInstagramLoginAppIdSource():
+  | "INSTAGRAM_LOGIN_APP_ID"
+  | "INSTAGRAM_APP_ID"
+  | "FACEBOOK_APP_ID"
+  | null {
+  if (process.env.INSTAGRAM_LOGIN_APP_ID?.trim()) return "INSTAGRAM_LOGIN_APP_ID";
+  if (process.env.INSTAGRAM_APP_ID?.trim()) return "INSTAGRAM_APP_ID";
+  if (process.env.FACEBOOK_APP_ID?.trim()) return "FACEBOOK_APP_ID";
+  return null;
+}
+
 export function getInstagramLoginAppSecret(): string | undefined {
   return (
     process.env.INSTAGRAM_LOGIN_APP_SECRET?.trim() ||

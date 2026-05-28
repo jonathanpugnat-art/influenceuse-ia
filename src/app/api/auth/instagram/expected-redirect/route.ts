@@ -6,6 +6,7 @@ import {
 } from "@/lib/app-url";
 import {
   getInstagramLoginAppId,
+  getInstagramLoginAppIdSource,
   getInstagramLoginAppSecret,
   getInstagramOAuthProvider,
   usesInstagramDirectLogin,
@@ -48,6 +49,11 @@ export async function GET() {
         "Rôles → Testeur (app en Développement)",
       ];
 
+  const clientId = getInstagramLoginAppId();
+  const clientIdSource = getInstagramLoginAppIdSource();
+  const instagramLoginIdHint =
+    "En mode instagram_login, client_id doit être l’Instagram App ID (Meta → Instagram → Business login settings), pas l’App ID Facebook du tableau de bord principal.";
+
   return NextResponse.json(
     {
       redirectUri,
@@ -56,6 +62,12 @@ export async function GET() {
       oauthMode: getInstagramOAuthProvider(),
       instagramLogin,
       credentialsConfigured: hasCredentials,
+      clientId,
+      clientIdSource,
+      clientIdWarning:
+        instagramLogin && clientIdSource !== "INSTAGRAM_LOGIN_APP_ID"
+          ? instagramLoginIdHint
+          : null,
       sampleAuthUrl,
       facebookLoginConfigIdSet: Boolean(process.env.FACEBOOK_LOGIN_CONFIG_ID?.trim()),
       metaChecklist,
