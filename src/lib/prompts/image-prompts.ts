@@ -7,6 +7,7 @@ import {
   inferSceneContext,
   resolvePosePhrase,
 } from "@/lib/photo-scene-pose";
+import { usesSelfieCameraFraming } from "@/lib/photo-scene-inference";
 
 export type Gender = "female" | "male" | "nonbinary";
 export type GenderedTemplate = { female: string; male: string; nonbinary: string };
@@ -327,9 +328,12 @@ export const SCENE_ACCESSORIES: Record<string, GenderedTemplate> = {
 /** Poses — gendered for natural body language */
 export const POSE_TEMPLATES: Record<string, GenderedTemplate> = {
   portrait: {
-    female: "casual selfie angle, natural head tilt, hand touching hair, slight smile, phone visible in reflection",
-    male: "casual selfie angle, natural head tilt, slight smirk, hand running through hair, phone visible in reflection",
-    nonbinary: "casual selfie angle, natural head tilt, natural smile, phone visible in reflection",
+    female:
+      "medium shot, friend took the photo from a few steps away, natural relaxed pose, slight smile, looking at camera, no phone visible, not a mirror shot",
+    male:
+      "medium shot, friend took the photo from a few steps away, relaxed confident pose, slight smirk, looking at camera, no phone visible, not a mirror shot",
+    nonbinary:
+      "medium shot, friend took the photo from a few steps away, natural relaxed pose, looking at camera, no phone visible, not a mirror shot",
   },
   fullBody: {
     female: "standing casually in front of mirror, one hand on hip, other hand holding phone, bag on shoulder, weight shifted to one side, OOTD pose",
@@ -653,19 +657,33 @@ export function buildFullPrompt(input: PromptBuildInput): string {
   const parts: string[] = [];
   const gender: Gender = input.gender ?? "female";
   const genderWord = genderLabel(gender);
+  const sceneContext = inferSceneContext({
+    scene: input.scene,
+    sceneDescription: input.sceneDescription,
+  });
+  const selfieFraming = usesSelfieCameraFraming(
+    input.pose ?? "candid",
+    input.sceneDescription
+  );
 
   // ── 1. Camera + identity hook (first tokens win) ─────────────────────────
-  // Sprint 11.1 — push harder for the "friend took it on iPhone with flash"
-  // look. The previous prompt still leaned slightly polished; this version
-  // explicitly bans pro lighting and forces flash/awkward composition cues.
-  parts.push(
-    "real candid iPhone photo, snapped by a friend on an iPhone, " +
-      "iPhone flash on, harsh direct frontal flash, " +
-      "slight flash overexposure on skin, sharp hard shadow cast behind on the wall or floor, " +
-      "casual TikTok / Instagram story snapshot, real unposed moment, " +
-      "NOT a magazine shoot, NOT a studio photo, NOT professional photography, " +
-      "NO softbox, NO ring light, NO color grading, NO retouching"
-  );
+  if (selfieFraming) {
+    parts.push(
+      "real candid iPhone photo, snapped by a friend on an iPhone, " +
+        "iPhone flash on, harsh direct frontal flash, " +
+        "slight flash overexposure on skin, sharp hard shadow cast behind on the wall or floor, " +
+        "casual TikTok / Instagram story snapshot, real unposed moment, " +
+        "NOT a magazine shoot, NOT a studio photo, NOT professional photography, " +
+        "NO softbox, NO ring light, NO color grading, NO retouching"
+    );
+  } else {
+    parts.push(
+      "authentic Instagram photo taken by a friend with an iPhone, subject NOT taking a selfie, " +
+        "phone NOT visible in frame, NOT a mirror selfie, NOT arm-length selfie, " +
+        "natural candid composition, real unposed social media photo, " +
+        "NOT a magazine shoot, NOT a studio photo, NOT professional photography"
+    );
+  }
 
   if (input.useReferenceFace) {
     parts.push(
@@ -749,10 +767,6 @@ export function buildFullPrompt(input: PromptBuildInput): string {
     else parts.push(input.expression);
   }
   if (input.pose) {
-    const sceneContext = inferSceneContext({
-      scene: input.scene,
-      sceneDescription: input.sceneDescription,
-    });
     parts.push(
       resolvePosePhrase(input.pose, gender, sceneContext, POSE_TEMPLATES)
     );
@@ -770,18 +784,26 @@ export function buildFullPrompt(input: PromptBuildInput): string {
     if (nsfw) parts.push(nsfw);
   }
 
-  // ── 9. Final iPhone-realism enforcer (closes the prompt) ────────────────
-  // Strong closing weight — diffusion models also bias toward the LAST tokens.
-  parts.push(
-    "shot vertically on iPhone with the native camera app, iPhone flash fired, " +
-      "slightly overexposed face from the flash, harsh shadow behind the subject, " +
-      "real skin with visible pores and small blemishes, slightly oily T-zone shine, " +
-      "no makeup retouching, faint under-eye shadow, asymmetrical natural face, " +
-      "slight motion blur from a handheld iPhone, mild grain, " +
-      "amateur framing not centered, slightly tilted, candid not posed, " +
-      "looks like a real photo a friend just took at 11pm and posted to their story, " +
-      "NOT AI-perfect, NOT smooth, NOT glossy, NOT magazine quality"
-  );
+  // ── 9. Final realism enforcer (closes the prompt) ───────────────────────
+  if (selfieFraming) {
+    parts.push(
+      "shot vertically on iPhone with the native camera app, iPhone flash fired, " +
+        "slightly overexposed face from the flash, harsh shadow behind the subject, " +
+        "real skin with visible pores and small blemishes, slightly oily T-zone shine, " +
+        "no makeup retouching, faint under-eye shadow, asymmetrical natural face, " +
+        "slight motion blur from a handheld iPhone, mild grain, " +
+        "amateur framing not centered, slightly tilted, candid not posed, " +
+        "looks like a real photo a friend just took and posted to their story, " +
+        "NOT AI-perfect, NOT smooth, NOT glossy, NOT magazine quality"
+    );
+  } else {
+    parts.push(
+      "vertical 4:5 Instagram photo, natural light or soft indoor light, " +
+        "real skin texture with pores and small imperfections, no heavy retouching, " +
+        "candid social media framing, subject matches the described scene and props, " +
+        "NOT a mirror selfie, NOT a passport photo, NOT AI-perfect glamour, NOT studio lighting"
+    );
+  }
 
   if (input.customPrompt) parts.push(input.customPrompt);
 

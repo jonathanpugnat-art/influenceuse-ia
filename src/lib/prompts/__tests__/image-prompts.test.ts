@@ -41,7 +41,7 @@ describe("image-prompts", () => {
       expect(result).toContain("genuine big smile");
       expect(result).toContain("golden hour");
       expect(result).toContain("iPhone");
-      expect(result).toContain("TikTok");
+      expect(result).toContain("NOT a mirror selfie");
       expect(result).toContain("wind in hair");
     });
 
@@ -66,18 +66,28 @@ describe("image-prompts", () => {
     });
 
     it("encodes 'NOT a studio shoot' negatives directly in the positive prompt (Sprint 11.1)", () => {
-      const result = buildFullPrompt({
+      const candid = buildFullPrompt({
         gender: "female",
         scene: "cafe",
+        pose: "candid",
         expression: "natural",
         style: "natural",
       });
-      // Flux Kontext Pro has no negative_prompt channel — we encode them inline.
-      expect(result).toContain("real candid iPhone photo");
-      expect(result).toContain("snapped by a friend on an iPhone");
-      expect(result).toContain("iPhone flash");
-      expect(result).toContain("NOT a studio photo");
-      expect(result).toContain("NOT AI-perfect");
+      expect(candid).toContain("authentic Instagram photo");
+      expect(candid).toContain("NOT a mirror selfie");
+      expect(candid).toContain("NOT a studio photo");
+      expect(candid).toContain("NOT AI-perfect glamour");
+
+      const selfie = buildFullPrompt({
+        gender: "female",
+        scene: "bedroom",
+        pose: "selfie",
+        sceneDescription: "mirror selfie in bedroom",
+        expression: "natural",
+        style: "natural",
+      });
+      expect(selfie).toContain("real candid iPhone photo");
+      expect(selfie).toContain("iPhone flash");
     });
 
     it("generates a masculine prompt for male gender", () => {
@@ -192,7 +202,7 @@ describe("image-prompts", () => {
         customPrompt: "extra detail",
       });
       expect(result).toContain("iPhone");
-      expect(result).toContain("TikTok");
+      expect(result).toContain("NOT a mirror selfie");
       expect(result).toContain("extra detail");
     });
   });

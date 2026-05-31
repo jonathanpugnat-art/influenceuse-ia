@@ -43,18 +43,18 @@ const MIRROR_POSES = new Set(["portrait", "fullBody", "selfie"]);
 const OUTDOOR_POSE_TEMPLATES: Record<string, GenderedTemplate> = {
   portrait: {
     female:
-      "close-up outdoor selfie at arm's length, phone in hand, no mirror, natural head tilt, slight smile",
+      "medium close-up outdoors, friend took the photo, natural head tilt, slight smile, no phone, no mirror",
     male:
-      "close-up outdoor selfie at arm's length, phone in hand, no mirror, slight smirk, hand in hair",
+      "medium close-up outdoors, friend took the photo, relaxed smirk, no phone, no mirror",
     nonbinary:
-      "close-up outdoor selfie at arm's length, phone in hand, no mirror, natural expression",
+      "medium close-up outdoors, friend took the photo, natural expression, no phone, no mirror",
   },
   fullBody: {
     female:
-      "full body outdoors, standing naturally, phone in hand for OOTD, no mirror, weight on one hip",
+      "full body outdoors, standing naturally, OOTD pose, friend took the photo, no mirror, no phone in hand",
     male:
-      "full body outdoors, confident stance, phone in hand, no mirror, casual street style",
-    nonbinary: "full body outdoors, natural stance, phone in hand, no mirror, OOTD",
+      "full body outdoors, confident stance, friend took the photo, no mirror, no phone in hand",
+    nonbinary: "full body outdoors, natural stance, friend took the photo, no mirror",
   },
   selfie: {
     female:

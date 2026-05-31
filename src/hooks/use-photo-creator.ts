@@ -79,7 +79,7 @@ const defaultParams: PhotoParams = {
   influencerId: "",
   scene: "custom",
   sceneDescription: "",
-  pose: "portrait",
+  pose: "candid",
   outfit: "",
   expression: "smile",
   photoStyle: "natural",

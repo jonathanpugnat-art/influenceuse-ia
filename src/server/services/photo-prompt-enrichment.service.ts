@@ -26,15 +26,15 @@ const SYSTEM_PROMPT = `You prepare text for an AI photo generator (English promp
 
 Given a user's scene description (any language) and optional outfit, return strict JSON:
 {
-  "sceneDescriptionEn": "2-3 concrete, shootable English sentences describing ONLY the environment/setting (location, light, mood, background objects). No people, no influencer, no camera instructions.",
+  "sceneDescriptionEn": "2-4 concrete English sentences: the setting (location, light, mood) AND any props or actions the user mentioned (candy, drinks, flowers, holding something, eating). If they mention an object, it must appear in the scene. Do not describe face, outfit, or camera type unless the user explicitly asked for mirror/selfie.",
   "outfitEn": "faithful English translation of the outfit if provided, else omit"
 }
 
 Rules:
-- Preserve the user's intent exactly; do not invent new locations or props they did not imply.
+- Preserve the user's intent exactly; do not invent unrelated locations or props.
+- Keep suggestive / sexy / bikini / lingerie context if the user wrote it (SFW suggestive is OK). Only strip explicit pornographic acts.
 - If input is already good English, lightly polish only — do not change meaning.
-- No celebrities, real people, or @handles.
-- Not explicit/pornographic.`;
+- No celebrities, real people, or @handles.`;
 
 function appendPropsSuffix(enrichedCore: string, original: string): string {
   const props = extractScenePropsSuffix(original);

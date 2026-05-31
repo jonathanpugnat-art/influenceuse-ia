@@ -17,6 +17,10 @@ import {
   hasUserSceneDescription,
   stripScenePropsSuffix,
 } from "@/lib/photo-scene-user";
+import {
+  inferExpressionFromSceneAndOutfit,
+  inferPoseFromScene,
+} from "@/lib/photo-scene-inference";
 import { cn } from "@/lib/utils";
 
 const LIGHTING_TILES = [
@@ -27,10 +31,10 @@ const LIGHTING_TILES = [
 ] as const;
 
 const CAMERA_ANGLES = [
-  { pose: "selfie", labelKey: "studioAngleSelfie" },
+  { pose: "candid", labelKey: "studioAngleCandid" },
   { pose: "portrait", labelKey: "studioAnglePortrait" },
   { pose: "fullBody", labelKey: "studioAngleFull" },
-  { pose: "candid", labelKey: "studioAngleCandid" },
+  { pose: "selfie", labelKey: "studioAngleSelfie" },
 ] as const;
 
 function Tile({
@@ -77,9 +81,18 @@ export function PhotoStudioSceneSection({ disabled }: { disabled?: boolean }) {
   const hasScene = hasUserSceneDescription(params.sceneDescription);
 
   const onSceneChange = (value: string) => {
+    const sceneInput = { scene: "custom" as const, sceneDescription: value };
+    const pose = inferPoseFromScene(sceneInput, params.pose);
+    const expression = inferExpressionFromSceneAndOutfit(
+      value,
+      params.outfit,
+      params.expression
+    );
     updateParams({
       sceneDescription: value,
       scene: "custom",
+      pose,
+      expression,
     });
   };
 
