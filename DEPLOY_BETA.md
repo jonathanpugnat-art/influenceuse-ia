@@ -129,6 +129,15 @@ INSTAGRAM_APP_SECRET=
 # Auto-publication TikTok
 TIKTOK_CLIENT_KEY=
 TIKTOK_CLIENT_SECRET=
+
+# Premium / OnlyFans lane (Pro plan)
+TOGETHER_API_KEY=              # https://api.together.xyz — FLUX open source
+PREMIUM_IMAGE_PROVIDER=auto
+SIGHTENGINE_API_USER=          # Modération anti-porno post-génération
+SIGHTENGINE_API_SECRET=
+PREMIUM_IMAGE_MODERATION=auto
+
+# Voir docs/PROD_CHECKLIST.md pour la checklist complète prod
 ```
 
 > **Sans ces credentials sociaux** : le bouton "Publier maintenant" est

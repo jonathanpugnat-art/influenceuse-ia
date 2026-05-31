@@ -16,7 +16,8 @@
 //   - SFW borderline scenarios (see nano-borderline.ts — maintained via bench-nano-keywords)
 //                                  → Flux Kontext Pro   (Google safety blocks)
 //   - SFW content without face ref → Flux 1.1 Pro
-//   - NSFW                         → Flux Dev Uncensored
+//   - NSFW (Premium)                 → Together FLUX → self-host → Flux Dev Uncensored
+//                                      + Sightengine post-filter (recommended prod)
 //   - Wizard base portrait         → Nano Banana (Flux 1.1 Pro fallback)
 // Beta period (2026-05): the FREE tier is intentionally generous (500 credits
 // instead of 50) so early adopters can fully exercise the app — generate

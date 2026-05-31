@@ -43,6 +43,15 @@ import {
 import { enrichPhotoPromptFields } from "@/server/services/photo-prompt-enrichment.service";
 import { runFluxT2iWithFallback } from "@/server/services/image-providers/flux-t2i-router";
 import type { FalFluxT2iInput } from "@/server/services/image-providers/fal-flux-t2i.provider";
+import { assertPremiumPromptAllowed } from "@/lib/prompts/premium-prompt-guard";
+import { buildPremiumNegativePrompt } from "@/lib/prompts/premium-negative";
+import { softenPremiumPrompt } from "@/lib/prompts/premium-soften";
+import { runPremiumFluxWithFallback } from "@/server/services/image-providers/premium-flux-router";
+import type { TogetherFluxInput } from "@/server/services/image-providers/together-flux.provider";
+import {
+  assertPremiumImagesModerated,
+  PremiumImageModerationError,
+} from "@/server/services/image-moderation.service";
 
 // ──────────────────────────────────────────────
 // Types
@@ -417,6 +426,106 @@ async function runMultiplePredictions(
     throw errors[0];
   }
   return results;
+}
+
+async function runReplicatePremiumFluxMultiple(
+  input: TogetherFluxInput,
+  count: number
+): Promise<{ urls: string[]; model: string }> {
+  const replicateInput: Record<string, unknown> = {
+    prompt: input.prompt,
+    negative_prompt: input.negative_prompt,
+    width: input.width ?? DEFAULT_IMAGE_PARAMS.width,
+    height: input.height ?? DEFAULT_IMAGE_PARAMS.height,
+    num_inference_steps: input.num_inference_steps ?? DEFAULT_IMAGE_PARAMS.num_inference_steps,
+    guidance_scale: input.guidance_scale ?? DEFAULT_IMAGE_PARAMS.guidance_scale,
+    output_format: "jpg",
+    output_quality: 92,
+    safety_tolerance: 6,
+  };
+
+  const tasks: Array<() => Promise<string[]>> = [];
+  for (let i = 0; i < count; i++) {
+    tasks.push(() =>
+      runReplicatePrediction(MODEL_NSFW, {
+        ...replicateInput,
+        seed: input.seed ?? Math.floor(Math.random() * 2147483647),
+      })
+    );
+  }
+
+  const settled = await runWithConcurrency(tasks, MAX_PARALLEL_PREDICTIONS_PER_CALL);
+  const urls: string[] = [];
+  const errors: unknown[] = [];
+  for (const r of settled) {
+    if (r.status === "fulfilled") urls.push(...r.value);
+    else errors.push(r.reason);
+  }
+  if (urls.length === 0 && errors.length > 0) {
+    throw errors[0];
+  }
+  return { urls, model: MODEL_NSFW };
+}
+
+function toPremiumFluxInput(
+  prompt: string,
+  negativePrompt: string
+): TogetherFluxInput {
+  return {
+    prompt,
+    negative_prompt: negativePrompt,
+    width: DEFAULT_IMAGE_PARAMS.width,
+    height: DEFAULT_IMAGE_PARAMS.height,
+    num_inference_steps: DEFAULT_IMAGE_PARAMS.num_inference_steps,
+    guidance_scale: DEFAULT_IMAGE_PARAMS.guidance_scale,
+  };
+}
+
+async function generatePremiumImagesWithModeration(
+  prompt: string,
+  negativePrompt: string,
+  numImages: number
+): Promise<{
+  urls: string[];
+  promptUsed: string;
+  provider: string;
+  model: string;
+}> {
+  const fluxInput = toPremiumFluxInput(prompt, negativePrompt);
+  const routed = await runPremiumFluxWithFallback(
+    fluxInput,
+    numImages,
+    runReplicatePremiumFluxMultiple
+  );
+
+  try {
+    await assertPremiumImagesModerated(routed.urls);
+    return {
+      urls: routed.urls,
+      promptUsed: prompt,
+      provider: routed.provider,
+      model: routed.model,
+    };
+  } catch (err) {
+    if (!(err instanceof PremiumImageModerationError)) throw err;
+    console.warn(
+      "[ai-image] Premium image moderation failed, retrying with softened prompt…"
+    );
+    const softPrompt = softenPremiumPrompt(prompt);
+    const retryInput = toPremiumFluxInput(softPrompt, negativePrompt);
+    const retry = await runPremiumFluxWithFallback(
+      retryInput,
+      numImages,
+      runReplicatePremiumFluxMultiple
+    );
+    await assertPremiumImagesModerated(retry.urls);
+    return {
+      urls: retry.urls,
+      promptUsed: softPrompt,
+      provider: retry.provider,
+      model: retry.model,
+    };
+  }
 }
 
 // ──────────────────────────────────────────────
@@ -799,9 +908,57 @@ export async function generateContentImage(
         : "nano";
   let usedEngine: ContentImageEngine = primaryEngine;
   let prompt = buildPromptForEngine(primaryEngine);
-  const negativePrompt = buildNegativePrompt(input.isNsfw, influencerStyle.gender ?? "female", {
-    lockFace: useIdentityPrompt,
-  });
+  const gender = influencerStyle.gender ?? "female";
+  const negativePrompt = input.isNsfw
+    ? buildPremiumNegativePrompt(gender, { lockFace: false })
+    : buildNegativePrompt(false, gender, { lockFace: useIdentityPrompt });
+
+  // ── Premium lane (Together / self-host / Replicate + post-moderation) ───
+  if (input.isNsfw) {
+    assertPremiumPromptAllowed({
+      scene: enrichedInput.scene,
+      sceneDescription: enrichedInput.sceneDescription,
+      outfit: enrichedInput.outfit,
+      customPrompt: enrichedInput.customPrompt,
+      location: enrichedInput.location,
+    });
+
+    try {
+      console.log("[ai-image] Premium photo — Together/self-host router");
+      const premium = await generatePremiumImagesWithModeration(
+        prompt,
+        negativePrompt,
+        numImages
+      );
+
+      const storedUrls = await Promise.all(
+        premium.urls.map(async (url, i) => {
+          const filename = `content-${input.influencerId}-${nanoid(6)}-${i}.jpg`;
+          return uploadFromUrl(url, filename);
+        })
+      );
+
+      if (!input.omitCreditBilling) {
+        await deductCredits(userId, cost);
+      }
+
+      return {
+        imageUrls: storedUrls,
+        promptUsed: premium.promptUsed,
+        negativePrompt,
+        parameters: {
+          ...toPremiumFluxInput(premium.promptUsed, negativePrompt),
+          contentEngine: "premium",
+          premiumProvider: premium.provider,
+          premiumModel: premium.model,
+          nsfwLevel: enrichedInput.nsfwLevel,
+        },
+      };
+    } catch (error) {
+      console.error("[ai-image] generateContentImage premium error:", error);
+      throw error;
+    }
+  }
 
   // ── Model routing (bench 2026-05-15 + nano-borderline.ts) ────────────────
 
@@ -840,18 +997,7 @@ export async function generateContentImage(
   };
 
   let plan: ModelPlan;
-  if (input.isNsfw) {
-    plan = {
-      model: MODEL_NSFW,
-      params: {
-        ...DEFAULT_IMAGE_PARAMS,
-        prompt,
-        negative_prompt: negativePrompt,
-        num_outputs: numImages,
-        safety_tolerance: 6,
-      },
-    };
-  } else if (sendsRefImage && input.baseImageUrl) {
+  if (sendsRefImage && input.baseImageUrl) {
     plan = borderline ? kontextPlan : nanoPlan;
   } else {
     plan = {

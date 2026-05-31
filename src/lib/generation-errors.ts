@@ -24,6 +24,17 @@ export function formatGenerationErrorForUser(raw: string | null | undefined): st
     return NSFW_USER_MESSAGE;
   }
 
+  if (msg.includes("PremiumPromptBlockedError") || msg.includes("termes interdits")) {
+    return msg;
+  }
+
+  if (
+    msg.includes("PremiumImageModerationError") ||
+    msg.includes("contenu trop explicite")
+  ) {
+    return msg;
+  }
+
   if (/localhost|127\.0\.0\.1/i.test(msg) || msg.includes(LOCALHOST_REF_MESSAGE)) {
     return LOCALHOST_REF_MESSAGE;
   }
