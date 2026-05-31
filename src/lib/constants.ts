@@ -106,7 +106,7 @@ export function getPlanDisplayName(plan: keyof typeof PLANS): string {
 // margin holds even on the heaviest plan (Agency 199 €). Reference (2026-05):
 //
 //   PHOTO   (Nano Banana / Flux T2I via FAL→Replicate)   ≈ $0.03–0.04   per image
-//   REEL    (Kling-2 default / Wan 2.5 on Replicate)    ≈ $0.55   per clip   →  ~14× a photo
+//   REEL    (Kling v3 FAL→Replicate / Wan fallback)  ≈ $0.25–0.55   per clip
 //   CAPTION (DeepSeek chat)                ≈ $0.001  per call
 //
 // The previous REEL=5 ratio (1 reel = 5 photos) let an Agency user burn

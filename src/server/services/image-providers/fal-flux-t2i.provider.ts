@@ -2,9 +2,8 @@ import {
   mapDimensionsToFalImageSize,
   resolveFalFluxT2iModel,
 } from "@/lib/image-t2i-config";
+import { falQueueSubscribe } from "@/server/services/image-providers/fal-queue.client";
 import { runWithConcurrency } from "@/server/services/replicate-utils";
-
-const FAL_QUEUE_BASE = "https://queue.fal.run";
 
 export type FalFluxT2iInput = {
   prompt: string;
@@ -15,14 +14,6 @@ export type FalFluxT2iInput = {
   guidance_scale?: number;
   seed?: number;
 };
-
-function getFalKey(): string {
-  const key = process.env.FAL_KEY?.trim();
-  if (!key) {
-    throw new Error("FAL_KEY is not configured. Set it in your .env file.");
-  }
-  return key;
-}
 
 function buildFalPrompt(prompt: string, negative?: string): string {
   const base = prompt.trim();
@@ -51,72 +42,6 @@ export function extractFalImageUrls(payload: unknown): string[] {
   return urls;
 }
 
-async function falSubscribe(
-  modelId: string,
-  input: Record<string, unknown>
-): Promise<unknown> {
-  const key = getFalKey();
-  const submitRes = await fetch(`${FAL_QUEUE_BASE}/${modelId}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Key ${key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(input),
-  });
-
-  if (!submitRes.ok) {
-    const text = await submitRes.text();
-    throw new Error(`FAL submit failed (${submitRes.status}): ${text.slice(0, 240)}`);
-  }
-
-  const submitted = (await submitRes.json()) as { request_id?: string };
-  const requestId = submitted.request_id;
-  if (!requestId) {
-    throw new Error("FAL submit returned no request_id");
-  }
-
-  const statusUrl = `${FAL_QUEUE_BASE}/${modelId}/requests/${requestId}/status`;
-  const resultUrl = `${FAL_QUEUE_BASE}/${modelId}/requests/${requestId}`;
-  const deadline = Date.now() + 120_000;
-
-  while (Date.now() < deadline) {
-    const statusRes = await fetch(statusUrl, {
-      headers: { Authorization: `Key ${key}` },
-    });
-    if (!statusRes.ok) {
-      const text = await statusRes.text();
-      throw new Error(`FAL status failed (${statusRes.status}): ${text.slice(0, 200)}`);
-    }
-
-    const statusPayload = (await statusRes.json()) as {
-      status?: string;
-      error?: string;
-    };
-
-    if (statusPayload.status === "COMPLETED") {
-      const resultRes = await fetch(resultUrl, {
-        headers: { Authorization: `Key ${key}` },
-      });
-      if (!resultRes.ok) {
-        const text = await resultRes.text();
-        throw new Error(`FAL result failed (${resultRes.status}): ${text.slice(0, 200)}`);
-      }
-      return resultRes.json();
-    }
-
-    if (statusPayload.status === "FAILED") {
-      throw new Error(
-        `FAL generation failed: ${statusPayload.error ?? "unknown error"}`
-      );
-    }
-
-    await new Promise((r) => setTimeout(r, 1200));
-  }
-
-  throw new Error("FAL generation timed out after 120s");
-}
-
 async function runSingleFalFluxT2i(
   modelId: string,
   input: FalFluxT2iInput
@@ -131,7 +56,7 @@ async function runSingleFalFluxT2i(
     enable_safety_checker: true,
   };
 
-  const result = await falSubscribe(modelId, falInput);
+  const result = await falQueueSubscribe(modelId, falInput, 120_000);
   const urls = extractFalImageUrls(result);
   if (urls.length === 0) {
     throw new Error("FAL returned no image URLs");

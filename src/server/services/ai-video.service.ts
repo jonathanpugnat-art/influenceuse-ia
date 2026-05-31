@@ -11,6 +11,7 @@ import {
   type ReelStylePreset,
 } from "@/lib/prompts/video-prompts";
 import { withReplicateRetry } from "@/server/services/replicate-utils";
+import { runReelI2vWithFallback } from "@/server/services/video-providers/i2v-router";
 
 // ──────────────────────────────────────────────
 // Types
@@ -186,17 +187,30 @@ export async function generateVideo(
   }
 
   try {
-    console.log("[ai-video] Generating video...");
-    console.log("[ai-video] Model:", model, "(", modelDesc.label, ")");
-    console.log("[ai-video] Preset:", preset, "prompt_optimizer:", usePromptOptimizer);
+    const replicateRunner = async (): Promise<{ videoUrl: string; model: string }> => {
+      console.log("[ai-video] Generating video via Replicate…");
+      console.log("[ai-video] Model:", model, "(", modelDesc.label, ")");
+      console.log("[ai-video] Preset:", preset, "prompt_optimizer:", usePromptOptimizer);
 
-    const outputUrls = await runReplicatePrediction(model, params);
+      const outputUrls = await runReplicatePrediction(model, params);
+      if (outputUrls.length === 0) {
+        throw new Error("No video generated");
+      }
+      return { videoUrl: outputUrls[0], model };
+    };
 
-    if (outputUrls.length === 0) {
-      throw new Error("No video generated");
-    }
+    const routed = await runReelI2vWithFallback({
+      preset,
+      hasStartFrame: hasReferenceImage,
+      falInput: {
+        prompt,
+        startImageUrl: firstFrame,
+        durationSec: input.duration,
+      },
+      replicateRunner,
+    });
 
-    let finalVideoUrl: string = outputUrls[0];
+    let finalVideoUrl: string = routed.videoUrl;
     let lipSyncApplied = false;
     let lipSyncModel: string | null = null;
 
@@ -237,7 +251,9 @@ export async function generateVideo(
       videoUrl: storedUrl,
       parameters: {
         ...params,
-        replicateModel: model,
+        replicateModel: routed.provider === "replicate" ? model : undefined,
+        videoProvider: routed.provider,
+        videoModel: routed.model,
         durationRequestedSec: input.duration,
         lipSyncApplied,
         lipSyncModel,
