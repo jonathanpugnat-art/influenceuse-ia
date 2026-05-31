@@ -6,7 +6,7 @@ export interface PhotoParams {
   influencerId: string;
   /** Preset id for analytics/templates; use "custom" when the user edits the scene text. */
   scene: string;
-  /** Free-form environment description (English recommended). Drives the image prompt. */
+  /** Free-form environment description from the user. Translated server-side for the image prompt. */
   sceneDescription: string;
   pose: string;
   outfit: string;
@@ -75,12 +75,10 @@ interface PhotoCreatorState {
   reset: () => void;
 }
 
-import { getSceneInspirationText } from "@/lib/prompts/image-prompts";
-
 const defaultParams: PhotoParams = {
   influencerId: "",
-  scene: "studio",
-  sceneDescription: getSceneInspirationText("studio"),
+  scene: "custom",
+  sceneDescription: "",
   pose: "portrait",
   outfit: "",
   expression: "smile",

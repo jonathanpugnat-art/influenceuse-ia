@@ -12,20 +12,12 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { usePhotoCreator } from "@/hooks/use-photo-creator";
-import {
-  PHOTO_STUDIO_LOCATIONS,
-  PHOTO_STUDIO_RECIPES,
-  applyStudioLocation,
-  applyStudioRecipe,
-  isStudioLocationSelected,
-  studioSceneRecapText,
-  type PhotoStudioLocationId,
-  type PhotoStudioRecipeId,
-} from "@/lib/photo-studio-scenes";
 import { getCompatiblePoseIds } from "@/lib/photo-scene-pose";
-import type { InfluencerGender } from "@/lib/photo-niche-defaults";
+import {
+  hasUserSceneDescription,
+  stripScenePropsSuffix,
+} from "@/lib/photo-scene-user";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
 
 const LIGHTING_TILES = [
   { id: "golden_hour", emoji: "🌅", labelKey: "studioLightGolden" },
@@ -75,55 +67,26 @@ function Tile({
   );
 }
 
-export function PhotoStudioSceneSection({
-  gender,
-  niche,
-  disabled,
-}: {
-  gender: InfluencerGender;
-  niche: string;
-  disabled?: boolean;
-}) {
+export function PhotoStudioSceneSection({ disabled }: { disabled?: boolean }) {
   const t = useTranslations("content");
   const { params, updateParams } = usePhotoCreator();
-  const [activeRecipe, setActiveRecipe] = useState<PhotoStudioRecipeId | null>(null);
   const [propsText, setPropsText] = useState("");
   const [tweaksOpen, setTweaksOpen] = useState(false);
 
-  const sceneLabel = (sceneId: string) => {
-    const loc = PHOTO_STUDIO_LOCATIONS.find((l) => l.id === sceneId);
-    if (loc) return t(loc.labelKey);
-    const keys: Record<string, string> = {
-      rooftop: t("sceneUrban"),
-    };
-    return keys[sceneId] ?? sceneId;
-  };
+  const sceneRecap = stripScenePropsSuffix(params.sceneDescription);
+  const hasScene = hasUserSceneDescription(params.sceneDescription);
 
-  const recap = studioSceneRecapText(params, sceneLabel);
-
-  const onRecipe = (id: PhotoStudioRecipeId) => {
-    updateParams(applyStudioRecipe(id, gender, niche));
-    setActiveRecipe(id);
-    toast.success(t("studioRecipeApplied"));
-  };
-
-  const onLocation = (id: PhotoStudioLocationId) => {
-    updateParams(applyStudioLocation(id, params.pose));
-    setActiveRecipe(null);
-  };
-
-  const onRefine = (value: string) => {
-    setActiveRecipe(null);
+  const onSceneChange = (value: string) => {
     updateParams({
       sceneDescription: value,
-      scene: value.trim() ? "custom" : params.scene === "custom" ? "studio" : params.scene,
+      scene: "custom",
     });
   };
 
   const applyProps = (raw: string) => {
     setPropsText(raw);
     const trimmed = raw.trim();
-    const base = params.sceneDescription.replace(/\s*\[Props:.*?\]\s*$/i, "").trim();
+    const base = stripScenePropsSuffix(params.sceneDescription);
     if (!trimmed) {
       updateParams({ sceneDescription: base });
       return;
@@ -145,55 +108,21 @@ export function PhotoStudioSceneSection({
       </div>
 
       <div className="space-y-1.5">
-        <Label className="text-[11px] text-slate-400">{t("studioRecipesTitle")}</Label>
-        <div className="grid grid-cols-2 gap-1.5">
-          {PHOTO_STUDIO_RECIPES.map((recipe) => (
-            <Tile
-              key={recipe.id}
-              emoji={recipe.emoji}
-              label={t(recipe.labelKey)}
-              selected={activeRecipe === recipe.id}
-              disabled={disabled}
-              onClick={() => onRecipe(recipe.id)}
-              className="min-h-[52px]"
-            />
-          ))}
-        </div>
-        <p className="text-[10px] text-slate-500">{t("studioRecipesHint")}</p>
-      </div>
-
-      <div className="space-y-1.5">
-        <Label className="text-[11px] text-slate-400">{t("studioLocationsTitle")}</Label>
-        <div className="grid grid-cols-4 gap-1.5">
-          {PHOTO_STUDIO_LOCATIONS.map((loc) => (
-            <Tile
-              key={loc.id}
-              emoji={loc.emoji}
-              label={t(loc.labelKey)}
-              selected={isStudioLocationSelected(loc.id, params)}
-              disabled={disabled}
-              onClick={() => onLocation(loc.id)}
-            />
-          ))}
-        </div>
-      </div>
-
-      <div className="space-y-1.5">
-        <Label className="text-[11px] text-slate-400">{t("studioSceneRefine")}</Label>
+        <Label className="text-[11px] text-slate-400">{t("studioSceneWrite")}</Label>
         <Textarea
-          value={params.sceneDescription}
+          value={stripScenePropsSuffix(params.sceneDescription)}
           disabled={disabled}
-          onChange={(e) => onRefine(e.target.value)}
+          onChange={(e) => onSceneChange(e.target.value)}
           placeholder={t("sceneDescriptionPlaceholder")}
-          rows={2}
+          rows={4}
           className="border-slate-700/80 bg-slate-900/60 text-sm text-white placeholder:text-slate-600"
         />
-        <p className="text-[10px] text-slate-500">{t("studioSceneRefineHint")}</p>
+        <p className="text-[10px] text-slate-500">{t("studioSceneWriteHint")}</p>
       </div>
 
-      {recap ? (
+      {hasScene ? (
         <p className="text-[11px] leading-snug text-emerald-400/90">
-          {t("studioSceneActive")}: <span className="text-emerald-200">{recap}</span>
+          {t("studioSceneActive")}: <span className="text-emerald-200">{sceneRecap}</span>
         </p>
       ) : (
         <p className="text-[11px] text-amber-500/90">{t("studioSceneEmpty")}</p>

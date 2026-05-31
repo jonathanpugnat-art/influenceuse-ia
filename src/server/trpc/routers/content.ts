@@ -34,6 +34,7 @@ import {
 } from "@/lib/generation-errors";
 import { resolvePublicMediaUrl } from "@/server/lib/resolve-public-media-url";
 import { buildReelSceneFrameParams } from "@/lib/reel-scene-frame";
+import { hasUserSceneDescription } from "@/lib/photo-scene-user";
 import {
   generateReelNarration,
   isSpeechConfigured,
@@ -65,22 +66,39 @@ const contentTypeValues = ["PHOTO", "CAROUSEL", "REEL", "STORY"] as const;
 const contentStatusValues = ["DRAFT", "GENERATING", "READY", "SCHEDULED", "PUBLISHED", "FAILED"] as const;
 const contentModeValues = ["SFW", "NSFW"] as const;
 
-const photoCreatorInputSchema = z.object({
-  influencerId: z.string(),
-  scene: z.string(),
-  sceneDescription: z.string().max(600).optional(),
-  pose: z.string(),
-  outfit: z.string().default(""),
-  expression: z.string().default("natural"),
-  photoStyle: z.string().default("natural"),
-  timeOfDay: z.string().default("natural"),
-  location: z.string().optional(),
-  customPrompt: z.string().optional(),
-  numberOfImages: z.number().int().min(1).max(4).default(1),
-  contentMode: z.enum(contentModeValues).default("SFW"),
-  nsfwLevel: z.string().optional(),
-  useFaceReference: z.boolean().default(true),
-});
+const photoCreatorInputSchema = z
+  .object({
+    influencerId: z.string(),
+    scene: z.string(),
+    sceneDescription: z.string().max(600).optional(),
+    pose: z.string(),
+    outfit: z.string().default(""),
+    expression: z.string().default("natural"),
+    photoStyle: z.string().default("natural"),
+    timeOfDay: z.string().default("natural"),
+    location: z.string().optional(),
+    customPrompt: z.string().optional(),
+    numberOfImages: z.number().int().min(1).max(4).default(1),
+    contentMode: z.enum(contentModeValues).default("SFW"),
+    nsfwLevel: z.string().optional(),
+    useFaceReference: z.boolean().default(true),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.outfit.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Tenue requise avant génération.",
+        path: ["outfit"],
+      });
+    }
+    if (!hasUserSceneDescription(data.sceneDescription)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Décris la scène avant génération.",
+        path: ["sceneDescription"],
+      });
+    }
+  });
 
 export type PhotoCreatorInput = z.infer<typeof photoCreatorInputSchema>;
 

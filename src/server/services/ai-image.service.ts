@@ -40,6 +40,7 @@ import {
   buildScenePlatePrompt,
   SCENE_FIRST_PLATE_CREDIT,
 } from "@/lib/prompts/scene-first-photo";
+import { enrichPhotoPromptFields } from "@/server/services/photo-prompt-enrichment.service";
 
 // ──────────────────────────────────────────────
 // Types
@@ -476,6 +477,29 @@ export function sceneFirstPhotoCreditCost(numberOfImages: number): number {
   return SCENE_FIRST_PLATE_CREDIT + CREDIT_COSTS.PHOTO * n;
 }
 
+async function resolveEnrichedSceneAndOutfit(input: {
+  sceneDescription?: string;
+  outfit?: string;
+}): Promise<{ sceneDescription?: string; outfit?: string }> {
+  const enriched = await enrichPhotoPromptFields(input);
+  return {
+    sceneDescription: enriched.sceneDescription || input.sceneDescription,
+    outfit: enriched.outfit ?? input.outfit,
+  };
+}
+
+async function applyPhotoPromptEnrichment(input: ImageGenerationInput): Promise<ImageGenerationInput> {
+  const { sceneDescription, outfit } = await resolveEnrichedSceneAndOutfit({
+    sceneDescription: input.sceneDescription,
+    outfit: input.outfit,
+  });
+  return {
+    ...input,
+    sceneDescription,
+    outfit: outfit ?? input.outfit,
+  };
+}
+
 /** Step 1 — empty environment plate (user validates before compose). */
 export async function generateScenePlateImage(
   userId: string,
@@ -494,8 +518,12 @@ export async function generateScenePlateImage(
     }
   }
 
+  const { sceneDescription: enrichedScene } = await resolveEnrichedSceneAndOutfit({
+    sceneDescription: input.sceneDescription,
+  });
+
   const platePrompt = buildScenePlatePrompt({
-    sceneDescription: input.sceneDescription ?? "",
+    sceneDescription: enrichedScene ?? "",
     scene: input.scene,
     lighting: input.lighting,
     location: input.location,
@@ -560,9 +588,11 @@ export async function composeImageOnScenePlate(
     throw new Error("Image de décor invalide. Regénère le décor.");
   }
 
-  const identityRefs = selectIdentityPackRefs(baseUrl, input.identityPack, {
-    pose: input.pose,
-    sceneDescription: input.sceneDescription,
+  const enrichedInput = await applyPhotoPromptEnrichment(input);
+
+  const identityRefs = selectIdentityPackRefs(baseUrl, enrichedInput.identityPack, {
+    pose: enrichedInput.pose,
+    sceneDescription: enrichedInput.sceneDescription,
     maxTotal: 3,
   });
   const imageInput = [...identityRefs, plateUrl].slice(0, 4);
@@ -574,11 +604,11 @@ export async function composeImageOnScenePlate(
     hairColor: influencerStyle.hairColor,
     hairStyle: influencerStyle.hairStyle,
     bodyType: influencerStyle.bodyType,
-    sceneDescription: input.sceneDescription,
-    pose: input.pose,
-    expression: input.expression,
-    outfit: input.outfit,
-    customPrompt: input.customPrompt,
+    sceneDescription: enrichedInput.sceneDescription,
+    pose: enrichedInput.pose,
+    expression: enrichedInput.expression,
+    outfit: enrichedInput.outfit,
+    customPrompt: enrichedInput.customPrompt,
     useReferenceFace: true,
   });
 
@@ -643,7 +673,8 @@ export async function generateContentImage(
   influencerStyle: InfluencerStyle,
   input: ImageGenerationInput
 ): Promise<ImageGenerationOutput> {
-  const numImages = Math.min(input.numberOfImages, 4);
+  const enrichedInput = await applyPhotoPromptEnrichment(input);
+  const numImages = Math.min(enrichedInput.numberOfImages, 4);
   const cost = CREDIT_COSTS.PHOTO * numImages;
   if (!input.omitCreditBilling) {
     const hasCredits = await checkCredits(userId, cost);
@@ -661,17 +692,17 @@ export async function generateContentImage(
   const useIdentityPrompt = sendsRefImage;
 
   const borderlineFields = {
-    scene: input.scene,
-    sceneDescription: input.sceneDescription,
-    outfit: input.outfit,
-    location: input.location,
-    customPrompt: input.customPrompt,
-    pose: input.pose,
-    expression: input.expression,
+    scene: enrichedInput.scene,
+    sceneDescription: enrichedInput.sceneDescription,
+    outfit: enrichedInput.outfit,
+    location: enrichedInput.location,
+    customPrompt: enrichedInput.customPrompt,
+    pose: enrichedInput.pose,
+    expression: enrichedInput.expression,
   };
   const borderline =
-    !input.isNsfw &&
-    (input.isReelSceneFrame || shouldRouteToKontext(borderlineFields));
+    !enrichedInput.isNsfw &&
+    (enrichedInput.isReelSceneFrame || shouldRouteToKontext(borderlineFields));
   const matchedKeywords = borderline
     ? getMatchedBorderlineKeywords(borderlineFields)
     : [];
@@ -685,24 +716,28 @@ export async function generateContentImage(
       hairStyle: influencerStyle.hairStyle,
       bodyType: influencerStyle.bodyType,
       fashionStyle: influencerStyle.fashionStyle,
-      scene: input.scene,
-      sceneDescription: input.sceneDescription,
-      pose: input.pose,
-      expression: input.expression,
-      style: input.style,
-      lighting: input.lighting,
-      location: input.location,
-      outfit: input.outfit,
+      scene: enrichedInput.scene,
+      sceneDescription: enrichedInput.sceneDescription,
+      pose: enrichedInput.pose,
+      expression: enrichedInput.expression,
+      style: enrichedInput.style,
+      lighting: enrichedInput.lighting,
+      location: enrichedInput.location,
+      outfit: enrichedInput.outfit,
       useReferenceFace: useIdentityPrompt,
-      isNsfw: input.isNsfw,
-      nsfwLevel: input.nsfwLevel,
-      customPrompt: input.customPrompt,
-      appearanceVariations: input.appearanceVariations,
+      isNsfw: enrichedInput.isNsfw,
+      nsfwLevel: enrichedInput.nsfwLevel,
+      customPrompt: enrichedInput.customPrompt,
+      appearanceVariations: enrichedInput.appearanceVariations,
       contentEngine: engine,
     });
 
   const primaryEngine: ContentImageEngine =
-    input.isReelSceneFrame && !input.isNsfw ? "kontext" : borderline ? "kontext" : "nano";
+    enrichedInput.isReelSceneFrame && !enrichedInput.isNsfw
+      ? "kontext"
+      : borderline
+        ? "kontext"
+        : "nano";
   let usedEngine: ContentImageEngine = primaryEngine;
   let prompt = buildPromptForEngine(primaryEngine);
   const negativePrompt = buildNegativePrompt(input.isNsfw, influencerStyle.gender ?? "female", {
@@ -719,10 +754,10 @@ export async function generateContentImage(
   };
 
   const refs =
-    sendsRefImage && input.baseImageUrl?.trim()
-      ? selectIdentityPackRefs(input.baseImageUrl.trim(), input.identityPack, {
-          pose: input.pose,
-          sceneDescription: input.sceneDescription,
+    sendsRefImage && enrichedInput.baseImageUrl?.trim()
+      ? selectIdentityPackRefs(enrichedInput.baseImageUrl.trim(), enrichedInput.identityPack, {
+          pose: enrichedInput.pose,
+          sceneDescription: enrichedInput.sceneDescription,
         })
       : [];
 

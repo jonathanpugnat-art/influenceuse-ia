@@ -149,7 +149,7 @@ export function PhotoStudioSidebar() {
 
         <PhotoStudioOutfitSection niche={niche} gender={gender} disabled={!hasInfluencer} />
 
-        <PhotoStudioSceneSection niche={niche} gender={gender} disabled={!hasInfluencer} />
+        <PhotoStudioSceneSection disabled={!hasInfluencer} />
 
         <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
           <CollapsibleTrigger className="flex w-full items-center justify-between rounded-xl border border-slate-800/60 px-3 py-2.5 text-xs text-slate-400 hover:bg-slate-800/30">

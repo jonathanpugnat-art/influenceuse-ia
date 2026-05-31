@@ -28,9 +28,9 @@ import { downloadMediaUrl } from "@/lib/download-media";
 import { WorkflowSteps } from "@/components/content/workflow-steps";
 import { PhotoInstagramFeedMock } from "@/components/content/photo-instagram-feed-mock";
 import {
-  PHOTO_STUDIO_LOCATIONS,
-  studioSceneRecapText,
-} from "@/lib/photo-studio-scenes";
+  hasUserSceneDescription,
+  stripScenePropsSuffix,
+} from "@/lib/photo-scene-user";
 import {
   formatGenerationErrorForUser,
   formatPhotoSceneErrorForUser,
@@ -209,13 +209,9 @@ export function PhotoPreview({
     setSelectedImageIndex(0);
   };
 
-  const sceneLabel = (sceneId: string) => {
-    const loc = PHOTO_STUDIO_LOCATIONS.find((l) => l.id === sceneId);
-    if (loc) return t(loc.labelKey);
-    return sceneId;
-  };
-  const sceneRecap = studioSceneRecapText(params, sceneLabel);
-  const hasScene = Boolean(sceneRecap.trim());
+  const sceneRecap = stripScenePropsSuffix(params.sceneDescription);
+  const hasScene = hasUserSceneDescription(params.sceneDescription);
+  const hasOutfit = Boolean(params.outfit.trim());
 
   const handleGenerateScene = () => {
     if (!params.influencerId) {
@@ -226,7 +222,7 @@ export function PhotoPreview({
       toast.error(t("studioOutfitEmpty"), { duration: 5000 });
       return;
     }
-    if (!studioSceneRecapText(params, sceneLabel).trim()) {
+    if (!hasScene) {
       toast.error(t("studioSceneEmpty"), { duration: 5000 });
       return;
     }
@@ -279,7 +275,8 @@ export function PhotoPreview({
   }, []);
 
   const composeCost = params.numberOfImages * CREDIT_COSTS.PHOTO;
-  const canAct = !!params.influencerId && !isGenerating;
+  const canGenerate =
+    !!params.influencerId && hasOutfit && hasScene && !isGenerating;
   const hasFinalImages = generatedUrls.length > 0 && !isGenerating;
   const awaitingSceneApproval = useSceneFirst && Boolean(scenePlateUrl) && !hasFinalImages;
   const currentImage = generatedUrls[selectedImageIndex];
@@ -444,20 +441,26 @@ export function PhotoPreview({
               {!params.influencerId && (
                 <p className="text-center text-xs text-amber-400/90">{t("selectInfluencerFirst")}</p>
               )}
+              {params.influencerId && !hasOutfit && (
+                <p className="text-center text-xs text-amber-400/90">{t("studioOutfitEmpty")}</p>
+              )}
+              {params.influencerId && hasOutfit && !hasScene && (
+                <p className="text-center text-xs text-amber-400/90">{t("studioSceneEmpty")}</p>
+              )}
               {awaitingSceneApproval ? (
                 <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={handleGenerateScene}
-                    disabled={!canAct}
-                    className="flex-1 rounded-xl border border-slate-600 py-3 text-sm text-slate-300 hover:bg-slate-800/50 disabled:opacity-40"
+                    disabled={!canGenerate}
+                    className="flex-1 rounded-xl border border-slate-600 py-3 text-sm text-slate-300 hover:bg-slate-800/50 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {t("regenerateSceneBtn")}
                   </button>
                   <button
                     type="button"
                     onClick={handleCompose}
-                    disabled={!canAct}
+                    disabled={isGenerating}
                     className="flex-1 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 py-3 text-sm font-semibold text-white disabled:opacity-40"
                   >
                     {t("composeInfluencerBtn", { cost: String(composeCost) })}
@@ -467,8 +470,8 @@ export function PhotoPreview({
                 <button
                   type="button"
                   onClick={onPrimaryAction}
-                  disabled={!canAct}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/20 disabled:opacity-40"
+                  disabled={!canGenerate}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/20 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Sparkles className="h-4 w-4" />
                   {primaryLabel}
@@ -642,7 +645,7 @@ export function PhotoPreview({
                 <button
                   type="button"
                   onClick={handleGenerateScene}
-                  disabled={!canAct}
+                  disabled={!canGenerate}
                   className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-600 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800/50 disabled:opacity-40"
                 >
                   <MapPin className="h-4 w-4" />
@@ -651,7 +654,7 @@ export function PhotoPreview({
                 <button
                   type="button"
                   onClick={handleCompose}
-                  disabled={!canAct}
+                  disabled={!canGenerate}
                   className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
                 >
                   <User className="h-4 w-4" />
@@ -695,7 +698,7 @@ export function PhotoPreview({
               <button
                 type="button"
                 onClick={handleGenerateScene}
-                disabled={!canAct}
+                disabled={!canGenerate}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-6 py-3 text-sm font-semibold text-white shadow-lg disabled:opacity-40"
               >
                 <MapPin className="h-4 w-4" />
@@ -705,7 +708,7 @@ export function PhotoPreview({
               <button
                 type="button"
                 onClick={handleClassicGenerate}
-                disabled={!canAct}
+                disabled={!canGenerate}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-6 py-3 text-sm font-semibold text-white shadow-lg disabled:opacity-40"
               >
                 <Sparkles className="h-4 w-4" />
