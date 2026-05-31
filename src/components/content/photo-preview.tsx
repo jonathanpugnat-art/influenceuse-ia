@@ -28,6 +28,10 @@ import { downloadMediaUrl } from "@/lib/download-media";
 import { WorkflowSteps } from "@/components/content/workflow-steps";
 import { PhotoInstagramFeedMock } from "@/components/content/photo-instagram-feed-mock";
 import {
+  PHOTO_STUDIO_LOCATIONS,
+  studioSceneRecapText,
+} from "@/lib/photo-studio-scenes";
+import {
   formatGenerationErrorForUser,
   formatPhotoSceneErrorForUser,
 } from "@/lib/generation-errors";
@@ -205,6 +209,14 @@ export function PhotoPreview({
     setSelectedImageIndex(0);
   };
 
+  const sceneLabel = (sceneId: string) => {
+    const loc = PHOTO_STUDIO_LOCATIONS.find((l) => l.id === sceneId);
+    if (loc) return t(loc.labelKey);
+    return sceneId;
+  };
+  const sceneRecap = studioSceneRecapText(params, sceneLabel);
+  const hasScene = Boolean(sceneRecap.trim());
+
   const handleGenerateScene = () => {
     if (!params.influencerId) {
       toast.error(t("selectInfluencerFirst"));
@@ -212,6 +224,10 @@ export function PhotoPreview({
     }
     if (!params.outfit.trim()) {
       toast.error(t("studioOutfitEmpty"), { duration: 5000 });
+      return;
+    }
+    if (!studioSceneRecapText(params, sceneLabel).trim()) {
+      toast.error(t("studioSceneEmpty"), { duration: 5000 });
       return;
     }
     resetForNewRun();
@@ -242,6 +258,10 @@ export function PhotoPreview({
     }
     if (!params.outfit.trim()) {
       toast.error(t("studioOutfitEmpty"), { duration: 5000 });
+      return;
+    }
+    if (!hasScene) {
+      toast.error(t("studioSceneEmpty"), { duration: 5000 });
       return;
     }
     resetForNewRun();
@@ -359,6 +379,14 @@ export function PhotoPreview({
               </p>
             ) : (
               <p className="text-center text-[11px] text-amber-500/90">{t("studioOutfitEmpty")}</p>
+            )}
+            {hasScene ? (
+              <p className="rounded-lg border border-slate-800/60 bg-slate-900/50 px-3 py-2 text-center text-[11px] text-slate-400">
+                <span className="font-medium text-emerald-400">{t("studioPillarScene")}:</span>{" "}
+                <span className="text-slate-300">{sceneRecap}</span>
+              </p>
+            ) : (
+              <p className="text-center text-[11px] text-amber-500/90">{t("studioSceneEmpty")}</p>
             )}
           </div>
 
