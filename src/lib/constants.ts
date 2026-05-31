@@ -102,11 +102,11 @@ export function getPlanDisplayName(plan: keyof typeof PLANS): string {
   return PLANS[plan].name;
 }
 
-// Credit costs are calibrated against real Replicate per-call cost so the
+// Credit costs are calibrated against real per-call cost so the
 // margin holds even on the heaviest plan (Agency 199 €). Reference (2026-05):
 //
-//   PHOTO   (Nano Banana / Flux 1.1 Pro)   ≈ $0.04   per image
-//   REEL    (Kling-2 default / Wan 2.5)    ≈ $0.55   per clip   →  ~14× a photo
+//   PHOTO   (Nano Banana / Flux T2I via FAL→Replicate)   ≈ $0.03–0.04   per image
+//   REEL    (Kling-2 default / Wan 2.5 on Replicate)    ≈ $0.55   per clip   →  ~14× a photo
 //   CAPTION (DeepSeek chat)                ≈ $0.001  per call
 //
 // The previous REEL=5 ratio (1 reel = 5 photos) let an Agency user burn

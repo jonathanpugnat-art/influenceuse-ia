@@ -41,6 +41,8 @@ import {
   SCENE_FIRST_PLATE_CREDIT,
 } from "@/lib/prompts/scene-first-photo";
 import { enrichPhotoPromptFields } from "@/server/services/photo-prompt-enrichment.service";
+import { runFluxT2iWithFallback } from "@/server/services/image-providers/flux-t2i-router";
+import type { FalFluxT2iInput } from "@/server/services/image-providers/fal-flux-t2i.provider";
 
 // ──────────────────────────────────────────────
 // Types
@@ -294,23 +296,80 @@ async function runReplicatePrediction(
   }
 }
 
+async function runReplicateFluxT2iMultiple(
+  input: FalFluxT2iInput,
+  count: number
+): Promise<{ urls: string[]; model: string }> {
+  const replicateInput: Record<string, unknown> = {
+    prompt: input.prompt,
+    negative_prompt: input.negative_prompt,
+    width: input.width,
+    height: input.height,
+    num_inference_steps: input.num_inference_steps,
+    guidance_scale: input.guidance_scale,
+    output_format: "jpg",
+    output_quality: 92,
+    safety_tolerance: 5,
+  };
+
+  const tasks: Array<() => Promise<string[]>> = [];
+  for (let i = 0; i < count; i++) {
+    tasks.push(() =>
+      runReplicatePrediction(MODEL_SFW_T2I, {
+        ...replicateInput,
+        seed: input.seed ?? Math.floor(Math.random() * 2147483647),
+      })
+    );
+  }
+
+  const settled = await runWithConcurrency(tasks, MAX_PARALLEL_PREDICTIONS_PER_CALL);
+  const urls: string[] = [];
+  const errors: unknown[] = [];
+  for (const r of settled) {
+    if (r.status === "fulfilled") urls.push(...r.value);
+    else errors.push(r.reason);
+  }
+  if (urls.length === 0 && errors.length > 0) {
+    throw errors[0];
+  }
+  return { urls, model: MODEL_SFW_T2I };
+}
+
+function toFluxT2iInput(params: Record<string, unknown>): FalFluxT2iInput {
+  return {
+    prompt: String(params.prompt ?? ""),
+    negative_prompt:
+      typeof params.negative_prompt === "string" ? params.negative_prompt : undefined,
+    width: typeof params.width === "number" ? params.width : undefined,
+    height: typeof params.height === "number" ? params.height : undefined,
+    num_inference_steps:
+      typeof params.num_inference_steps === "number"
+        ? params.num_inference_steps
+        : undefined,
+    guidance_scale:
+      typeof params.guidance_scale === "number" ? params.guidance_scale : undefined,
+  };
+}
+
 /**
  * Generate multiple images. Strategy depends on the model:
- *  - flux-1.1-pro: native `num_outputs` support — but we still fan out into
- *    N parallel calls with distinct random seeds, otherwise two users with
- *    identical wizard inputs would receive the SAME 4 portraits (Flux is
- *    deterministic for a given prompt+seed pair). The extra seed per call
- *    guarantees ~2^31 visually distinct outputs even on identical prompts.
- *  - flux-kontext-pro / flux-dev-uncensored: no num_outputs → fan out in
- *    parallel with different seeds.
- *  - google/nano-banana: same fan-out + a prompt rotation suffix because
- *    Nano respects identical prompts more strictly than Flux.
+ *  - flux-1.1-pro: FAL first (when configured), Replicate fallback
+ *  - flux-kontext-pro / flux-dev-uncensored: parallel Replicate + seeds
+ *  - google/nano-banana: fan-out + prompt rotation
  */
 async function runMultiplePredictions(
   model: string,
   input: Record<string, unknown>,
   count: number
 ): Promise<string[]> {
+  if (model === MODEL_SFW_T2I) {
+    const routed = await runFluxT2iWithFallback(
+      toFluxT2iInput(input),
+      count,
+      runReplicateFluxT2iMultiple
+    );
+    return routed.urls;
+  }
 
   // Build the per-image task list depending on the model branch.
   const tasks: Array<() => Promise<string[]>> = [];
@@ -531,7 +590,7 @@ export async function generateScenePlateImage(
   const plateNegative =
     "people, person, face, portrait, mannequin, crowd, selfie, influencer, human, body, hands, legs";
 
-  console.log("[ai-image] Photo scene plate (flux-1.1-pro)…");
+  console.log("[ai-image] Photo scene plate (flux T2I — FAL → Replicate fallback)…");
   const plateUrls = await runMultiplePredictions(
     MODEL_SFW_T2I,
     {
