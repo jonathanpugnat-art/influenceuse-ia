@@ -250,6 +250,7 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
             <button
               key={g}
               type="button"
+              aria-pressed={watch("gender") === g}
               onClick={() => setValue("gender", g, { shouldValidate: true })}
               className={cn(
                 "rounded-xl border-2 px-3 py-2.5 text-sm font-medium transition-all",
@@ -320,6 +321,7 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
             <button
               key={n.value}
               type="button"
+              aria-pressed={selectedNiche === n.value}
               onClick={() => setValue("niche", n.value, { shouldValidate: true })}
               className={cn(
                 "flex items-center gap-2 rounded-xl border-2 px-3 py-3 text-sm font-medium transition-all",
@@ -443,11 +445,10 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-white">
               <Sparkles className="h-5 w-5 text-violet-400" />
-              3 personnalités générées pour toi
+              {t("suggestDialogTitle")}
             </DialogTitle>
             <DialogDescription className="text-slate-400">
-              Clique sur celle qui te ressemble. Tu pourras toujours l&apos;éditer
-              ensuite.
+              {t("suggestDialogDescription")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -461,10 +462,10 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
                 <div className="mb-2 flex items-center gap-2">
                   <span className="rounded-full bg-violet-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-300">
                     {i === 0
-                      ? "Authentique"
+                      ? t("suggestVariant0")
                       : i === 1
-                        ? "Drôle & joueuse"
-                        : "Audacieuse"}
+                        ? t("suggestVariant1")
+                        : t("suggestVariant2")}
                   </span>
                 </div>
                 <p className="text-sm font-medium text-white">{s.bio}</p>
@@ -484,7 +485,7 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
               ) : (
                 <Wand2 className="h-3 w-3" />
               )}
-              Régénérer 3 nouvelles propositions
+              {t("suggestRegenerate")}
             </button>
           </div>
         </DialogContent>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -10,6 +11,7 @@ import {
   AlertCircle,
   Dice5,
 } from "lucide-react";
+import { WizardCollisionBanner } from "@/components/influencer/wizard-collision-banner";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -33,25 +35,83 @@ import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-const ethnicities = [
-  "Caucasienne", "Afro", "Asiatique", "Latina",
-  "Métisse", "Moyen-Orient", "Indienne", "Autre",
-];
+/** Stored values (French) — labels come from i18n. */
+const ETHNICITY_VALUES = [
+  "Caucasienne",
+  "Afro",
+  "Asiatique",
+  "Latina",
+  "Métisse",
+  "Moyen-Orient",
+  "Indienne",
+  "Autre",
+] as const;
 
-const hairColors = [
-  { value: "Noir", dot: "bg-gray-900 border-gray-600", emoji: "⚫" },
-  { value: "Brun", dot: "bg-amber-800 border-amber-600", emoji: "🟤" },
-  { value: "Blond", dot: "bg-yellow-400 border-yellow-300", emoji: "🟡" },
-  { value: "Roux", dot: "bg-orange-500 border-orange-400", emoji: "🟠" },
-  { value: "Rose", dot: "bg-pink-400 border-pink-300", emoji: "🩷" },
-  { value: "Bleu", dot: "bg-blue-500 border-blue-400", emoji: "🔵" },
-  { value: "Platine", dot: "bg-gray-200 border-gray-100", emoji: "⚪" },
-];
+const ETHNICITY_KEYS = [
+  "caucasian",
+  "afro",
+  "asian",
+  "latina",
+  "mixed",
+  "middleEast",
+  "indian",
+  "other",
+] as const;
 
-const hairLengths = ["Court", "Mi-long", "Long", "Très long"];
-const hairTextures = ["Lisse", "Ondulé", "Bouclé", "Afro", "Tressé"];
-const bodyTypes = ["Fine", "Athlétique", "Moyenne", "Curvy"];
-const fashionStylesList = ["Casual", "Chic", "Sporty", "Glamour", "Streetwear", "Bohème"];
+const HAIR_COLOR_VALUES = [
+  "Noir",
+  "Brun",
+  "Blond",
+  "Roux",
+  "Rose",
+  "Bleu",
+  "Platine",
+] as const;
+
+const HAIR_COLOR_KEYS = [
+  "black",
+  "brown",
+  "blonde",
+  "red",
+  "pink",
+  "blue",
+  "platinum",
+] as const;
+
+const HAIR_LENGTH_VALUES = ["Court", "Mi-long", "Long", "Très long"] as const;
+const HAIR_LENGTH_KEYS = ["short", "medium", "long", "veryLong"] as const;
+
+const HAIR_TEXTURE_VALUES = ["Lisse", "Ondulé", "Bouclé", "Afro", "Tressé"] as const;
+const HAIR_TEXTURE_KEYS = [
+  "straight",
+  "wavy",
+  "curly",
+  "afro",
+  "braided",
+] as const;
+
+const BODY_TYPE_VALUES = ["Fine", "Athlétique", "Moyenne", "Curvy"] as const;
+const BODY_TYPE_KEYS = ["slim", "athletic", "average", "curvy"] as const;
+
+const FASHION_VALUES = [
+  "Casual",
+  "Chic",
+  "Sporty",
+  "Glamour",
+  "Streetwear",
+  "Bohème",
+] as const;
+
+const FASHION_KEYS = [
+  "casual",
+  "chic",
+  "sporty",
+  "glamour",
+  "streetwear",
+  "bohemian",
+] as const;
+
+const HAIR_COLOR_EMOJI = ["⚫", "🟤", "🟡", "🟠", "🩷", "🔵", "⚪"];
 
 function Chip({
   label,
@@ -86,6 +146,62 @@ export function WizardStepAppearance({
   onPrev: () => void;
 }) {
   const t = useTranslations("wizard");
+
+  const ethnicities = useMemo(
+    () =>
+      ETHNICITY_VALUES.map((value, i) => ({
+        value,
+        label: t(`ethnicityOptions.${ETHNICITY_KEYS[i]}`),
+      })),
+    [t]
+  );
+
+  const hairColors = useMemo(
+    () =>
+      HAIR_COLOR_VALUES.map((value, i) => ({
+        value,
+        emoji: HAIR_COLOR_EMOJI[i],
+        label: t(`hairColorOptions.${HAIR_COLOR_KEYS[i]}`),
+      })),
+    [t]
+  );
+
+  const hairLengths = useMemo(
+    () =>
+      HAIR_LENGTH_VALUES.map((value, i) => ({
+        value,
+        label: t(`hairLengthOptions.${HAIR_LENGTH_KEYS[i]}`),
+      })),
+    [t]
+  );
+
+  const hairTextures = useMemo(
+    () =>
+      HAIR_TEXTURE_VALUES.map((value, i) => ({
+        value,
+        label: t(`hairTextureOptions.${HAIR_TEXTURE_KEYS[i]}`),
+      })),
+    [t]
+  );
+
+  const bodyTypes = useMemo(
+    () =>
+      BODY_TYPE_VALUES.map((value, i) => ({
+        value,
+        label: t(`bodyTypeOptions.${BODY_TYPE_KEYS[i]}`),
+      })),
+    [t]
+  );
+
+  const fashionStylesList = useMemo(
+    () =>
+      FASHION_VALUES.map((value, i) => ({
+        value,
+        label: t(`fashionStyleOptions.${FASHION_KEYS[i]}`),
+      })),
+    [t]
+  );
+
   const {
     data,
     updateData,
@@ -119,7 +235,7 @@ export function WizardStepAppearance({
       }
       updateData(updates);
       setIsGenerating(false);
-      toast.success("4 variantes générées. Choisis celle que tu préfères.");
+      toast.success(t("variantsGeneratedToast"));
     },
     onError: (err) => {
       setIsGenerating(false);
@@ -208,12 +324,10 @@ export function WizardStepAppearance({
       <div className="flex items-center justify-between rounded-xl border border-slate-800/50 bg-slate-800/20 px-4 py-3">
         <div className="flex items-center gap-2 text-sm text-slate-300">
           <Coins className="h-4 w-4 text-amber-400" />
-          <span>
-            Génération : <strong>{cost}</strong> crédit{cost > 1 ? "s" : ""}
-          </span>
+          <span>{t("generationCost", { cost })}</span>
         </div>
         <div className="text-sm text-slate-400">
-          Restants : <strong className="text-white">{creditsRemaining}</strong>
+          {t("creditsLeft", { count: creditsRemaining })}
         </div>
       </div>
 
@@ -222,39 +336,47 @@ export function WizardStepAppearance({
           <AlertCircle className="h-5 w-5 shrink-0 text-amber-400" />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-amber-200">
-              Crédits insuffisants pour générer l&apos;apparence
+              {t("insufficientCredits")}
             </p>
             <p className="mt-0.5 text-xs text-amber-200/80">
-              Il te faut au moins {cost} crédit{cost > 1 ? "s" : ""}. Passe à un plan supérieur ou attends le renouvellement.
+              {t("insufficientCreditsHint", { cost })}
             </p>
             <Link
               href="/billing"
               className="mt-2 inline-flex items-center rounded-lg bg-amber-500/20 px-3 py-1.5 text-xs font-medium text-amber-200 transition-colors hover:bg-amber-500/30"
             >
-              Voir les offres →
+              {t("seeOffers")}
             </Link>
           </div>
         </div>
       )}
 
+      {data.appearanceFingerprint && (
+        <WizardCollisionBanner
+          fingerprint={data.appearanceFingerprint}
+          onReroll={handleSurpriseMe}
+          compact
+        />
+      )}
+
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Left column — Controls */}
-        <div className="space-y-5">
+        <div className="order-2 space-y-5 lg:order-1">
           {/* Ethnicity */}
           <div className="space-y-2">
-            <Label className="text-slate-300">Ethnie</Label>
+            <Label className="text-slate-300">{t("ethnicity")}</Label>
             <Select value={ethnicity} onValueChange={setEthnicity}>
               <SelectTrigger className="h-10 border-slate-800/50 bg-slate-800/30 text-white">
-                <SelectValue placeholder="Sélectionner..." />
+                <SelectValue placeholder={t("selectPlaceholder")} />
               </SelectTrigger>
               <SelectContent className="border-slate-800 bg-slate-900">
                 {ethnicities.map((e) => (
                   <SelectItem
-                    key={e}
-                    value={e}
+                    key={e.value}
+                    value={e.value}
                     className="text-slate-300 focus:bg-slate-800 focus:text-white"
                   >
-                    {e}
+                    {e.label}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -263,13 +385,14 @@ export function WizardStepAppearance({
 
           {/* Hair color */}
           <div className="space-y-2">
-            <Label className="text-slate-300">Couleur de cheveux</Label>
+            <Label className="text-slate-300">{t("hairColor")}</Label>
             <div className="flex flex-wrap gap-2">
               {hairColors.map((c) => (
                 <button
                   key={c.value}
                   type="button"
                   onClick={() => setHairColor(c.value)}
+                  aria-pressed={hairColor === c.value}
                   className={cn(
                     "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all",
                     hairColor === c.value
@@ -278,7 +401,7 @@ export function WizardStepAppearance({
                   )}
                 >
                   <span>{c.emoji}</span>
-                  {c.value}
+                  {c.label}
                 </button>
               ))}
             </div>
@@ -286,14 +409,14 @@ export function WizardStepAppearance({
 
           {/* Hair length */}
           <div className="space-y-2">
-            <Label className="text-slate-300">Longueur</Label>
+            <Label className="text-slate-300">{t("hairLength")}</Label>
             <div className="flex flex-wrap gap-2">
               {hairLengths.map((l) => (
                 <Chip
-                  key={l}
-                  label={l}
-                  selected={hairLength === l}
-                  onClick={() => setHairLength(l)}
+                  key={l.value}
+                  label={l.label}
+                  selected={hairLength === l.value}
+                  onClick={() => setHairLength(l.value)}
                 />
               ))}
             </div>
@@ -301,14 +424,14 @@ export function WizardStepAppearance({
 
           {/* Hair texture */}
           <div className="space-y-2">
-            <Label className="text-slate-300">Texture</Label>
+            <Label className="text-slate-300">{t("hairTexture")}</Label>
             <div className="flex flex-wrap gap-2">
-              {hairTextures.map((t) => (
+              {hairTextures.map((ht) => (
                 <Chip
-                  key={t}
-                  label={t}
-                  selected={hairTexture === t}
-                  onClick={() => setHairTexture(t)}
+                  key={ht.value}
+                  label={ht.label}
+                  selected={hairTexture === ht.value}
+                  onClick={() => setHairTexture(ht.value)}
                 />
               ))}
             </div>
@@ -316,14 +439,14 @@ export function WizardStepAppearance({
 
           {/* Body type */}
           <div className="space-y-2">
-            <Label className="text-slate-300">Morphologie</Label>
+            <Label className="text-slate-300">{t("bodyType")}</Label>
             <div className="flex flex-wrap gap-2">
               {bodyTypes.map((b) => (
                 <Chip
-                  key={b}
-                  label={b}
-                  selected={bodyType === b}
-                  onClick={() => setBodyType(b)}
+                  key={b.value}
+                  label={b.label}
+                  selected={bodyType === b.value}
+                  onClick={() => setBodyType(b.value)}
                 />
               ))}
             </div>
@@ -332,16 +455,16 @@ export function WizardStepAppearance({
           {/* Fashion styles */}
           <div className="space-y-2">
             <Label className="text-slate-300">
-              Style vestimentaire{" "}
-              <span className="text-slate-500">(multi-sélection)</span>
+              {t("fashionStyle")}{" "}
+              <span className="text-slate-500">{t("multiSelect")}</span>
             </Label>
             <div className="flex flex-wrap gap-2">
               {fashionStylesList.map((s) => (
                 <Chip
-                  key={s}
-                  label={s}
-                  selected={fashionStyles.includes(s)}
-                  onClick={() => toggleFashion(s)}
+                  key={s.value}
+                  label={s.label}
+                  selected={fashionStyles.includes(s.value)}
+                  onClick={() => toggleFashion(s.value)}
                 />
               ))}
             </div>
@@ -359,29 +482,29 @@ export function WizardStepAppearance({
             {isGenerating ? (
               <>
                 <RefreshCw className="h-4 w-4 animate-spin" />
-                Génération en cours...
+                {t("generatingAppearance")}
               </>
             ) : hasAnyChoice ? (
               <>
                 <Sparkles className="h-4 w-4" />
-                Générer l&apos;apparence
+                {t("generateAppearance")}
               </>
             ) : (
               <>
                 <Sparkles className="h-4 w-4" />
-                Surprends-moi ✨
+                {t("surpriseMe")} ✨
               </>
             )}
           </button>
           {!hasAnyChoice && (
             <p className="text-center text-xs text-slate-500">
-              Sans choix, on génère 4 visages variés à partir d&apos;un style par défaut
+              {t("surpriseMeDefault")}
             </p>
           )}
         </div>
 
-        {/* Right column — Preview */}
-        <div className="space-y-3">
+        {/* Preview — sticky on mobile, above controls */}
+        <div className="order-1 space-y-3 lg:order-2 lg:sticky lg:top-20 lg:self-start">
           <div className="relative aspect-[3/4] overflow-hidden rounded-2xl border border-slate-800/50 bg-slate-800/30">
             {isGenerating ? (
               <div className="flex h-full flex-col items-center justify-center gap-3">
@@ -389,7 +512,7 @@ export function WizardStepAppearance({
                 <div className="absolute flex flex-col items-center gap-2">
                   <RefreshCw className="h-8 w-8 animate-spin text-violet-400" />
                   <p className="text-sm text-slate-400">
-                    Création de votre influenceuse...
+                    {t("creatingInfluencer")}
                   </p>
                 </div>
               </div>
@@ -397,7 +520,7 @@ export function WizardStepAppearance({
               <div className="relative h-full w-full">
                 <Image
                   src={generatedImages[selectedImageIndex] ?? generatedImages[0]!}
-                  alt="Aperçu sélectionné"
+                  alt={t("previewAlt")}
                   fill
                   className="object-cover"
                   unoptimized
@@ -407,7 +530,7 @@ export function WizardStepAppearance({
               <div className="flex h-full flex-col items-center justify-center gap-3 p-6">
                 <User className="h-16 w-16 text-slate-600" />
                 <p className="text-center text-sm text-slate-500">
-                  Génère l&apos;apparence pour voir un aperçu
+                  {t("previewHint")}
                 </p>
               </div>
             )}
@@ -415,7 +538,7 @@ export function WizardStepAppearance({
 
           {generatedImages.length > 0 && (
             <>
-              <p className="text-xs text-slate-500">Choisis la variante que tu préfères</p>
+              <p className="text-xs text-slate-500">{t("selectVariant")}</p>
               <div className="grid grid-cols-4 gap-2">
                 {generatedImages.map((url, i) => (
                   <button
@@ -431,7 +554,7 @@ export function WizardStepAppearance({
                   >
                     <Image
                       src={url}
-                      alt={`Variante ${i + 1}`}
+                      alt={t("variantAlt", { index: i + 1 })}
                       fill
                       className="object-cover"
                       unoptimized
@@ -448,17 +571,17 @@ export function WizardStepAppearance({
                 <div className="space-y-2 rounded-xl border border-violet-500/20 bg-violet-500/5 p-3">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-semibold text-violet-300">
-                      Sa signature visuelle
+                      {t("visualSignature")}
                     </p>
                     <button
                       type="button"
                       onClick={handleSurpriseMe}
                       disabled={isGenerating || !hasEnoughCredits}
                       className="flex items-center gap-1 rounded-md border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-200 transition-colors hover:bg-violet-500/20 disabled:opacity-40"
-                      title="Re-tirer les traits + relancer la génération"
+                      title={t("surpriseMeRerollTitle")}
                     >
                       <Dice5 className="h-3 w-3" />
-                      Surprends-moi
+                      {t("surpriseMe")}
                     </button>
                   </div>
                   <ul className="grid grid-cols-1 gap-x-3 gap-y-1 text-[11px] text-slate-300 sm:grid-cols-2">
@@ -489,8 +612,7 @@ export function WizardStepAppearance({
                     })()}
                   </ul>
                   <p className="text-[10px] text-slate-500">
-                    Ces traits sont injectés dans toutes les photos générées —
-                    elle ressemblera toujours à elle-même.
+                    {t("traitsInjectedHint")}
                   </p>
                 </div>
               )}
@@ -502,7 +624,7 @@ export function WizardStepAppearance({
                 className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-700 py-2 text-xs text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
               >
                 <RefreshCw className="h-3 w-3" />
-                Regénérer
+                {t("regenerate")} ({cost} {t("creditsShort")})
               </button>
             </>
           )}

@@ -8,9 +8,8 @@ import {
   Bookmark,
   UserSquare2,
   Lock,
-  Users,
-  Sparkles,
 } from "lucide-react";
+import { WizardCollisionBanner } from "@/components/influencer/wizard-collision-banner";
 import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -44,22 +43,6 @@ export function WizardStepSummary({ onPrev }: { onPrev: () => void }) {
   const router = useRouter();
   const { data, generatedImages, selectedImageIndex, reset, setStep } =
     useInfluencerWizard();
-
-  // Sprint 14 — uniqueness guard: query how many OTHER active influencers
-  // across the platform share the same appearance fingerprint and show a
-  // soft warning before the user commits. Privacy-friendly: only a count
-  // is returned, never the other rows. Skipped silently when the wizard
-  // didn't generate a portrait (no fingerprint available).
-  const collisionQuery = trpc.influencer.checkAppearanceCollision.useQuery(
-    { fingerprint: data.appearanceFingerprint ?? "" },
-    {
-      enabled: Boolean(data.appearanceFingerprint),
-      staleTime: 30_000,
-      refetchOnWindowFocus: false,
-    }
-  );
-  const collisionCount = collisionQuery.data?.count ?? 0;
-  const hasCollision = collisionQuery.data?.hasCollision ?? false;
 
   const niche = nicheConfig[data.niche] ?? {
     label: data.niche,
@@ -370,33 +353,10 @@ export function WizardStepSummary({ onPrev }: { onPrev: () => void }) {
       {/* Sprint 14 — duplicate appearance warning (soft, non-blocking).
           Tells the user how many other creators share the same visual
           fingerprint and offers a "back to step 2" CTA to re-roll. */}
-      {hasCollision && (
-        <div className="mx-auto flex max-w-md items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
-          <Users className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-amber-200">
-              {collisionCount === 1
-                ? "1 autre créateur a un profil très proche"
-                : `${collisionCount} autres créateurs ont un profil très proche`}
-            </p>
-            <p className="mt-1 text-xs text-amber-200/80">
-              Sa signature visuelle (visage, yeux, expression…) correspond à
-              une influenceuse déjà active. Tu peux quand même créer la
-              tienne, ou retourner à l&apos;étape apparence et cliquer{" "}
-              <span className="font-medium">«&nbsp;Surprends-moi&nbsp;»</span>{" "}
-              pour un look plus unique.
-            </p>
-            <button
-              type="button"
-              onClick={() => setStep(2)}
-              className="mt-2 inline-flex items-center gap-1 rounded-lg bg-amber-500/20 px-3 py-1.5 text-xs font-medium text-amber-100 transition-colors hover:bg-amber-500/30"
-            >
-              <Sparkles className="h-3 w-3" />
-              Re-tirer l&apos;apparence
-            </button>
-          </div>
-        </div>
-      )}
+      <WizardCollisionBanner
+        fingerprint={data.appearanceFingerprint}
+        onReroll={() => setStep(2)}
+      />
 
       {/* Create button */}
       <div className="mx-auto max-w-md space-y-3">

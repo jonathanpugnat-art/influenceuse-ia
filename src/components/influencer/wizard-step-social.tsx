@@ -204,7 +204,7 @@ export function WizardStepSocial({
       </div>
 
       {/* Navigation */}
-      <div className="flex justify-between pt-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
         <button
           type="button"
           onClick={onPrev}
@@ -212,13 +212,22 @@ export function WizardStepSocial({
         >
           ← {t("back")}
         </button>
-        <button
-          type="button"
-          onClick={handleNext}
-          className="rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-6 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
-        >
-          {t("next")} →
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleNext}
+            className="rounded-xl border border-slate-700 px-4 py-2.5 text-sm text-slate-300 transition-colors hover:bg-slate-800 hover:text-white"
+          >
+            {t("socialSkip")}
+          </button>
+          <button
+            type="button"
+            onClick={handleNext}
+            className="rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-6 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
+          >
+            {t("next")} →
+          </button>
+        </div>
       </div>
     </div>
   );

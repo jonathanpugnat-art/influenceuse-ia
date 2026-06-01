@@ -5,7 +5,12 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { toast } from "sonner";
 import { WizardProgress } from "@/components/influencer/wizard-progress";
+import {
+  canNavigateToWizardStep,
+  getMaxReachableWizardStep,
+} from "@/lib/wizard-validation";
 import { WizardStepIdentity } from "@/components/influencer/wizard-step-identity";
 import { WizardStepAppearance } from "@/components/influencer/wizard-step-appearance";
 import { WizardStepSocial } from "@/components/influencer/wizard-step-social";
@@ -25,13 +30,29 @@ import {
 
 export default function NewInfluencerPage() {
   const t = useTranslations("wizard");
-  const { step, nextStep, prevStep, reset } = useInfluencerWizard();
+  const {
+    step,
+    setStep,
+    nextStep,
+    prevStep,
+    reset,
+    data,
+    generatedImages,
+    selectedImageIndex,
+  } = useInfluencerWizard();
   const [slideDirection, setSlideDirection] = useState<"forward" | "backward">(
     "forward"
   );
   const [hydrationReady, setHydrationReady] = useState(false);
   const [showDraftDialog, setShowDraftDialog] = useState(false);
   const draftCheckedRef = useRef(false);
+  const stepHeadingRef = useRef<HTMLHeadingElement>(null);
+
+  const maxReachableStep = getMaxReachableWizardStep(
+    data,
+    generatedImages,
+    selectedImageIndex
+  );
 
   useEffect(() => {
     const finish = () => {
@@ -77,6 +98,32 @@ export default function NewInfluencerPage() {
     setSlideDirection("backward");
     prevStep();
   };
+
+  const goToStep = (target: number) => {
+    if (target === step) return;
+    if (
+      !canNavigateToWizardStep(
+        target,
+        data,
+        generatedImages,
+        selectedImageIndex
+      )
+    ) {
+      if (target >= 2) {
+        toast.info(t("progressBlockedAppearance"));
+      } else {
+        toast.info(t("progressBlockedIdentity"));
+      }
+      return;
+    }
+    setSlideDirection(target > step ? "forward" : "backward");
+    setStep(target);
+  };
+
+  useEffect(() => {
+    if (!hydrationReady || showDraftDialog) return;
+    stepHeadingRef.current?.focus();
+  }, [step, hydrationReady, showDraftDialog]);
 
   const handleResumeDraft = () => {
     setShowDraftDialog(false);
@@ -157,10 +204,21 @@ export default function NewInfluencerPage() {
         <p className="mt-1 text-sm text-slate-400">{t("pageSubtitle")}</p>
       </div>
 
-      <WizardProgress currentStep={step} />
+      <WizardProgress
+        currentStep={step}
+        maxReachableStep={maxReachableStep}
+        onStepClick={goToStep}
+      />
 
       <div className="text-center">
-        <h2 className="text-lg font-semibold text-white">{info.title}</h2>
+        <h2
+          ref={stepHeadingRef}
+          id="wizard-step-heading"
+          tabIndex={-1}
+          className="text-lg font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 rounded"
+        >
+          {info.title}
+        </h2>
         <p className="mt-1 text-sm text-slate-400">{info.subtitle}</p>
       </div>
 
