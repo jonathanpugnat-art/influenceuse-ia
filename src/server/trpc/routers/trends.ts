@@ -7,6 +7,7 @@ import { checkCredits, deductCredits } from "@/server/services/credits.service";
 import { PLANS } from "@/lib/constants";
 import {
   getFeedForInfluencer,
+  getWizardTrendInspiration,
   personalizeFeedForInfluencer,
   personalizeSingleTrendForInfluencer,
   recommendationToCreatorParams,
@@ -47,6 +48,29 @@ export const trendsRouter = createTRPCRouter({
    * config — Surface basic configuration to the UI so it can render a
    * "Trends not configured" banner instead of an empty feed.
    */
+  /**
+   * wizardInspiration — Trend format chips for the creation wizard (step 2).
+   * Does not require an existing influencer.
+   */
+  wizardInspiration: protectedProcedure
+    .input(
+      z.object({
+        niche: z.string().min(1),
+        isNsfw: z.boolean().default(false),
+        limit: z.number().int().min(1).max(8).optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const user = await getDbUser(ctx.userId);
+      const items = await getWizardTrendInspiration({
+        niche: input.niche,
+        isNsfw: input.isNsfw,
+        locale: user.locale ?? undefined,
+        limit: input.limit,
+      });
+      return { items };
+    }),
+
   config: protectedProcedure.query(async ({ ctx }) => {
     const user = await getDbUser(ctx.userId);
     const planCfg = PLANS[user.plan as Plan];

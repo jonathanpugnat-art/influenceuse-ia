@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { useInfluencerWizard } from "@/hooks/use-influencer-wizard";
 import { TemplatePicker } from "@/components/influencer/template-picker";
+import { WizardIdentityPreview } from "@/components/influencer/wizard-identity-preview";
 import { pickRandomInfluencerName } from "@/lib/influencer-name-suggestions";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
@@ -227,6 +228,8 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       {/* Sprint 7 — pre-baked persona templates */}
       <TemplatePicker />
+
+      <WizardIdentityPreview />
 
       {/* Name */}
       <div className="space-y-2">

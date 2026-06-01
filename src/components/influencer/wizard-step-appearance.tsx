@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -29,6 +29,9 @@ import {
   randomAppearanceVariation,
 } from "@/lib/prompts/appearance-variation-ui";
 import { WizardAppearanceExpert } from "@/components/influencer/wizard-appearance-expert";
+import { WizardPortraitComparison } from "@/components/influencer/wizard-portrait-comparison";
+import { WizardTrendsInspire } from "@/components/influencer/wizard-trends-inspire";
+import { isIdentityStepComplete } from "@/lib/wizard-validation";
 import { trpc } from "@/lib/trpc";
 import { CREDIT_COSTS } from "@/lib/constants";
 import { useTranslations } from "next-intl";
@@ -211,7 +214,11 @@ export function WizardStepAppearance({
     setSelectedImageIndex,
     isGenerating,
     setIsGenerating,
+    expressMode,
+    setExpressMode,
+    setStep,
   } = useInfluencerWizard();
+  const expressAutoStarted = useRef(false);
 
   const { data: creditsData } = trpc.billing.getCurrentPlan.useQuery();
   const creditsRemaining = creditsData?.creditsRemaining ?? 0;
@@ -236,9 +243,18 @@ export function WizardStepAppearance({
       updateData(updates);
       setIsGenerating(false);
       toast.success(t("variantsGeneratedToast"));
+      if (expressMode) {
+        setExpressMode(false);
+        toast.success(t("expressPortraitDone"));
+        setStep(4);
+      }
     },
     onError: (err) => {
       setIsGenerating(false);
+      if (expressMode) {
+        expressAutoStarted.current = false;
+        setExpressMode(false);
+      }
       toast.error(err.message);
     },
   });
@@ -318,8 +334,31 @@ export function WizardStepAppearance({
   );
   const canGenerate = true;
 
+  useEffect(() => {
+    if (
+      !expressMode ||
+      expressAutoStarted.current ||
+      generatedImages.length > 0 ||
+      isGenerating ||
+      !hasEnoughCredits
+    ) {
+      return;
+    }
+    if (!isIdentityStepComplete(data)) return;
+    expressAutoStarted.current = true;
+    handleGenerate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot express auto-run
+  }, [expressMode, generatedImages.length, isGenerating, hasEnoughCredits]);
+
   return (
     <div className="space-y-6">
+      {expressMode && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          {t("expressGenerating")}
+        </div>
+      )}
+
+      <WizardTrendsInspire />
       {/* Credits */}
       <div className="flex items-center justify-between rounded-xl border border-slate-800/50 bg-slate-800/20 px-4 py-3">
         <div className="flex items-center gap-2 text-sm text-slate-300">
@@ -538,8 +577,13 @@ export function WizardStepAppearance({
 
           {generatedImages.length > 0 && (
             <>
-              <p className="text-xs text-slate-500">{t("selectVariant")}</p>
-              <div className="grid grid-cols-4 gap-2">
+              <WizardPortraitComparison
+                urls={generatedImages}
+                selectedIndex={selectedImageIndex}
+                onSelect={handleSelectImage}
+              />
+              <p className="text-xs text-slate-500 lg:hidden">{t("selectVariant")}</p>
+              <div className="grid grid-cols-4 gap-2 lg:hidden">
                 {generatedImages.map((url, i) => (
                   <button
                     key={i}

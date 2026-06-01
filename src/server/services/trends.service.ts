@@ -23,6 +23,7 @@ import {
   formatBriefToPhotoSeed,
   formatBriefToReelSeed,
   mergeRecommendationWithBrief,
+  parseTrendFormatBrief,
 } from "@/lib/trends/trend-format-brief";
 import {
   analyzeTrendItemFormat,
@@ -404,6 +405,62 @@ export async function getFeedForInfluencer(
   const trimmed = hasMore ? items.slice(0, hardCap) : items;
   const nextCursor = hasMore ? trimmed[trimmed.length - 1]!.id : null;
   return { items: trimmed, nextCursor };
+}
+
+/**
+ * Trend cards for the creation wizard (no influencer yet).
+ * Filters by niche + NSFW gate; returns items with parsed formatBrief when present.
+ */
+export async function getWizardTrendInspiration(opts: {
+  niche: string;
+  isNsfw: boolean;
+  locale?: string;
+  limit?: number;
+}): Promise<
+  Array<{
+    id: string;
+    title: string;
+    hook: string | null;
+    formatBrief: unknown;
+    platform: Platform;
+  }>
+> {
+  const limit = Math.min(opts.limit ?? 5, 8);
+  const freshSince = new Date(
+    Date.now() - TREND_FEED_TTL_HOURS * 3600 * 1000
+  );
+  const nsfwClause = opts.isNsfw ? {} : { isNsfw: false };
+
+  const items = await db.trendItem.findMany({
+    where: {
+      ...nsfwClause,
+      fetchedAt: { gte: freshSince },
+      OR: [
+        { nicheTags: { has: opts.niche } },
+        { nicheTags: { has: "GENERAL" } },
+        { nicheTags: { isEmpty: true } },
+      ],
+    },
+    orderBy: [{ growthScore: "desc" }, { fetchedAt: "desc" }],
+    take: limit,
+    select: {
+      id: true,
+      title: true,
+      formatBrief: true,
+      platform: true,
+    },
+  });
+
+  return items.map((item) => {
+    const brief = parseTrendFormatBrief(item.formatBrief);
+    return {
+      id: item.id,
+      title: item.title,
+      platform: item.platform,
+      hook: brief?.hook ?? null,
+      formatBrief: item.formatBrief,
+    };
+  });
 }
 
 // ──────────────────────────────────────────────

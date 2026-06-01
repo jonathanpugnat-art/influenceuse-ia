@@ -819,6 +819,18 @@
       "detail": "Detail",
       "expression": "Expression"
     },
+    "identityPreviewLabel": "Live preview",
+    "expressTitle": "Express mode",
+    "expressSubtitle": "Fitness template + auto portrait + summary in ~30s (social later).",
+    "expressStarted": "Express mode: generating portrait…",
+    "expressGenerating": "Express mode — auto-generating portrait…",
+    "expressPortraitDone": "Portrait ready — review and create your influencer.",
+    "portraitCompareHint": "Compare all 4 variants side by side (desktop)",
+    "trendsInspireTitle": "Inspired by trends",
+    "trendsInspireHint": "Apply a trending format to her visual signature (facial traits).",
+    "trendsInspireLoading": "Loading trends…",
+    "trendsInspireApplied": "Trend look applied: {hook}",
+    "trendsInspireFailed": "Could not apply this trend.",
     "templates": {
       "customTitle": "Create without a template",
       "customSubtitle": "Customize everything yourself — unique name, niche, and look",

@@ -14,6 +14,14 @@ Ce document résume **tout ce qui a été mis en place** et **ce qu’il te rest
 | Portrait obligatoire étape 2 | ✅ |
 | Toggle NSFW (plan Pro) + OnlyFans si NSFW activé | ✅ |
 | Sync nom formulaire ↔ store (templates) | ✅ |
+| Barre de progression cliquable (étapes complétées) | ✅ |
+| Skip réseaux « Configurer plus tard » | ✅ |
+| Collision visuelle dès l’étape 2 | ✅ |
+| i18n wizard (apparence, suggestions IA, progression) | ✅ |
+| Mode express (~30s, template + auto portrait) | ✅ |
+| Aperçu live identité étape 1 | ✅ |
+| Comparaison 4 portraits desktop | ✅ |
+| Tendances → traits apparence (étape 2) | ✅ |
 
 ### Studio photo
 | Feature | Statut |

@@ -817,6 +817,18 @@
       "detail": "Détail",
       "expression": "Expression"
     },
+    "identityPreviewLabel": "Aperçu live",
+    "expressTitle": "Mode express",
+    "expressSubtitle": "Template fitness + portrait auto + récap en ~30 secondes (réseaux plus tard).",
+    "expressStarted": "Mode express : génération du portrait en cours…",
+    "expressGenerating": "Mode express — génération automatique du portrait…",
+    "expressPortraitDone": "Portrait prêt — vérifie le récap et crée ton influenceuse.",
+    "portraitCompareHint": "Compare les 4 variantes côte à côte (desktop)",
+    "trendsInspireTitle": "S'inspirer des tendances",
+    "trendsInspireHint": "Applique le format d'une tendance à sa signature visuelle (traits du visage).",
+    "trendsInspireLoading": "Chargement des tendances…",
+    "trendsInspireApplied": "Look tendance appliqué : {hook}",
+    "trendsInspireFailed": "Impossible d'appliquer cette tendance.",
     "templates": {
       "customTitle": "Créer sans template",
       "customSubtitle": "Personnalise tout toi-même — nom, niche, apparence unique",

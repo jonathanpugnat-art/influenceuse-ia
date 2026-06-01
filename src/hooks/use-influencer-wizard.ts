@@ -52,6 +52,8 @@ interface WizardState {
   generatedImages: string[];
   selectedImageIndex: number;
   isGenerating: boolean;
+  /** One-shot express flow: auto-generate portrait then jump to summary. */
+  expressMode: boolean;
   setStep: (step: number) => void;
   nextStep: () => void;
   prevStep: () => void;
@@ -59,6 +61,7 @@ interface WizardState {
   setGeneratedImages: (images: string[]) => void;
   setSelectedImageIndex: (index: number) => void;
   setIsGenerating: (val: boolean) => void;
+  setExpressMode: (val: boolean) => void;
   reset: () => void;
 }
 
@@ -104,6 +107,7 @@ export const useInfluencerWizard = create<WizardState>()(
       generatedImages: [],
       selectedImageIndex: 0,
       isGenerating: false,
+      expressMode: false,
       setStep: (step) => set({ step }),
       nextStep: () => set((s) => ({ step: Math.min(s.step + 1, 4) })),
       prevStep: () => set((s) => ({ step: Math.max(s.step - 1, 1) })),
@@ -112,6 +116,7 @@ export const useInfluencerWizard = create<WizardState>()(
       setGeneratedImages: (images) => set({ generatedImages: images }),
       setSelectedImageIndex: (index) => set({ selectedImageIndex: index }),
       setIsGenerating: (val) => set({ isGenerating: val }),
+      setExpressMode: (val) => set({ expressMode: val }),
       reset: () =>
         set({
           step: 1,
@@ -119,6 +124,7 @@ export const useInfluencerWizard = create<WizardState>()(
           generatedImages: [],
           selectedImageIndex: 0,
           isGenerating: false,
+          expressMode: false,
         }),
     }),
     {

@@ -15,6 +15,7 @@ import { WizardStepIdentity } from "@/components/influencer/wizard-step-identity
 import { WizardStepAppearance } from "@/components/influencer/wizard-step-appearance";
 import { WizardStepSocial } from "@/components/influencer/wizard-step-social";
 import { WizardStepSummary } from "@/components/influencer/wizard-step-summary";
+import { WizardExpressLauncher } from "@/components/influencer/wizard-express-launcher";
 import { useInfluencerWizard } from "@/hooks/use-influencer-wizard";
 import { isMeaningfulWizardDraft } from "@/lib/wizard-draft";
 import {
@@ -203,6 +204,12 @@ export default function NewInfluencerPage() {
         <h1 className="text-2xl font-bold text-white">{t("pageTitle")}</h1>
         <p className="mt-1 text-sm text-slate-400">{t("pageSubtitle")}</p>
       </div>
+
+      {step === 1 && (
+        <WizardExpressLauncher
+          onStarted={() => setSlideDirection("forward")}
+        />
+      )}
 
       <WizardProgress
         currentStep={step}
