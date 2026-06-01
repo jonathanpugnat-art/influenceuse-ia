@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
+import { WIZARD_PERSIST_STORAGE_KEY } from "@/lib/wizard-draft";
 
 export interface WizardData {
   // Step 1 — Identity
@@ -121,7 +122,7 @@ export const useInfluencerWizard = create<WizardState>()(
         }),
     }),
     {
-      name: "influencer-wizard-draft",
+      name: WIZARD_PERSIST_STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
       // Only persist the data that costs money or effort to recreate.
       partialize: (s) => ({

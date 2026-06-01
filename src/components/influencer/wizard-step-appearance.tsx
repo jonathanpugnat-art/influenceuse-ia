@@ -29,6 +29,7 @@ import {
 import { WizardAppearanceExpert } from "@/components/influencer/wizard-appearance-expert";
 import { trpc } from "@/lib/trpc";
 import { CREDIT_COSTS } from "@/lib/constants";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -84,6 +85,7 @@ export function WizardStepAppearance({
   onNext: () => void;
   onPrev: () => void;
 }) {
+  const t = useTranslations("wizard");
   const {
     data,
     updateData,
@@ -160,9 +162,15 @@ export function WizardStepAppearance({
     if (url) updateData({ baseImageUrl: url });
   };
 
+  const selectedPortraitUrl =
+    generatedImages[selectedImageIndex] ?? data.baseImageUrl?.trim() ?? "";
+
   const handleNext = () => {
-    const url = generatedImages[selectedImageIndex];
-    if (url) updateData({ baseImageUrl: url });
+    if (!selectedPortraitUrl) {
+      toast.error(t("portraitRequired"));
+      return;
+    }
+    updateData({ baseImageUrl: selectedPortraitUrl });
     onNext();
   };
 
@@ -507,14 +515,15 @@ export function WizardStepAppearance({
           onClick={onPrev}
           className="rounded-xl border border-slate-700 px-6 py-2.5 text-sm text-slate-300 transition-colors hover:bg-slate-800 hover:text-white"
         >
-          ← Précédent
+          ← {t("back")}
         </button>
         <button
           type="button"
           onClick={handleNext}
-          className="rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-6 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
+          disabled={!selectedPortraitUrl}
+          className="rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-6 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Suivant →
+          {t("next")} →
         </button>
       </div>
     </div>

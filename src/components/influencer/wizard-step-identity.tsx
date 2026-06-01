@@ -25,8 +25,6 @@ import { TemplatePicker } from "@/components/influencer/template-picker";
 import { pickRandomInfluencerName } from "@/lib/influencer-name-suggestions";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import Link from "next/link";
-
 const NICHE_KEYS: Record<string, string> = {
   FASHION: "nicheFashion",
   FITNESS: "nicheFitness",
@@ -64,6 +62,8 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
   const t = useTranslations("wizard");
   const tInfluencer = useTranslations("influencer");
   const { data, updateData } = useInfluencerWizard();
+  const { data: plan } = trpc.billing.getCurrentPlan.useQuery();
+  const allowNsfw = plan?.features.hasNsfw ?? false;
 
   // Sprint 14 — rotate the name placeholder per mount so we don't all end
   // up with "Luna Fit" influencers. Memoised so it doesn't jitter on every
@@ -150,7 +150,17 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
     });
     void trigger();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.bio, data.personality, data.niche, data.gender, data.age, data.isNsfw]);
+  }, [
+    data.name,
+    data.bio,
+    data.personality,
+    data.niche,
+    data.gender,
+    data.age,
+    data.isNsfw,
+    reset,
+    trigger,
+  ]);
 
   const bio = watch("bio");
   const personality = watch("personality");
@@ -179,7 +189,7 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
 
   const handleSuggest = () => {
     if (!selectedNiche) {
-      toast.info("Choisis d'abord une niche pour des suggestions ciblées.");
+      toast.info(t("suggestNeedsNiche"));
       return;
     }
     suggestMutation.mutate({
@@ -205,7 +215,7 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
     setValue("personality", s.personality, { shouldValidate: true });
     updateData({ bio: s.bio, personality: s.personality });
     setSuggestOpen(false);
-    toast.success("Bio et personnalité appliquées ✨");
+    toast.success(t("suggestApplied"));
   };
 
   const onSubmit = (formData: FormData) => {
@@ -271,9 +281,7 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
                 !selectedNiche && "opacity-50"
               )}
               title={
-                !selectedNiche
-                  ? "Choisis d'abord une niche"
-                  : "Génère 3 suggestions de bio + personnalité"
+                !selectedNiche ? t("suggestNeedsNiche") : t("suggestTooltip")
               }
             >
               {suggestMutation.isPending ? (
@@ -281,7 +289,7 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
               ) : (
                 <Wand2 className="h-3 w-3" />
               )}
-              Suggérer
+              {t("suggest")}
             </button>
           </div>
           <span
@@ -378,40 +386,44 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
         )}
       </div>
 
-      {/* NSFW toggle — hidden for now, will be re-enabled later */}
-      {false && (
-      <div className="space-y-3 rounded-xl border border-slate-800/50 bg-slate-800/20 p-4">
-        <div className="flex items-center justify-between">
-          <Label htmlFor="nsfw-toggle" className="text-slate-300">
-            {t("enableNsfw")}
-          </Label>
-          <Controller
-            name="isNsfw"
-            control={control}
-            render={({ field }) => (
-              <Switch
-                id="nsfw-toggle"
-                checked={field.value}
-                onCheckedChange={field.onChange}
-              />
-            )}
-          />
-        </div>
-        {isNsfw && (
-          <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 p-3">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-            <div className="text-xs text-amber-300">
-              <p>{t("nsfwHint")}</p>
-              <Link
-                href="/billing"
-                className="mt-1 inline-block text-amber-400 underline underline-offset-2 hover:text-amber-300"
-              >
-                {t("seePlans")}
-              </Link>
-            </div>
+      {allowNsfw && (
+        <div className="space-y-3 rounded-xl border border-slate-800/50 bg-slate-800/20 p-4">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="nsfw-toggle" className="text-slate-300">
+              {t("enableNsfw")}
+            </Label>
+            <Controller
+              name="isNsfw"
+              control={control}
+              render={({ field }) => (
+                <Switch
+                  id="nsfw-toggle"
+                  checked={field.value}
+                  onCheckedChange={(checked) => {
+                    field.onChange(checked);
+                    if (checked) {
+                      updateData({ isNsfw: true });
+                    } else {
+                      updateData({
+                        isNsfw: false,
+                        onlyfansEnabled: false,
+                        onlyfansUsername: "",
+                      });
+                    }
+                  }}
+                />
+              )}
+            />
           </div>
-        )}
-      </div>
+          {isNsfw && (
+            <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 p-3">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+              <div className="text-xs text-amber-300">
+                <p>{t("nsfwHint")}</p>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Submit */}

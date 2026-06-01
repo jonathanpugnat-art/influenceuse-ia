@@ -15,7 +15,9 @@ import {
   TikTokIcon,
   OnlyFansIcon,
 } from "@/components/ui/social-icons";
+import { useTranslations } from "next-intl";
 import { useInfluencerWizard } from "@/hooks/use-influencer-wizard";
+import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 
 function SocialCard({
@@ -142,7 +144,11 @@ export function WizardStepSocial({
   onNext: () => void;
   onPrev: () => void;
 }) {
+  const t = useTranslations("wizard");
   const { data, updateData } = useInfluencerWizard();
+  const { data: plan } = trpc.billing.getCurrentPlan.useQuery();
+  const allowNsfw = plan?.features.hasNsfw ?? false;
+  const showOnlyFans = allowNsfw && data.isNsfw;
 
   const handleNext = () => {
     onNext();
@@ -175,30 +181,26 @@ export function WizardStepSocial({
           onUsernameChange={(v) => updateData({ tiktokUsername: v })}
         />
 
-        {/* OnlyFans */}
-        <SocialCard
-          icon={<OnlyFansIcon className="h-5 w-5 text-white" />}
-          name="OnlyFans"
-          gradientFrom="from-blue-500"
-          gradientTo="to-blue-400"
-          enabled={data.onlyfansEnabled}
-          onToggle={(v) => updateData({ onlyfansEnabled: v })}
-          username={data.onlyfansUsername}
-          onUsernameChange={(v) => updateData({ onlyfansUsername: v })}
-          disabled={!data.isNsfw}
-          disabledMessage="Disponible uniquement pour les influenceuses NSFW"
-          hideConnect
-          note="Publication manuelle — le contenu sera préparé pour téléchargement"
-        />
+        {showOnlyFans && (
+          <SocialCard
+            icon={<OnlyFansIcon className="h-5 w-5 text-white" />}
+            name="OnlyFans"
+            gradientFrom="from-blue-500"
+            gradientTo="to-blue-400"
+            enabled={data.onlyfansEnabled}
+            onToggle={(v) => updateData({ onlyfansEnabled: v })}
+            username={data.onlyfansUsername}
+            onUsernameChange={(v) => updateData({ onlyfansUsername: v })}
+            hideConnect
+            note={t("onlyfansManualNote")}
+          />
+        )}
       </div>
 
       {/* Note */}
       <div className="flex items-start gap-2 rounded-xl bg-slate-800/30 p-3">
         <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
-        <p className="text-xs text-slate-500">
-          Tu pourras connecter tes comptes plus tard dans les paramètres de
-          l&apos;influenceuse.
-        </p>
+        <p className="text-xs text-slate-500">{t("connectLater")}</p>
       </div>
 
       {/* Navigation */}
@@ -208,14 +210,14 @@ export function WizardStepSocial({
           onClick={onPrev}
           className="rounded-xl border border-slate-700 px-6 py-2.5 text-sm text-slate-300 transition-colors hover:bg-slate-800 hover:text-white"
         >
-          ← Précédent
+          ← {t("back")}
         </button>
         <button
           type="button"
           onClick={handleNext}
           className="rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-6 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
         >
-          Suivant →
+          {t("next")} →
         </button>
       </div>
     </div>

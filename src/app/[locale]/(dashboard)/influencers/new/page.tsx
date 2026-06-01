@@ -1,53 +1,90 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { WizardProgress } from "@/components/influencer/wizard-progress";
 import { WizardStepIdentity } from "@/components/influencer/wizard-step-identity";
 import { WizardStepAppearance } from "@/components/influencer/wizard-step-appearance";
 import { WizardStepSocial } from "@/components/influencer/wizard-step-social";
 import { WizardStepSummary } from "@/components/influencer/wizard-step-summary";
 import { useInfluencerWizard } from "@/hooks/use-influencer-wizard";
-
-const stepTitles: Record<number, { title: string; subtitle: string }> = {
-  1: {
-    title: "Identité",
-    subtitle: "Définis la personnalité et le positionnement de ton influenceuse",
-  },
-  2: {
-    title: "Apparence",
-    subtitle: "Personnalise le look et génère le visage de ton influenceuse",
-  },
-  3: {
-    title: "Réseaux sociaux",
-    subtitle: "Configure les plateformes sur lesquelles elle sera active",
-  },
-  4: {
-    title: "Confirmation",
-    subtitle: "Vérifie les informations et crée ton influenceuse",
-  },
-};
+import { isMeaningfulWizardDraft } from "@/lib/wizard-draft";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function NewInfluencerPage() {
+  const t = useTranslations("wizard");
   const { step, nextStep, prevStep, reset } = useInfluencerWizard();
-  const directionRef = useRef<"forward" | "backward">("forward");
+  const [slideDirection, setSlideDirection] = useState<"forward" | "backward">(
+    "forward"
+  );
+  const [hydrationReady, setHydrationReady] = useState(false);
+  const [showDraftDialog, setShowDraftDialog] = useState(false);
+  const draftCheckedRef = useRef(false);
 
-  // Reset wizard when mounting the page
   useEffect(() => {
-    reset();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const finish = () => {
+      if (draftCheckedRef.current) return;
+      draftCheckedRef.current = true;
+
+      const state = useInfluencerWizard.getState();
+      if (isMeaningfulWizardDraft(state)) {
+        setShowDraftDialog(true);
+      }
+      setHydrationReady(true);
+    };
+
+    if (useInfluencerWizard.persist.hasHydrated()) {
+      finish();
+      return;
+    }
+
+    const unsub = useInfluencerWizard.persist.onFinishHydration(finish);
+    return unsub;
   }, []);
 
+  useEffect(() => {
+    if (!hydrationReady || showDraftDialog) return;
+
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      const state = useInfluencerWizard.getState();
+      if (!isMeaningfulWizardDraft(state)) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [hydrationReady, showDraftDialog]);
+
   const goNext = () => {
-    directionRef.current = "forward";
+    setSlideDirection("forward");
     nextStep();
   };
 
   const goPrev = () => {
-    directionRef.current = "backward";
+    setSlideDirection("backward");
     prevStep();
+  };
+
+  const handleResumeDraft = () => {
+    setShowDraftDialog(false);
+  };
+
+  const handleRestartDraft = () => {
+    reset();
+    setShowDraftDialog(false);
   };
 
   const slideVariants = {
@@ -62,46 +99,76 @@ export default function NewInfluencerPage() {
     }),
   };
 
-  const info = stepTitles[step];
+  const stepMeta: Record<number, { title: string; subtitle: string }> = {
+    1: { title: t("step1Title"), subtitle: t("step1Subtitle") },
+    2: { title: t("step2Title"), subtitle: t("step2Subtitle") },
+    3: { title: t("step3Title"), subtitle: t("step3Subtitle") },
+    4: { title: t("step4Title"), subtitle: t("step4Subtitle") },
+  };
+
+  const info = stepMeta[step] ?? stepMeta[1];
+
+  if (!hydrationReady) {
+    return (
+      <div className="mx-auto max-w-4xl space-y-8 pb-16 md:pb-0">
+        <div className="h-8 w-48 animate-pulse rounded-lg bg-slate-800" />
+        <div className="h-4 w-64 animate-pulse rounded bg-slate-800/60" />
+      </div>
+    );
+  }
 
   return (
-    // Sprint 14 — bugfix: extra pb on mobile so the bottom nav (h≈60px)
-    // never overlaps the wizard's "Next/Create" submit button.
     <div className="mx-auto max-w-4xl space-y-8 pb-16 md:pb-0">
-      {/* Back link */}
+      <AlertDialog open={showDraftDialog} onOpenChange={setShowDraftDialog}>
+        <AlertDialogContent className="border-slate-800 bg-slate-900 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("draftResumeTitle")}</AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-400">
+              {t("draftResumeDescription", { step })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={handleRestartDraft}
+              className="border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800"
+            >
+              {t("draftRestart")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleResumeDraft}
+              className="bg-violet-600 hover:bg-violet-500"
+            >
+              {t("draftContinue")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Link
         href="/influencers"
         className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-white"
       >
         <ArrowLeft className="h-4 w-4" />
-        Mes Influenceuses
+        {t("backToList")}
       </Link>
 
-      {/* Page header */}
       <div>
-        <h1 className="text-2xl font-bold text-white">
-          Nouvelle influenceuse
-        </h1>
-        <p className="mt-1 text-sm text-slate-400">
-          Crée une influenceuse IA en 4 étapes
-        </p>
+        <h1 className="text-2xl font-bold text-white">{t("pageTitle")}</h1>
+        <p className="mt-1 text-sm text-slate-400">{t("pageSubtitle")}</p>
       </div>
 
-      {/* Progress bar */}
       <WizardProgress currentStep={step} />
 
-      {/* Step title */}
       <div className="text-center">
         <h2 className="text-lg font-semibold text-white">{info.title}</h2>
         <p className="mt-1 text-sm text-slate-400">{info.subtitle}</p>
       </div>
 
-      {/* Step content with animation */}
       <div className="relative min-h-[400px]">
-        <AnimatePresence mode="wait" custom={directionRef.current}>
+        <AnimatePresence mode="wait" custom={slideDirection}>
           <motion.div
             key={step}
-            custom={directionRef.current}
+            custom={slideDirection}
             variants={slideVariants}
             initial="enter"
             animate="center"

@@ -6,6 +6,15 @@ Ce document résume **tout ce qui a été mis en place** et **ce qu’il te rest
 
 ## 1. Récap des fonctionnalités déployées (code)
 
+### Wizard création influenceuse
+| Feature | Statut |
+|---------|--------|
+| Reprise brouillon localStorage (modal) | ✅ |
+| Guard `beforeunload` si brouillon en cours | ✅ |
+| Portrait obligatoire étape 2 | ✅ |
+| Toggle NSFW (plan Pro) + OnlyFans si NSFW activé | ✅ |
+| Sync nom formulaire ↔ store (templates) | ✅ |
+
 ### Studio photo
 | Feature | Statut |
 |---------|--------|
