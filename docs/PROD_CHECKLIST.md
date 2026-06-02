@@ -197,4 +197,21 @@ Prompt FR → enrichissement LLM → garde-fou mots interdits
 
 ---
 
-*Dernière mise à jour : mai 2026 — commits récents sur `main` (selfie/candy fix + Premium Together/Sightengine).*
+## 8. Audit technique (clôture)
+
+**Statut : clos côté code** (détail dans [`AUDIT_TECHNIQUE.md`](./AUDIT_TECHNIQUE.md)).
+
+| Item audit | Fait |
+|------------|------|
+| Build TS Together FLUX | ✅ |
+| Landing `/home` + redirect racine | ✅ |
+| Crédits atomiques | ✅ |
+| Rate limit générations IA | ✅ |
+| ESLint + turbopack | ✅ |
+| E2E Playwright | ⏸ plus tard |
+
+**Commit principal :** `eed723f` — *Corriger l’audit prod : routes, crédits atomiques et rate limit IA.*
+
+---
+
+*Dernière mise à jour : mai 2026 — audit technique clos ; Premium / wizard / studio inchangés côté checklist §1.*

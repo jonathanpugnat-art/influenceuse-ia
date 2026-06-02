@@ -48,8 +48,7 @@ const ClerkUserSection = dynamic(
 const hasClerk = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 const mainNavItems = [
-  { labelKey: "common.dashboard", icon: LayoutDashboard, href: "/" },
-  { labelKey: "common.influencers", icon: Users, href: "/influencers" },
+  { labelKey: "common.dashboard", icon: LayoutDashboard, href: "/influencers" },
   { labelKey: "dashboard.createContent", icon: ImagePlus, href: "/content" },
   { labelKey: "common.calendar", icon: Calendar, href: "/calendar" },
   { labelKey: "common.library", icon: FolderOpen, href: "/library" },

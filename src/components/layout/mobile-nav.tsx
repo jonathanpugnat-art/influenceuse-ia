@@ -3,7 +3,6 @@
 import { Link, usePathname } from "@/i18n/navigation";
 import {
   LayoutDashboard,
-  Users,
   ImagePlus,
   Calendar,
   MoreHorizontal,
@@ -24,8 +23,7 @@ export function MobileNav() {
   const [showMore, setShowMore] = useState(false);
 
   const mainItems = [
-    { label: t("dashboard"), icon: LayoutDashboard, href: "/" },
-    { label: t("influencers"), icon: Users, href: "/influencers" },
+    { label: t("dashboard"), icon: LayoutDashboard, href: "/influencers" },
     { label: t("create"), icon: ImagePlus, href: "/content" },
     { label: t("calendar"), icon: Calendar, href: "/calendar" },
   ];

@@ -28,7 +28,7 @@ function Breadcrumb() {
   const segments = pathname.split("/").filter(Boolean);
 
   const routeLabels: Record<string, string> = {
-    "/": t("dashboard"),
+    "/": t("influencers"),
     "/influencers": t("influencers"),
     "/influencers/new": t("newInfluencer"),
     "/content": t("createContent"),
