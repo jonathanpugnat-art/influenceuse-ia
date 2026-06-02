@@ -476,6 +476,7 @@ function toPremiumFluxInput(
     negative_prompt: negativePrompt,
     width: DEFAULT_IMAGE_PARAMS.width,
     height: DEFAULT_IMAGE_PARAMS.height,
+    steps: DEFAULT_IMAGE_PARAMS.num_inference_steps,
     num_inference_steps: DEFAULT_IMAGE_PARAMS.num_inference_steps,
     guidance_scale: DEFAULT_IMAGE_PARAMS.guidance_scale,
   };

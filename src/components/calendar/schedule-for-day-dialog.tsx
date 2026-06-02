@@ -11,7 +11,6 @@ import {
   CheckCircle2,
   Loader2,
   Plus,
-  AlertCircle,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations, useLocale } from "next-intl";
@@ -74,6 +73,7 @@ export function ScheduleForDayDialog({
   // Reset state every time the dialog is reopened for a new day.
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset form when dialog reopens
       setSelectedContentId(null);
       setTime("09:00");
       setPlatforms(["INSTAGRAM"]);
@@ -112,8 +112,6 @@ export function ScheduleForDayDialog({
     return d;
   }, [day, time]);
 
-  const isPast = scheduledAt !== null && scheduledAt.getTime() <= Date.now();
-
   const togglePlatform = (p: Platform) => {
     setPlatforms((prev) =>
       prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]
@@ -126,7 +124,7 @@ export function ScheduleForDayDialog({
       return;
     }
     if (!scheduledAt) return;
-    if (isPast) {
+    if (scheduledAt.getTime() <= Date.now()) {
       toast.error(t("errorPast"));
       return;
     }
@@ -294,12 +292,6 @@ export function ScheduleForDayDialog({
                 </button>
               ))}
             </div>
-            {isPast && (
-              <p className="mt-2 flex items-center gap-1.5 text-xs text-amber-400">
-                <AlertCircle className="h-3.5 w-3.5" />
-                {t("warnPast")}
-              </p>
-            )}
           </div>
 
           {/* ── Platform picker ─────────────────────────────────── */}
@@ -350,7 +342,6 @@ export function ScheduleForDayDialog({
               disabled={
                 scheduleMutation.isPending ||
                 !selectedContentId ||
-                isPast ||
                 platforms.length === 0
               }
               className="bg-violet-500 hover:bg-violet-600"

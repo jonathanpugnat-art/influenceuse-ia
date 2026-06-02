@@ -16,6 +16,7 @@ describe("trend-format-brief", () => {
         type: "PHOTO",
         platform: "INSTAGRAM",
         scene: "studio",
+        sceneDescription: "",
         pose: "portrait",
         expression: "smile",
         outfit: "",

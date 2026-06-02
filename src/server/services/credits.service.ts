@@ -95,21 +95,24 @@ export async function deductCredits(
   userId: string,
   cost: number
 ): Promise<void> {
-  try {
-    const credits = await getCredits(userId);
+  if (cost <= 0) return;
 
-    if (credits.remaining < cost) {
+  try {
+    // Atomic deduct — avoids TOCTOU when two generations run in parallel.
+    const affected = await db.$executeRaw`
+      UPDATE "User"
+      SET "creditsUsed" = "creditsUsed" + ${cost}
+      WHERE "id" = ${userId}
+        AND "creditsUsed" + ${cost} <= "creditsLimit"
+    `;
+
+    if (affected === 0) {
+      const credits = await getCredits(userId);
       throw new TRPCError({
         code: "FORBIDDEN",
-        // Tagged message for the client-side useUpgradeOnLimitError hook.
         message: `UPGRADE_REQUIRED:credits_exhausted:${cost}:${credits.remaining}`,
       });
     }
-
-    await db.user.update({
-      where: { id: userId },
-      data: { creditsUsed: { increment: cost } },
-    });
   } catch (error) {
     if (error instanceof TRPCError) throw error;
     console.error("[credits.service] deductCredits error:", error);

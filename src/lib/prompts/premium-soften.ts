@@ -5,7 +5,7 @@ const PREMIUM_SOFT_PREFIX =
   "professional intimate photography, ";
 
 export function softenPremiumPrompt(prompt: string): string {
-  let p = prompt
+  const p = prompt
     .replace(/\bnude\b/gi, "")
     .replace(/\bnaked\b/gi, "")
     .replace(/\btopless\b/gi, "")

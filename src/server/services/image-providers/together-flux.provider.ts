@@ -6,11 +6,22 @@ export type TogetherFluxInput = {
   negative_prompt?: string;
   width?: number;
   height?: number;
+  /** Together API (`steps`). */
   steps?: number;
+  /** Replicate fallback (`num_inference_steps`). */
+  num_inference_steps?: number;
   guidance_scale?: number;
   seed?: number;
   reference_images?: string[];
 };
+
+export function resolveFluxInferenceSteps(input: TogetherFluxInput): number {
+  return (
+    input.steps ??
+    input.num_inference_steps ??
+    28
+  );
+}
 
 const TOGETHER_IMAGES_URL = "https://api.together.xyz/v1/images/generations";
 
@@ -65,7 +76,7 @@ async function runSingleTogetherFlux(
     prompt: input.prompt,
     width: input.width ?? 1024,
     height: input.height ?? 1280,
-    steps: input.steps ?? 28,
+    steps: resolveFluxInferenceSteps(input),
     n: 1,
     response_format: "url",
     output_format: "jpeg",

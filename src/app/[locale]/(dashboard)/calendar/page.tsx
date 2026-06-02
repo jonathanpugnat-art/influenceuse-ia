@@ -104,6 +104,8 @@ export default function CalendarPage() {
           return d;
         })();
 
+    // Deep-link from trends: open schedule dialog with suggested slot (one-shot).
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- URL-driven dialog bootstrap
     setCurrentDate(day);
     setScheduleDay(day);
     setScheduleOpen(true);

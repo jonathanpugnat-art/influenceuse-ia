@@ -1,5 +1,6 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
+import { assertAiGenerationRateLimit } from "@/server/trpc/rate-limit";
 
 export type ScheduleAfterFn = (fn: () => void | Promise<void>) => void;
 
@@ -48,13 +49,16 @@ export const createTRPCRouter = t.router;
 export const createCallerFactory = t.createCallerFactory;
 export const publicProcedure = t.procedure;
 
-export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
+export const protectedProcedure = t.procedure.use(async ({ ctx, next, path }) => {
   if (!ctx.userId) {
     throw new TRPCError({
       code: "UNAUTHORIZED",
       message: "You must be logged in to perform this action",
     });
   }
+
+  await assertAiGenerationRateLimit(ctx.userId, path);
+
   return next({
     ctx: {
       ...ctx,

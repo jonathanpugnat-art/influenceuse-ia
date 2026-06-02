@@ -15,6 +15,7 @@ export function useCreatorExpertMode(variant: CreatorVariant) {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(storageKey(variant));
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate expert toggle from localStorage
       if (raw === "1") setExpertState(true);
     } catch {
       /* ignore */

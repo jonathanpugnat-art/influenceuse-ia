@@ -66,6 +66,7 @@ export function ReelAudioPanel({
     if (speechConfig.isLoading) return;
     if (influencerId && audioAssets.isLoading) return;
     defaultModeSet.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- pick default mode after async config loads
     if (speechConfig.data?.available) setMode("generate");
     else if ((audioAssets.data?.length ?? 0) > 0) setMode("library");
     else setMode("url");

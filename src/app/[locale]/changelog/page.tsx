@@ -116,7 +116,7 @@ export default async function ChangelogPage({
     <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 px-4 py-16 sm:px-8">
       <div className="mx-auto max-w-3xl">
         <Link
-          href="/"
+          href="/home"
           className="mb-8 inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-white"
         >
           <ArrowLeft className="h-4 w-4" />

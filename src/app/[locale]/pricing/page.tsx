@@ -115,14 +115,14 @@ export default async function PricingPage({
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-50 selection:bg-violet-500/30">
       <header className="container mx-auto px-6 h-16 flex items-center justify-between border-b border-zinc-800/50">
-        <Link href="/" className="flex items-center gap-2 group">
+        <Link href="/home" className="flex items-center gap-2 group">
           <div className="size-8 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
             <Sparkles className="size-4 text-white" />
           </div>
           <span className="font-bold text-lg tracking-tight">Influenceuse IA</span>
         </Link>
         <Link
-          href="/"
+          href="/home"
           className="text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-2"
         >
           <ArrowLeft className="size-4" /> {tLanding("navFeatures")}

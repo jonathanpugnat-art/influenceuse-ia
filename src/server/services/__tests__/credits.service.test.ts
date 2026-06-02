@@ -6,6 +6,7 @@ const mockDb = vi.hoisted(() => ({
     findUnique: vi.fn(),
     update: vi.fn(),
   },
+  $executeRaw: vi.fn(),
 }));
 
 vi.mock("@/server/db", () => ({
@@ -97,20 +98,15 @@ describe("credits.service", () => {
   });
 
   describe("deductCredits", () => {
-    it("decrements credits when user has enough", async () => {
-      mockDb.user.findUnique.mockResolvedValue({
-        creditsUsed: 10,
-        creditsLimit: 100,
-      });
-      mockDb.user.update.mockResolvedValue({});
+    it("decrements credits atomically when user has enough", async () => {
+      mockDb.$executeRaw.mockResolvedValue(1);
       await deductCredits("user-1", 5);
-      expect(mockDb.user.update).toHaveBeenCalledWith({
-        where: { id: "user-1" },
-        data: { creditsUsed: { increment: 5 } },
-      });
+      expect(mockDb.$executeRaw).toHaveBeenCalled();
+      expect(mockDb.user.findUnique).not.toHaveBeenCalled();
     });
 
     it("throws FORBIDDEN when insufficient credits", async () => {
+      mockDb.$executeRaw.mockResolvedValue(0);
       mockDb.user.findUnique.mockResolvedValue({
         creditsUsed: 95,
         creditsLimit: 100,
@@ -119,20 +115,12 @@ describe("credits.service", () => {
       await expect(deductCredits("user-1", 10)).rejects.toMatchObject({
         code: "FORBIDDEN",
       });
-      expect(mockDb.user.update).not.toHaveBeenCalled();
     });
 
     it("allows deducting exactly remaining (limit to 0 effectively)", async () => {
-      mockDb.user.findUnique.mockResolvedValue({
-        creditsUsed: 80,
-        creditsLimit: 100,
-      });
-      mockDb.user.update.mockResolvedValue({});
+      mockDb.$executeRaw.mockResolvedValue(1);
       await deductCredits("user-1", 20);
-      expect(mockDb.user.update).toHaveBeenCalledWith({
-        where: { id: "user-1" },
-        data: { creditsUsed: { increment: 20 } },
-      });
+      expect(mockDb.$executeRaw).toHaveBeenCalled();
     });
   });
 

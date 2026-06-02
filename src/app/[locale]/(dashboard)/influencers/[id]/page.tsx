@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useEffect } from "react";
+import { use, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -61,16 +61,12 @@ export default function InfluencerDetailPage({
   type ProfileTab = (typeof PROFILE_TABS)[number];
 
   const tabFromUrl = searchParams.get("tab");
-  const initialTab: ProfileTab = PROFILE_TABS.includes(tabFromUrl as ProfileTab)
+  const tabFromUrlValid = PROFILE_TABS.includes(tabFromUrl as ProfileTab)
     ? (tabFromUrl as ProfileTab)
-    : "feed";
-  const [activeTab, setActiveTab] = useState<ProfileTab>(initialTab);
-
-  useEffect(() => {
-    if (PROFILE_TABS.includes(tabFromUrl as ProfileTab)) {
-      setActiveTab(tabFromUrl as ProfileTab);
-    }
-  }, [tabFromUrl]);
+    : null;
+  const [manualTab, setManualTab] = useState<ProfileTab>("feed");
+  const activeTab = tabFromUrlValid ?? manualTab;
+  const setActiveTab = setManualTab;
 
   const { data: influencer, isLoading, error } = trpc.influencer.getById.useQuery({ id });
 

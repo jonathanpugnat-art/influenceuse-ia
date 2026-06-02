@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion, type Variants } from "framer-motion";
 import {
@@ -65,15 +65,9 @@ export default function AnalyticsPage() {
   const searchParams = useSearchParams();
   const influencerFromUrl = searchParams.get("influencer");
 
-  const [influencerId, setInfluencerId] = useState<string | "all">(
-    influencerFromUrl ?? "all"
-  );
-
-  useEffect(() => {
-    if (influencerFromUrl) {
-      setInfluencerId(influencerFromUrl);
-    }
-  }, [influencerFromUrl]);
+  const [manualInfluencerId, setManualInfluencerId] = useState<string | "all">("all");
+  const influencerId = influencerFromUrl ?? manualInfluencerId;
+  const setInfluencerId = setManualInfluencerId;
   const [period, setPeriod] = useState<"7d" | "30d" | "90d" | "all">("30d");
   const [metric, setMetric] = useState<"followers" | "engagement" | "views" | "likes">("views");
   const [visiblePlatforms, setVisiblePlatforms] = useState<Record<string, boolean>>({

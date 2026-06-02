@@ -69,6 +69,7 @@ export function ContentPlanDialog({
   // Sync when dialog opens with a profile-scoped default.
   useEffect(() => {
     if (open && defaultInfluencerId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset form when dialog opens
       setInfluencerId(defaultInfluencerId);
     }
   }, [open, defaultInfluencerId]);

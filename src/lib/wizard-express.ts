@@ -26,7 +26,7 @@ export function buildExpressWizardPatch(
 ): Partial<WizardData> {
   const tpl = getExpressTemplate();
   const diversified = diversifyTemplate(tpl, random, 0.4);
-  const name = pickRandomInfluencerName(random);
+  const name = pickRandomInfluencerName();
   const age = diversified.defaults.age ?? 24;
   const appearanceVariations = randomAppearanceVariation();
   const partial: Partial<WizardData> = {
