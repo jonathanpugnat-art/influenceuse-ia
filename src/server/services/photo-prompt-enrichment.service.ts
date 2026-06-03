@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { callJsonLLM } from "@/server/services/ai-text.service";
+import { callPhotoPromptJsonLLM } from "@/server/services/ai-text.service";
 import {
   extractScenePropsSuffix,
   shouldEnrichForImagePrompt,
@@ -74,7 +74,7 @@ export async function enrichPhotoPromptFields(
     .join("\n");
 
   try {
-    const parsed = await callJsonLLM({
+    const parsed = await callPhotoPromptJsonLLM({
       systemPrompt: SYSTEM_PROMPT,
       userPrompt,
       maxTokens: 500,

@@ -162,6 +162,8 @@ export default function TrendsPage() {
       } else {
         applyPhotoSeed({
           influencerId: blob.influencerId,
+          lookId: blob.lookId,
+          instagramShot: blob.instagramShot,
           scene: blob.scene,
           sceneDescription: blob.sceneDescription,
           pose: blob.pose,
@@ -170,6 +172,8 @@ export default function TrendsPage() {
           customPrompt: blob.customPrompt,
           caption: blob.hook,
           hashtags: blob.hashtags,
+          sceneFirst: false,
+          useFaceReference: true,
         });
       }
       if (applyDestinationRef.current === "calendar") {

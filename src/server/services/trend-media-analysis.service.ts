@@ -12,6 +12,7 @@ import {
 } from "@/lib/trends/trend-format-brief";
 import { callJsonLLM } from "@/server/services/ai-text.service";
 import { JSON_REPAIR_INSTRUCTION } from "@/lib/prompts/content-plan-prompts";
+import { pickVisionUrlsFromTrend } from "@/lib/trends/trend-video-items";
 import type { TrendItem } from "@/generated/prisma/client";
 
 const ANALYSIS_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5";
@@ -135,11 +136,11 @@ export async function analyzeTrendItemFormat(
     }
   }
 
-  const imageUrls = [
-    item.thumbnailUrl,
-    item.thumbnailUrlAlt,
-    ...item.mediaUrls,
-  ].filter((u): u is string => Boolean(u?.startsWith("http")));
+  const imageUrls = pickVisionUrlsFromTrend({
+    thumbnailUrl: item.thumbnailUrl,
+    thumbnailUrlAlt: item.thumbnailUrlAlt,
+    mediaUrls: item.mediaUrls,
+  });
 
   const brief =
     imageUrls.length > 0

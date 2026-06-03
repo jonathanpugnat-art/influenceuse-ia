@@ -82,6 +82,8 @@ const photoCreatorInputSchema = z
     contentMode: z.enum(contentModeValues).default("SFW"),
     nsfwLevel: z.string().optional(),
     useFaceReference: z.boolean().default(true),
+    lookId: z.string().nullable().optional(),
+    instagramShot: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
     if (!data.outfit.trim()) {
@@ -119,6 +121,8 @@ function photoParamsBlob(
     numberOfImages: input.numberOfImages,
     useFaceReference: input.useFaceReference,
     contentMode: input.contentMode,
+    lookId: input.lookId,
+    instagramShot: input.instagramShot,
     ...extra,
   };
 }
@@ -312,6 +316,7 @@ export const contentRouter = createTRPCRouter({
               numberOfImages: input.numberOfImages,
               appearanceVariations,
               identityPack,
+              instagramShot: input.instagramShot === true,
             }
           );
 

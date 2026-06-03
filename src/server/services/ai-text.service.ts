@@ -197,6 +197,71 @@ async function callLLM(
 }
 
 /**
+ * Photo prompt enrichment — always Claude when configured (better FR→EN fidelity).
+ * Falls back to the global `callLLM` chain (Anthropic → DeepSeek) otherwise.
+ */
+export async function callPhotoPromptJsonLLM<T>(opts: {
+  systemPrompt: string;
+  userPrompt: string;
+  maxTokens?: number;
+  temperature?: number;
+  validate: (raw: unknown) => T;
+  repairInstruction?: string;
+}): Promise<T> {
+  const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim();
+  if (anthropicKey) {
+    const { systemPrompt, userPrompt, validate } = opts;
+    const maxTokens = opts.maxTokens ?? 500;
+    const temperature = opts.temperature ?? 0.25;
+    const baseMessages: ChatMessage[] = [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ];
+
+    const tryParse = (text: string): T | null => {
+      const cleaned = text
+        .trim()
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/```\s*$/i, "")
+        .trim();
+      try {
+        return validate(JSON.parse(cleaned));
+      } catch {
+        return null;
+      }
+    };
+
+    try {
+      const first = await callAnthropic(baseMessages, maxTokens, temperature);
+      const parsed = tryParse(first);
+      if (parsed !== null) return parsed;
+
+      const repair: ChatMessage[] = [
+        ...baseMessages,
+        { role: "assistant", content: first },
+        {
+          role: "user",
+          content:
+            opts.repairInstruction ??
+            "Return only valid JSON matching the requested schema.",
+        },
+      ];
+      const second = await callAnthropic(
+        repair,
+        maxTokens,
+        Math.min(temperature, 0.4)
+      );
+      const repaired = tryParse(second);
+      if (repaired !== null) return repaired;
+    } catch (error) {
+      console.warn("[ai-text] callPhotoPromptJsonLLM Claude failed, fallback:", error);
+    }
+  }
+
+  return callJsonLLM(opts);
+}
+
+/**
  * Strict-JSON variant: forces JSON output and parses the result.
  * Tries one repair pass if the first response isn't valid JSON.
  */

@@ -12,10 +12,12 @@ import { mediaLibraryRouter } from "./routers/media-library";
 import { referralRouter } from "./routers/referral";
 import { adminRouter } from "./routers/admin";
 import { trendsRouter } from "./routers/trends";
+import { photoAgentRouter } from "./routers/photo-agent";
 
 export const appRouter = createTRPCRouter({
   influencer: influencerRouter,
   content: contentRouter,
+  photoAgent: photoAgentRouter,
   publish: publishRouter,
   analytics: analyticsRouter,
   billing: billingRouter,

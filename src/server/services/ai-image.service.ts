@@ -98,6 +98,8 @@ export interface ImageGenerationInput {
   isReelSceneFrame?: boolean;
   /** Multi-angle refs from identity pack (Nano `image_input` when ready). */
   identityPack?: IdentityPackRecord | null;
+  /** Studio look preset — route to Kontext-first for better one-shot IG quality. */
+  instagramShot?: boolean;
 }
 
 export interface ImageGenerationOutput {
@@ -904,7 +906,7 @@ export async function generateContentImage(
   const primaryEngine: ContentImageEngine =
     enrichedInput.isReelSceneFrame && !enrichedInput.isNsfw
       ? "kontext"
-      : borderline
+      : borderline || enrichedInput.instagramShot
         ? "kontext"
         : "nano";
   let usedEngine: ContentImageEngine = primaryEngine;
@@ -999,7 +1001,8 @@ export async function generateContentImage(
 
   let plan: ModelPlan;
   if (sendsRefImage && input.baseImageUrl) {
-    plan = borderline ? kontextPlan : nanoPlan;
+    plan =
+      borderline || enrichedInput.instagramShot ? kontextPlan : nanoPlan;
   } else {
     plan = {
       model: MODEL_SFW_T2I,
@@ -1018,7 +1021,7 @@ export async function generateContentImage(
       "[ai-image] Generating content image with",
       plan.model,
       sendsRefImage ? "(face-locked)" : "(no reference)",
-      borderline ? `(borderline → kontext, keywords: ${matchedKeywords.join(", ") || "n/a"})` : "(nano-first)",
+      borderline ? `(borderline → kontext, keywords: ${matchedKeywords.join(", ") || "n/a"})` : enrichedInput.instagramShot ? "(instagram-shot → kontext)" : "(nano-first)",
       refs.length > 1 ? `(${refs.length} identity refs)` : ""
     );
 

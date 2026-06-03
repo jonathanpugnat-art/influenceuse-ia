@@ -23,6 +23,12 @@
  */
 
 import type { Platform } from "@/generated/prisma/client";
+import {
+  mapInstagramVideoPost,
+  mapTikTokVideoRow,
+  type InstagramVideoPostRow,
+  type TikTokVideoRow,
+} from "@/lib/trends/trend-video-items";
 
 // ──────────────────────────────────────────────
 // Public types
@@ -667,6 +673,8 @@ export class DevStubProvider implements TrendsProvider {
 
 const APIFY_RUN_TIMEOUT_MS = 120_000;
 const APIFY_TIKTOK_ACTOR_DEFAULT = "scrapeengine/tiktok-trending-hashtags-scraper";
+/** Scrapes individual TikTok posts (videos) under trending hashtags. */
+const APIFY_TIKTOK_VIDEO_ACTOR_DEFAULT = "clockworks/tiktok-scraper";
 const APIFY_INSTAGRAM_ACTOR_DEFAULT = "apify/instagram-hashtag-scraper";
 const APIFY_INSTAGRAM_HASHTAGS_DEFAULT = [
   "fashion",
@@ -721,6 +729,24 @@ function resolveTikTokPeriod(): "7" | "30" | "120" {
   if (v === "30" || v === "120") return v;
   // 7 days = most actionable trends for short-form planning.
   return "7";
+}
+
+function resolveTikTokVideoHashtags(hashtagNames: string[]): string[] {
+  const fromEnv = process.env.APIFY_TIKTOK_VIDEO_HASHTAGS?.split(",")
+    .map((s) => s.trim().replace(/^#/, "").toLowerCase())
+    .filter(Boolean);
+  if (fromEnv && fromEnv.length > 0) return fromEnv.slice(0, 12);
+  const merged = [
+    ...hashtagNames.map((h) => h.replace(/^#/, "").toLowerCase()),
+    ...resolveInstagramHashtags(),
+  ];
+  return [...new Set(merged)].slice(0, 10);
+}
+
+function isTikTokVideoFetchEnabled(): boolean {
+  const raw = process.env.APIFY_TIKTOK_VIDEOS?.trim().toLowerCase();
+  if (raw === "false" || raw === "0") return false;
+  return true;
 }
 
 function resolveInstagramHashtags(): string[] {
@@ -946,6 +972,17 @@ function aggregateInstagramPosts(
   return out;
 }
 
+function dedupeTrendItems(items: RawTrendItem[]): RawTrendItem[] {
+  const seen = new Set<string>();
+  const out: RawTrendItem[] = [];
+  for (const item of items) {
+    if (seen.has(item.externalId)) continue;
+    seen.add(item.externalId);
+    out.push(item);
+  }
+  return out;
+}
+
 export class ApifyTrendsProvider implements TrendsProvider {
   readonly id = "apify";
 
@@ -959,48 +996,112 @@ export class ApifyTrendsProvider implements TrendsProvider {
     }
     const token = process.env.APIFY_TOKEN!;
     const limit = ctx?.limit ?? 60;
-    // Roughly half TikTok, half Instagram — adjustable via env tweaking.
-    const tiktokTarget = Math.ceil(limit * 0.6);
-    const instagramTarget = Math.max(0, limit - tiktokTarget);
+    const videoTarget = Math.ceil(limit * 0.7);
+    const signalTarget = Math.max(0, limit - videoTarget);
 
-    const [tiktokResult, instagramResult] = await Promise.allSettled([
-      this.fetchTikTok(token, ctx, tiktokTarget),
-      this.fetchInstagram(token, instagramTarget),
-    ]);
+    const hashtagSignals = await this.fetchTikTok(token, ctx, Math.min(15, signalTarget)).catch(
+      (err) => {
+        console.error("[trends/apify] TikTok hashtag sub-fetch failed:", err);
+        return [] as RawTrendItem[];
+      }
+    );
+    const trendingTags = hashtagSignals
+      .map((t) => t.hashtags[0]?.replace(/^#/, ""))
+      .filter(Boolean) as string[];
+
+    const [tiktokVideos, instagramVideos, instagramAggregates] =
+      await Promise.allSettled([
+        isTikTokVideoFetchEnabled()
+          ? this.fetchTikTokVideos(token, ctx, videoTarget, trendingTags)
+          : Promise.resolve([]),
+        this.fetchInstagramVideos(token, videoTarget),
+        this.fetchInstagram(token, Math.min(12, signalTarget)),
+      ]);
 
     const out: RawTrendItem[] = [];
     let collectedAny = false;
 
-    if (tiktokResult.status === "fulfilled") {
+    const merge = (items: RawTrendItem[]) => {
+      if (items.length === 0) return;
       collectedAny = true;
-      out.push(...tiktokResult.value);
-    } else {
-      console.error("[trends/apify] TikTok sub-fetch failed:", tiktokResult.reason);
-    }
-    if (instagramResult.status === "fulfilled") {
-      collectedAny = true;
-      out.push(...instagramResult.value);
-    } else {
-      console.error("[trends/apify] Instagram sub-fetch failed:", instagramResult.reason);
-    }
+      out.push(...items);
+    };
+
+    if (tiktokVideos.status === "fulfilled") merge(tiktokVideos.value);
+    else console.error("[trends/apify] TikTok video sub-fetch failed:", tiktokVideos.reason);
+
+    if (instagramVideos.status === "fulfilled") merge(instagramVideos.value);
+    else console.error("[trends/apify] Instagram video sub-fetch failed:", instagramVideos.reason);
+
+    merge(hashtagSignals);
+
+    if (instagramAggregates.status === "fulfilled") merge(instagramAggregates.value);
+    else console.error("[trends/apify] Instagram aggregate sub-fetch failed:", instagramAggregates.reason);
 
     if (!collectedAny) {
-      // Surface the most actionable error (TikTok is the default expectation).
-      const reason =
-        tiktokResult.status === "rejected"
-          ? tiktokResult.reason
-          : instagramResult.status === "rejected"
-            ? instagramResult.reason
-            : new Error("unknown");
-      throw new Error(`Apify provider returned no data: ${String(reason)}`);
+      throw new Error("Apify provider returned no data");
     }
 
-    return out;
+    const deduped = dedupeTrendItems(out);
+    return deduped
+      .sort((a, b) => (b.growthScore ?? 0) - (a.growthScore ?? 0))
+      .slice(0, limit);
   }
 
   // ──────────────────────────────────────────────
   // Sub-fetchers (exposed as private methods for unit testing)
   // ──────────────────────────────────────────────
+
+  private async fetchTikTokVideos(
+    token: string,
+    ctx: ProviderContext | undefined,
+    limit: number,
+    trendingHashtagNames: string[]
+  ): Promise<RawTrendItem[]> {
+    if (limit <= 0) return [];
+    const actorId =
+      process.env.APIFY_TIKTOK_VIDEO_ACTOR?.trim() || APIFY_TIKTOK_VIDEO_ACTOR_DEFAULT;
+    const hashtags = resolveTikTokVideoHashtags(trendingHashtagNames);
+    const perTag = Math.max(2, Math.ceil(limit / hashtags.length));
+    const input: Record<string, unknown> = {
+      hashtags,
+      resultsPerPage: Math.min(perTag, 8),
+      shouldDownloadVideos: false,
+      shouldDownloadCovers: false,
+      proxyConfiguration: { useApifyProxy: true },
+    };
+    const rows = await runApifyActor<TikTokVideoRow>(actorId, input, token);
+    return rows
+      .map((row) => mapTikTokVideoRow(row))
+      .filter((r): r is RawTrendItem => r !== null)
+      .slice(0, limit);
+  }
+
+  private async fetchInstagramVideos(
+    token: string,
+    limit: number
+  ): Promise<RawTrendItem[]> {
+    if (limit <= 0) return [];
+    const actorId =
+      process.env.APIFY_INSTAGRAM_ACTOR?.trim() || APIFY_INSTAGRAM_ACTOR_DEFAULT;
+    const hashtags = resolveInstagramHashtags();
+    const perHashtag = Math.max(8, Math.ceil((limit * 3) / hashtags.length));
+    const input: Record<string, unknown> = {
+      hashtags,
+      resultsType: "posts",
+      resultsLimit: perHashtag,
+    };
+    const rows = await runApifyActor<InstagramVideoPostRow & InstagramPostRow>(
+      actorId,
+      input,
+      token
+    );
+    const videos = rows
+      .map((row) => mapInstagramVideoPost(row))
+      .filter((r): r is RawTrendItem => r !== null)
+      .sort((a, b) => (b.growthScore ?? 0) - (a.growthScore ?? 0));
+    return videos.slice(0, limit);
+  }
 
   private async fetchTikTok(
     token: string,
@@ -1056,6 +1157,8 @@ export const ApifyProvider = ApifyTrendsProvider;
 // Exported for unit tests.
 export const __test__ = {
   mapTikTokRow,
+  mapTikTokVideoRow,
+  mapInstagramVideoPost,
   aggregateInstagramPosts,
   extractPostMediaUrls,
   mapTikTokIndustryToNiche,
@@ -1064,6 +1167,8 @@ export const __test__ = {
   resolveTikTokCountry,
   resolveTikTokPeriod,
   resolveInstagramHashtags,
+  resolveTikTokVideoHashtags,
+  dedupeTrendItems,
 };
 
 /**

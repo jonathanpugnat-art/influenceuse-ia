@@ -279,7 +279,13 @@ export const trendsRouter = createTRPCRouter({
         where: { id: input.recommendationId },
         include: {
           trendItem: {
-            select: { id: true, hashtags: true, platform: true, formatBrief: true },
+            select: {
+              id: true,
+              hashtags: true,
+              platform: true,
+              formatBrief: true,
+              mediaKind: true,
+            },
           },
         },
       });
@@ -299,7 +305,7 @@ export const trendsRouter = createTRPCRouter({
         influencer.id,
         rec.trendItem.hashtags,
         rec.trendItem,
-        influencer.isNsfw
+        { isNsfw: influencer.isNsfw, gender: influencer.gender }
       );
     }),
 

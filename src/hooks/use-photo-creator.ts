@@ -4,6 +4,12 @@ import { create } from "zustand";
 
 export interface PhotoParams {
   influencerId: string;
+  /** Selected studio look (CONTENT_TEMPLATES id). Drives preset scene + Instagram Shot lane. */
+  lookId: string | null;
+  /** Optional user detail merged into the look scene (FR ok). */
+  sceneDetail: string;
+  /** When true, prefer Kontext for face-locked social photos (studio looks). */
+  instagramShot: boolean;
   /** Preset id for analytics/templates; use "custom" when the user edits the scene text. */
   scene: string;
   /** Free-form environment description from the user. Translated server-side for the image prompt. */
@@ -31,12 +37,16 @@ export interface PhotoParams {
  */
 export interface PhotoCreatorSeed {
   influencerId?: string;
+  lookId?: string | null;
+  instagramShot?: boolean;
   scene?: string;
   sceneDescription?: string;
   pose?: string;
   outfit?: string;
   expression?: string;
   customPrompt?: string;
+  useFaceReference?: boolean;
+  sceneFirst?: boolean;
   /** Optional hook copied into the caption textarea. */
   caption?: string;
   hashtags?: string[];
@@ -71,12 +81,18 @@ interface PhotoCreatorState {
   setHashtags: (val: string[]) => void;
   setPlatforms: (val: string[]) => void;
   setScheduledAt: (val: Date | null) => void;
+  /** Increment to trigger classic generation from PhotoPreview. */
+  generateNonce: number;
+  requestGenerate: () => void;
   // Reset
   reset: () => void;
 }
 
 const defaultParams: PhotoParams = {
   influencerId: "",
+  lookId: null,
+  sceneDetail: "",
+  instagramShot: false,
   scene: "custom",
   sceneDescription: "",
   pose: "candid",
@@ -130,6 +146,9 @@ export const usePhotoCreator = create<PhotoCreatorState>()((set) => ({
   setHashtags: (val) => set({ hashtags: val }),
   setPlatforms: (val) => set({ platforms: val }),
   setScheduledAt: (val) => set({ scheduledAt: val }),
+  generateNonce: 0,
+  requestGenerate: () =>
+    set((s) => ({ generateNonce: s.generateNonce + 1 })),
   reset: () =>
     set({
       params: { ...defaultParams },
@@ -143,6 +162,7 @@ export const usePhotoCreator = create<PhotoCreatorState>()((set) => ({
       hashtags: [],
       platforms: [],
       scheduledAt: null,
+      generateNonce: 0,
     }),
 }));
 

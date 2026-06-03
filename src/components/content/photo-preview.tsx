@@ -15,7 +15,7 @@ import {
 import { useTranslations } from "next-intl";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { usePhotoCreator, type PhotoParams } from "@/hooks/use-photo-creator";
+import { usePhotoCreator } from "@/hooks/use-photo-creator";
 import { PhotoGenerationPreview } from "@/components/content/photo-generation-preview";
 import { trpc } from "@/lib/trpc";
 import { CREDIT_COSTS } from "@/lib/constants";
@@ -36,24 +36,7 @@ import {
   formatPhotoSceneErrorForUser,
 } from "@/lib/generation-errors";
 
-function photoPayload(params: PhotoParams) {
-  return {
-    influencerId: params.influencerId,
-    scene: params.scene,
-    sceneDescription: params.sceneDescription.trim() || undefined,
-    pose: params.pose,
-    outfit: params.outfit,
-    expression: params.expression,
-    photoStyle: params.photoStyle,
-    timeOfDay: params.timeOfDay,
-    location: params.location || undefined,
-    customPrompt: params.customPrompt || undefined,
-    numberOfImages: params.numberOfImages,
-    contentMode: params.contentMode,
-    nsfwLevel: params.contentMode === "NSFW" ? params.nsfwLevel : undefined,
-    useFaceReference: params.useFaceReference,
-  };
-}
+import { buildPhotoPayload } from "@/lib/photo-payload";
 
 export function PhotoPreview({
   isWelcomeFlow = false,
@@ -80,6 +63,7 @@ export function PhotoPreview({
     setGeneratedUrls,
     setSelectedImageIndex,
     generationStep,
+    generateNonce,
   } = usePhotoCreator();
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -231,7 +215,7 @@ export function PhotoPreview({
     setContentId(null);
     setIsGenerating(true);
     setGenerationStep("scene");
-    scenePlateMutation.mutate(photoPayload(params));
+    scenePlateMutation.mutate(buildPhotoPayload(params));
   };
 
   const handleCompose = () => {
@@ -265,7 +249,7 @@ export function PhotoPreview({
     setContentId(null);
     setIsGenerating(true);
     setGenerationStep("compose");
-    generateMutation.mutate(photoPayload(params));
+    generateMutation.mutate(buildPhotoPayload(params));
   };
 
   useEffect(() => {
@@ -273,6 +257,18 @@ export function PhotoPreview({
       if (pollingRef.current) clearInterval(pollingRef.current);
     };
   }, []);
+
+  const generateNonceRef = useRef(0);
+  useEffect(() => {
+    if (generateNonce <= generateNonceRef.current) return;
+    generateNonceRef.current = generateNonce;
+    if (params.sceneFirst && params.contentMode === "SFW" && params.useFaceReference) {
+      handleGenerateScene();
+    } else {
+      handleClassicGenerate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generateNonce]);
 
   const composeCost = params.numberOfImages * CREDIT_COSTS.PHOTO;
   const canGenerate =

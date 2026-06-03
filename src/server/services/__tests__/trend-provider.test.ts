@@ -88,6 +88,21 @@ describe("trend-provider", () => {
       });
     });
 
+    describe("mapTikTokVideoRow", () => {
+      it("maps a TikTok post to a video trend item", () => {
+        const r = __test__.mapTikTokVideoRow({
+          id: "99",
+          webVideoUrl: "https://www.tiktok.com/@a/video/99",
+          playCount: 100_000,
+          covers: { default: "https://cdn.example.com/c.jpg" },
+          text: "OOTD #fashion",
+          hashtags: [{ name: "fashion" }],
+        });
+        expect(r?.mediaKind).toBe("video");
+        expect(r?.mediaUrls?.length).toBeGreaterThan(0);
+      });
+    });
+
     describe("aggregateInstagramPosts", () => {
       it("groups posts by source hashtag and sums engagement", () => {
         const out = __test__.aggregateInstagramPosts([

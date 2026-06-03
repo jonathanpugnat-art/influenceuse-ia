@@ -12,13 +12,11 @@ import {
 import { PhotoPreview } from "@/components/content/photo-preview";
 import { PhotoPublish } from "@/components/content/photo-publish";
 import { PhotoWelcomeBanner } from "@/components/content/photo-welcome-banner";
-import { PhotoStudioSidebar } from "@/components/content/photo-studio-sidebar";
+import { PhotoStudioAgentPanel } from "@/components/content/photo-studio-agent-panel";
 import { PhotoFeedGridStrip } from "@/components/content/photo-feed-grid-strip";
 import { usePhotoCreator } from "@/hooks/use-photo-creator";
-import {
-  getNichePhotoDefaults,
-  type InfluencerGender,
-} from "@/lib/photo-niche-defaults";
+import { applyStudioLook } from "@/lib/photo-studio-looks";
+import { type InfluencerGender } from "@/lib/photo-niche-defaults";
 import { trpc } from "@/lib/trpc";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
@@ -59,11 +57,10 @@ export default function PhotoCreatorPage() {
     seededRef.current = true;
     const gender =
       (welcomeInfluencer.gender as InfluencerGender | undefined) ?? "female";
-    const defaults = getNichePhotoDefaults(welcomeInfluencer.niche, gender);
     updateParams({
       influencerId: welcomeInfluencer.id,
       sceneFirst: false,
-      ...defaults,
+      ...applyStudioLook("cafe-aesthetic", gender),
     });
     setMobileConfigOpen(true);
   }, [isWelcomeFlow, welcomeInfluencer, updateParams]);
@@ -99,7 +96,7 @@ export default function PhotoCreatorPage() {
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="max-h-[55vh] overflow-y-auto border-t border-slate-800/50">
-              <PhotoStudioSidebar />
+              <PhotoStudioAgentPanel />
             </div>
           </CollapsibleContent>
         </Collapsible>
@@ -108,7 +105,7 @@ export default function PhotoCreatorPage() {
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* Left — 40% config */}
         <div className="hidden w-full max-w-[400px] shrink-0 lg:flex lg:w-[38%] lg:max-w-[420px]">
-          <PhotoStudioSidebar />
+          <PhotoStudioAgentPanel />
         </div>
 
         {/* Right — 60% canvas + publish */}

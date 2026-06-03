@@ -6,6 +6,9 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { usePhotoCreator } from "@/hooks/use-photo-creator";
 import {
+  getOutfitOptionsForLook,
+} from "@/lib/photo-studio-looks";
+import {
   getOutfitSuggestionsForNiche,
   type InfluencerGender,
 } from "@/lib/photo-niche-defaults";
@@ -22,13 +25,19 @@ export function PhotoStudioOutfitSection({
 }) {
   const t = useTranslations("content");
   const { params, updateParams } = usePhotoCreator();
-  const suggestions = getOutfitSuggestionsForNiche(niche, gender);
+
+  const suggestions = params.lookId
+    ? getOutfitOptionsForLook(params.lookId, gender)
+    : getOutfitSuggestionsForNiche(niche, gender);
 
   return (
     <div className="space-y-3 rounded-xl border border-violet-500/25 bg-violet-500/5 p-3">
       <div className="flex items-center gap-2">
         <Shirt className="h-4 w-4 text-violet-400" />
-        <Label className="text-sm font-medium text-white">{t("outfit")}</Label>
+        <div>
+          <Label className="text-sm font-medium text-white">{t("outfit")}</Label>
+          <p className="text-[10px] text-slate-500">{t("studioOutfitHint")}</p>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-1.5">

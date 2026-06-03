@@ -26,6 +26,11 @@ import {
   parseTrendFormatBrief,
 } from "@/lib/trends/trend-format-brief";
 import {
+  inferStudioLookFromBrief,
+  isVideoTrendItem,
+} from "@/lib/trends/trend-video-items";
+import { applyStudioLook } from "@/lib/photo-studio-looks";
+import {
   analyzeTrendItemFormat,
   getTrendFormatBrief,
 } from "@/server/services/trend-media-analysis.service";
@@ -670,6 +675,8 @@ export async function personalizeSingleTrendForInfluencer(
   }
   if (brief?.contentType === "REEL") {
     cleaned.type = "REEL";
+  } else if (isVideoTrendItem(item.mediaKind) && cleaned.type !== "PHOTO") {
+    cleaned.type = "REEL";
   }
 
   const llmModel = resolveTextProvider();
@@ -724,6 +731,10 @@ export interface ApplyToPhotoParamsResult {
   hashtags: string[];
   confidence: "high" | "medium" | "low";
   citations: string[];
+  /** Studio look preset when inferred from trend format. */
+  lookId?: string | null;
+  /** Prefer Kontext lane for trend-inspired social shots. */
+  instagramShot?: boolean;
   /** Pass-through reference for analytics / re-applying later. */
   trendItemId: string;
   recommendationId: string;
@@ -810,8 +821,8 @@ export function recommendationToCreatorParams(
   rec: { id: string; trendItemId: string; generatedFields: unknown },
   influencerId: string,
   hashtags: string[],
-  trendItem: Pick<TrendItem, "formatBrief">,
-  influencerIsNsfw: boolean
+  trendItem: Pick<TrendItem, "formatBrief" | "mediaKind">,
+  influencer: Pick<Influencer, "isNsfw" | "gender">
 ): ApplyToCreatorResult {
   const photoBlob = recommendationToPhotoParams(
     rec,
@@ -821,21 +832,46 @@ export function recommendationToCreatorParams(
   const brief = getTrendFormatBrief(trendItem);
   const parsed = trendRecommendationFieldsSchema.safeParse(rec.generatedFields);
   const type = parsed.success ? parsed.data.type : photoBlob.type;
+  const videoTrend = isVideoTrendItem(trendItem.mediaKind);
+  const influencerIsNsfw = influencer.isNsfw;
 
-  if (type === "REEL" && brief) {
-    const reel = formatBriefToReelSeed(brief, influencerId, hashtags);
+  const applyAsReel =
+    brief?.contentType === "REEL" ||
+    (type === "REEL" && (brief !== null || videoTrend));
+
+  if (applyAsReel) {
+    if (brief) {
+      const reel = formatBriefToReelSeed(brief, influencerId, hashtags);
+      return {
+        target: "reel",
+        influencerId,
+        duration: reel.duration,
+        format: reel.format,
+        videoType: reel.videoType,
+        script: reel.script,
+        sceneDescription: reel.sceneDescription,
+        outfit: reel.outfit,
+        music: reel.music,
+        effects: reel.effects,
+        textOverlay: reel.textOverlay,
+        hook: photoBlob.hook,
+        hashtags,
+        trendItemId: rec.trendItemId,
+        recommendationId: rec.id,
+      };
+    }
     return {
       target: "reel",
       influencerId,
-      duration: reel.duration,
-      format: reel.format,
-      videoType: reel.videoType,
-      script: reel.script,
-      sceneDescription: reel.sceneDescription,
-      outfit: reel.outfit,
-      music: reel.music,
-      effects: reel.effects,
-      textOverlay: reel.textOverlay,
+      duration: 15,
+      format: "VERTICAL",
+      videoType: "talking_head",
+      script: photoBlob.hook || photoBlob.sceneDescription,
+      sceneDescription: photoBlob.sceneDescription,
+      outfit: photoBlob.outfit,
+      music: "",
+      effects: [],
+      textOverlay: "",
       hook: photoBlob.hook,
       hashtags,
       trendItemId: rec.trendItemId,
@@ -843,34 +879,45 @@ export function recommendationToCreatorParams(
     };
   }
 
-  if (brief && influencerIsNsfw) {
+  if (brief) {
     const premium = formatBriefToPhotoSeed(
       brief,
       influencerId,
       hashtags,
-      true
+      influencerIsNsfw
     );
+    const lookId = inferStudioLookFromBrief(brief);
+    const gender =
+      (influencer.gender as "female" | "male" | "nonbinary") ?? "female";
+    const lookParams = lookId ? applyStudioLook(lookId, gender) : {};
     return {
       target: "photo",
-      type: "PHOTO",
+      type: brief.contentType === "CAROUSEL" ? "CAROUSEL" : "PHOTO",
       platform: photoBlob.platform,
       influencerId,
-      scene: premium.scene ?? photoBlob.scene,
-      sceneDescription: premium.sceneDescription ?? photoBlob.sceneDescription,
-      pose: premium.pose ?? photoBlob.pose,
-      outfit: premium.outfit ?? photoBlob.outfit,
-      expression: premium.expression ?? photoBlob.expression,
+      scene: lookParams.scene ?? premium.scene ?? photoBlob.scene,
+      sceneDescription:
+        premium.sceneDescription ?? photoBlob.sceneDescription,
+      pose: premium.pose ?? lookParams.pose ?? photoBlob.pose,
+      outfit: premium.outfit || lookParams.outfit || photoBlob.outfit,
+      expression: premium.expression ?? lookParams.expression ?? photoBlob.expression,
       customPrompt: premium.customPrompt ?? photoBlob.customPrompt,
-      hook: photoBlob.hook,
+      hook: photoBlob.hook || brief.hook,
       hashtags,
       confidence: photoBlob.confidence,
       citations: photoBlob.citations,
+      lookId: lookId ?? null,
+      instagramShot: !influencerIsNsfw,
       trendItemId: rec.trendItemId,
       recommendationId: rec.id,
     };
   }
 
-  return { target: "photo", ...photoBlob };
+  return {
+    target: "photo",
+    ...photoBlob,
+    instagramShot: videoTrend && !influencerIsNsfw,
+  };
 }
 
 // ──────────────────────────────────────────────

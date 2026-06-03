@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronDown, ChevronUp, Settings2 } from "lucide-react";
 import {
@@ -18,9 +19,17 @@ import { cn } from "@/lib/utils";
 
 export default function ReelCreatorPage() {
   const t = useTranslations("content");
-  const { videoUrl, isGenerating } = useReelCreator();
+  const searchParams = useSearchParams();
+  const { videoUrl, isGenerating, params, updateParams } = useReelCreator();
   const showPublish = !!videoUrl && !isGenerating;
   const [paramsOpen, setParamsOpen] = useState(false);
+
+  const influencerIdFromUrl = searchParams.get("influencer");
+  useEffect(() => {
+    if (influencerIdFromUrl && influencerIdFromUrl !== params.influencerId) {
+      updateParams({ influencerId: influencerIdFromUrl });
+    }
+  }, [influencerIdFromUrl, params.influencerId, updateParams]);
 
   return (
     <div className="-mx-4 -my-6 flex h-[calc(100vh-4rem)] flex-col md:-mx-6 md:flex-row lg:-mx-8">

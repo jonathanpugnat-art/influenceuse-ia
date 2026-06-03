@@ -34,6 +34,7 @@ export interface TrendCardProps {
     soundName: string | null;
     growthScore: number | null;
     sourceUrl: string | null;
+    embedUrl?: string | null;
     /**
      * Sprint 13.2 — hero image displayed at the top of the card. When null,
      * we fall back to a niche-coloured gradient so the layout doesn't break.
@@ -137,6 +138,8 @@ export function TrendCard({
   const fields = readFields(trend.recommendation?.generatedFields);
   const hasRec = trend.recommendation !== null;
   const [hovered, setHovered] = useState(false);
+  const isVideo = trend.mediaKind === "video";
+  const heroLink = (isVideo && trend.embedUrl) || trend.sourceUrl || "#";
 
   // Pick which thumbnail to render — alt on hover, primary at rest.
   // Both come from Unsplash (curated) or the provider (Apify), so they're
@@ -158,7 +161,7 @@ export function TrendCard({
     >
       {/* ── Hero (thumbnail + play overlay) ─────────────────────── */}
       <a
-        href={trend.sourceUrl ?? "#"}
+        href={heroLink}
         target="_blank"
         rel="noopener noreferrer"
         className={cn(
@@ -192,6 +195,14 @@ export function TrendCard({
           >
             {trend.platform}
           </Badge>
+          {isVideo && (
+            <Badge
+              variant="outline"
+              className="border-cyan-500/40 bg-cyan-500/15 text-[10px] text-cyan-200 backdrop-blur-md"
+            >
+              {t("videoTrendBadge")}
+            </Badge>
+          )}
           {typeof trend.growthScore === "number" && (
             <span className="flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-300 backdrop-blur-md">
               <TrendingUp className="h-3 w-3" />
@@ -332,7 +343,11 @@ export function TrendCard({
                   onClick={() => onApply(trend.recommendation!.id)}
                 >
                   <Wand2 className="mr-1.5 h-3.5 w-3.5" />
-                  {t("applyCta")}
+                  {!fields?.type && isVideo
+                    ? t("applyReelCta")
+                    : fields?.type === "REEL" || (isVideo && fields?.type !== "PHOTO")
+                      ? t("applyReelCta")
+                      : t("applyPhotoCta")}
                 </Button>
                 <Button
                   size="icon"
