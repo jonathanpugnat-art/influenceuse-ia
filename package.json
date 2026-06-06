@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/check-local-env.mjs && next dev --port 3000",
+    "dev:force": "next dev --port 3000",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",

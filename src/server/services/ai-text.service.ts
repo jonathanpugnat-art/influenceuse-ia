@@ -64,6 +64,7 @@ export interface BioInput {
 
 const DEEPSEEK_MODEL = "deepseek-chat";
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5";
+const PHOTO_ENRICHMENT_MODEL = "claude-sonnet-4-5";
 
 let _openai: OpenAI | null = null;
 let _anthropic: Anthropic | null = null;
@@ -145,6 +146,15 @@ async function callAnthropic(
   maxTokens: number = 1024,
   temperature: number = 0.8
 ): Promise<string> {
+  return callAnthropicWithModel(messages, ANTHROPIC_MODEL, maxTokens, temperature);
+}
+
+async function callAnthropicWithModel(
+  messages: ChatMessage[],
+  model: string,
+  maxTokens: number,
+  temperature: number
+): Promise<string> {
   const client = getAnthropic();
   const system = messages.find((m) => m.role === "system")?.content;
   const userTurns = messages
@@ -155,7 +165,7 @@ async function callAnthropic(
     }));
 
   const response = await client.messages.create({
-    model: ANTHROPIC_MODEL,
+    model,
     max_tokens: maxTokens,
     temperature,
     system,
@@ -197,8 +207,77 @@ async function callLLM(
 }
 
 /**
- * Photo prompt enrichment — always Claude when configured (better FR→EN fidelity).
- * Falls back to the global `callLLM` chain (Anthropic → DeepSeek) otherwise.
+ * Photo prompt enrichment — Claude Sonnet only (no DeepSeek fallback).
+ * Callers should catch failures and fall back to raw user text.
+ */
+export async function callPhotoEnrichmentJsonLLM<T>(opts: {
+  systemPrompt: string;
+  userPrompt: string;
+  maxTokens?: number;
+  temperature?: number;
+  validate: (raw: unknown) => T;
+  repairInstruction?: string;
+}): Promise<T> {
+  if (!process.env.ANTHROPIC_API_KEY?.trim()) {
+    throw new Error(
+      "ANTHROPIC_API_KEY is not configured — photo prompt enrichment requires Claude."
+    );
+  }
+
+  const { systemPrompt, userPrompt, validate } = opts;
+  const maxTokens = opts.maxTokens ?? 500;
+  const temperature = opts.temperature ?? 0.25;
+  const baseMessages: ChatMessage[] = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userPrompt },
+  ];
+
+  const tryParse = (text: string): T | null => {
+    const cleaned = text
+      .trim()
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/```\s*$/i, "")
+      .trim();
+    try {
+      return validate(JSON.parse(cleaned));
+    } catch {
+      return null;
+    }
+  };
+
+  const first = await callAnthropicWithModel(
+    baseMessages,
+    PHOTO_ENRICHMENT_MODEL,
+    maxTokens,
+    temperature
+  );
+  const parsed = tryParse(first);
+  if (parsed !== null) return parsed;
+
+  const repair: ChatMessage[] = [
+    ...baseMessages,
+    { role: "assistant", content: first },
+    {
+      role: "user",
+      content:
+        opts.repairInstruction ??
+        "Return only valid JSON matching the requested schema.",
+    },
+  ];
+  const second = await callAnthropicWithModel(
+    repair,
+    PHOTO_ENRICHMENT_MODEL,
+    maxTokens,
+    Math.min(temperature, 0.4)
+  );
+  const repaired = tryParse(second);
+  if (repaired !== null) return repaired;
+
+  throw new Error("Photo enrichment: Claude returned invalid JSON after repair pass.");
+}
+
+/**
+ * Photo / agent JSON LLM — Claude when configured, else global callJsonLLM chain.
  */
 export async function callPhotoPromptJsonLLM<T>(opts: {
   systemPrompt: string;

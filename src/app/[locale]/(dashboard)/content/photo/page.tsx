@@ -95,7 +95,7 @@ export default function PhotoCreatorPage() {
             </span>
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <div className="max-h-[55vh] overflow-y-auto border-t border-slate-800/50">
+            <div className="h-[min(55vh,100dvh)] border-t border-slate-800/50">
               <PhotoStudioAgentPanel />
             </div>
           </CollapsibleContent>
@@ -104,7 +104,7 @@ export default function PhotoCreatorPage() {
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* Left — 40% config */}
-        <div className="hidden w-full max-w-[400px] shrink-0 lg:flex lg:w-[38%] lg:max-w-[420px]">
+        <div className="hidden h-full w-full max-w-[400px] shrink-0 lg:flex lg:w-[38%] lg:max-w-[420px]">
           <PhotoStudioAgentPanel />
         </div>
 

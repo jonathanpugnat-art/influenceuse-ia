@@ -13,11 +13,13 @@ import { referralRouter } from "./routers/referral";
 import { adminRouter } from "./routers/admin";
 import { trendsRouter } from "./routers/trends";
 import { photoAgentRouter } from "./routers/photo-agent";
+import { agentRouter } from "./routers/agent";
 
 export const appRouter = createTRPCRouter({
   influencer: influencerRouter,
   content: contentRouter,
   photoAgent: photoAgentRouter,
+  agent: agentRouter,
   publish: publishRouter,
   analytics: analyticsRouter,
   billing: billingRouter,

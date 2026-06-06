@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { WizardAppearanceGenerationProgress } from "@/components/influencer/wizard-appearance-generation-progress";
 import { useInfluencerWizard } from "@/hooks/use-influencer-wizard";
 import { explodeAppearanceVariations } from "@/lib/prompts/image-prompts";
 import {
@@ -219,6 +219,9 @@ export function WizardStepAppearance({
     setStep,
   } = useInfluencerWizard();
   const expressAutoStarted = useRef(false);
+  const previewRequestId = useRef(0);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [isPreviewGenerating, setIsPreviewGenerating] = useState(false);
 
   const { data: creditsData } = trpc.billing.getCurrentPlan.useQuery();
   const creditsRemaining = creditsData?.creditsRemaining ?? 0;
@@ -259,15 +262,20 @@ export function WizardStepAppearance({
     },
   });
 
-  const handleGenerate = () => {
-    if (!hasEnoughCredits) return;
-    setIsGenerating(true);
-    const hairStyle = [data.hairLength, data.hairTexture].filter(Boolean).join(", ") || undefined;
-    const fashionStyle = data.fashionStyles?.length ? data.fashionStyles.join(", ") : undefined;
-    const variations = normalizeAppearanceVariation(data.appearanceVariations);
-    generateMutation.mutate({
+  const previewMutation = trpc.content.generateWizardAppearancePreview.useMutation();
+
+  const buildAppearancePayload = useCallback(() => {
+    const hairStyle =
+      [data.hairLength, data.hairTexture].filter(Boolean).join(", ") || undefined;
+    const fashionStyle = data.fashionStyles?.length
+      ? data.fashionStyles.join(", ")
+      : undefined;
+    const variations = data.appearanceVariations
+      ? normalizeAppearanceVariation(data.appearanceVariations)
+      : undefined;
+    return {
       age: data.age || 24,
-      gender: data.gender ?? "female",
+      gender: data.gender ?? "female" as const,
       style: {
         ethnicity: data.ethnicity || undefined,
         hairColor: data.hairColor || undefined,
@@ -276,7 +284,39 @@ export function WizardStepAppearance({
         fashionStyle,
       },
       appearanceVariations: variations,
+    };
+  }, [data]);
+
+  const runAppearancePreview = useCallback(() => {
+    if (isGenerating || generatedImages.length > 0) return;
+
+    const requestId = ++previewRequestId.current;
+    setIsPreviewGenerating(true);
+
+    previewMutation.mutate(buildAppearancePayload(), {
+      onSuccess: (result) => {
+        if (requestId !== previewRequestId.current) return;
+        setPreviewImageUrl(result.imageUrl);
+        setIsPreviewGenerating(false);
+      },
+      onError: () => {
+        if (requestId !== previewRequestId.current) return;
+        setIsPreviewGenerating(false);
+      },
     });
+  }, [
+    buildAppearancePayload,
+    generatedImages.length,
+    isGenerating,
+    previewMutation,
+  ]);
+
+  const handleGenerate = () => {
+    if (!hasEnoughCredits) return;
+    previewRequestId.current += 1;
+    setIsPreviewGenerating(false);
+    setIsGenerating(true);
+    generateMutation.mutate(buildAppearancePayload());
   };
 
   const handleSurpriseMe = () => {
@@ -333,6 +373,44 @@ export function WizardStepAppearance({
     ethnicity || hairColor || hairLength || hairTexture || bodyType || fashionStyles.length > 0
   );
   const canGenerate = true;
+  const showGenerationProgress = isPreviewGenerating || isGenerating;
+  const canvasImageUrl =
+    generatedImages.length > 0
+      ? (generatedImages[selectedImageIndex] ?? generatedImages[0] ?? "")
+      : previewImageUrl ?? "";
+
+  useEffect(() => {
+    if (isGenerating || generatedImages.length > 0) return;
+    if (
+      !ethnicity &&
+      !hairColor &&
+      !hairLength &&
+      !hairTexture &&
+      !bodyType &&
+      fashionStyles.length === 0 &&
+      !data.appearanceVariations
+    ) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      runAppearancePreview();
+    }, 700);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    ethnicity,
+    hairColor,
+    hairLength,
+    hairTexture,
+    bodyType,
+    fashionStyles,
+    data.appearanceVariations,
+    data.age,
+    isGenerating,
+    generatedImages.length,
+    runAppearancePreview,
+  ]);
 
   useEffect(() => {
     if (
@@ -544,21 +622,16 @@ export function WizardStepAppearance({
 
         {/* Preview — sticky on mobile, above controls */}
         <div className="order-1 space-y-3 lg:order-2 lg:sticky lg:top-20 lg:self-start">
-          <div className="relative aspect-[3/4] overflow-hidden rounded-2xl border border-slate-800/50 bg-slate-800/30">
-            {isGenerating ? (
-              <div className="flex h-full flex-col items-center justify-center gap-3">
-                <Skeleton className="h-full w-full bg-slate-700/50" />
-                <div className="absolute flex flex-col items-center gap-2">
-                  <RefreshCw className="h-8 w-8 animate-spin text-violet-400" />
-                  <p className="text-sm text-slate-400">
-                    {t("creatingInfluencer")}
-                  </p>
-                </div>
-              </div>
-            ) : generatedImages.length > 0 ? (
-              <div className="relative h-full w-full">
+          <div className="relative aspect-[3/4] overflow-hidden rounded-2xl border border-slate-800/50 bg-neutral-950/80">
+            {canvasImageUrl ? (
+              <div
+                className={cn(
+                  "relative h-full w-full transition-opacity duration-300",
+                  showGenerationProgress && "opacity-60"
+                )}
+              >
                 <Image
-                  src={generatedImages[selectedImageIndex] ?? generatedImages[0]!}
+                  src={canvasImageUrl}
                   alt={t("previewAlt")}
                   fill
                   className="object-cover"
@@ -569,11 +642,13 @@ export function WizardStepAppearance({
               <div className="flex h-full flex-col items-center justify-center gap-3 p-6">
                 <User className="h-16 w-16 text-slate-600" />
                 <p className="text-center text-sm text-slate-500">
-                  {t("previewHint")}
+                  {showGenerationProgress ? t("generatingAppearance") : t("previewHint")}
                 </p>
               </div>
             )}
           </div>
+
+          <WizardAppearanceGenerationProgress active={showGenerationProgress} />
 
           {generatedImages.length > 0 && (
             <>

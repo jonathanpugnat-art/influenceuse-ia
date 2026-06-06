@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { callPhotoPromptJsonLLM } from "@/server/services/ai-text.service";
+import { callPhotoEnrichmentJsonLLM } from "@/server/services/ai-text.service";
 import {
   extractScenePropsSuffix,
   shouldEnrichForImagePrompt,
@@ -26,15 +26,26 @@ const SYSTEM_PROMPT = `You prepare text for an AI photo generator (English promp
 
 Given a user's scene description (any language) and optional outfit, return strict JSON:
 {
-  "sceneDescriptionEn": "2-4 concrete English sentences: the setting (location, light, mood) AND any props or actions the user mentioned (candy, drinks, flowers, holding something, eating). If they mention an object, it must appear in the scene. Do not describe face, outfit, or camera type unless the user explicitly asked for mirror/selfie.",
+  "sceneDescriptionEn": "2-4 concrete English sentences: setting, lighting, mood, atmosphere, pose energy, and any props or actions the user mentioned. Capture the aesthetic they asked for — do not substitute a different vibe.",
   "outfitEn": "faithful English translation of the outfit if provided, else omit"
 }
 
-Rules:
-- Preserve the user's intent exactly; do not invent unrelated locations or props.
-- Keep suggestive / sexy / bikini / lingerie context if the user wrote it (SFW suggestive is OK). Only strip explicit pornographic acts.
+Mood & aesthetic (critical):
+- Preserve the user's intended mood and aesthetic EXACTLY as described (sexy, sensual, edgy, romantic, dark, playful, etc.).
+- Do NOT sanitize, soften, or redirect suggestive intent into neutral "lifestyle" scenes.
+- A "sexy bedroom" request must stay bedroom + sensual lighting/pose/atmosphere — NOT café, morning routine, or generic cozy vibes unless the user asked for those.
+- Lingerie, bikini, boudoir, silk sheets, dim moody light, confident pose — keep all of that when the user implied it.
+
+Safety boundary:
+- Only remove genuinely explicit pornographic acts (graphic sex acts, nudity explicitly meant as hardcore porn).
+- Suggestive / sensual / sexy SFW-adjacent content is allowed — post-generation moderation handles the rest.
+- No celebrities, real people, or @handles.
+
+Translation rules:
 - If input is already good English, lightly polish only — do not change meaning.
-- No celebrities, real people, or @handles.`;
+- Do not invent unrelated locations, props, or moods the user did not imply.
+- Do not describe face identity unless the user explicitly asked for mirror/selfie framing.
+- If they mention an object or action, it must appear in the scene.`;
 
 function appendPropsSuffix(enrichedCore: string, original: string): string {
   const props = extractScenePropsSuffix(original);
@@ -74,7 +85,7 @@ export async function enrichPhotoPromptFields(
     .join("\n");
 
   try {
-    const parsed = await callPhotoPromptJsonLLM({
+    const parsed = await callPhotoEnrichmentJsonLLM({
       systemPrompt: SYSTEM_PROMPT,
       userPrompt,
       maxTokens: 500,

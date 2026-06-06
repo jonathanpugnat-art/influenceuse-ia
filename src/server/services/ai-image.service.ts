@@ -42,7 +42,11 @@ import {
 } from "@/lib/prompts/scene-first-photo";
 import { enrichPhotoPromptFields } from "@/server/services/photo-prompt-enrichment.service";
 import { runFluxT2iWithFallback } from "@/server/services/image-providers/flux-t2i-router";
-import type { FalFluxT2iInput } from "@/server/services/image-providers/fal-flux-t2i.provider";
+import {
+  runFalFluxSchnellPreview,
+  type FalFluxT2iInput,
+} from "@/server/services/image-providers/fal-flux-t2i.provider";
+import { isFalImageConfigured } from "@/lib/image-t2i-config";
 import { assertPremiumPromptAllowed } from "@/lib/prompts/premium-prompt-guard";
 import { buildPremiumNegativePrompt } from "@/lib/prompts/premium-negative";
 import { softenPremiumPrompt } from "@/lib/prompts/premium-soften";
@@ -534,6 +538,47 @@ async function generatePremiumImagesWithModeration(
 // ──────────────────────────────────────────────
 // Public API
 // ──────────────────────────────────────────────
+
+/**
+ * Fast wizard step-2 preview — single portrait via FAL `flux/schnell`.
+ * No credits charged; final 4-variant generation uses `generateBaseImage`.
+ */
+export async function generateWizardAppearancePreview(
+  influencerAge: number,
+  style: InfluencerStyle,
+  presetVariations?: AppearanceVariation
+): Promise<{ imageUrl: string; promptUsed: string; model: string }> {
+  if (!isFalImageConfigured()) {
+    throw new Error(
+      "FAL_KEY is not configured — wizard appearance preview requires FAL FLUX Schnell."
+    );
+  }
+
+  const variations = presetVariations ?? pickAppearanceVariations();
+  const prompt = buildBasePortraitPrompt({
+    age: influencerAge,
+    gender: style.gender,
+    ethnicity: style.ethnicity ?? "caucasian",
+    hairColor: style.hairColor ?? "brown",
+    hairStyle: style.hairStyle ?? (style.gender === "male" ? "short" : "long straight"),
+    bodyType: style.bodyType ?? "average",
+    fashionStyle: style.fashionStyle ?? "casual",
+    variations,
+  });
+
+  const negativePrompt = buildNegativePrompt(false, style.gender ?? "female");
+
+  const { url, model } = await runFalFluxSchnellPreview({
+    prompt,
+    negative_prompt: negativePrompt,
+    width: PORTRAIT_IMAGE_PARAMS.width,
+    height: PORTRAIT_IMAGE_PARAMS.height,
+  });
+
+  const storedUrl = await uploadFromUrl(url, `wizard-preview-${nanoid(8)}.jpg`);
+
+  return { imageUrl: storedUrl, promptUsed: prompt, model };
+}
 
 /**
  * Generate the initial base portrait images (4 variations) for a new influencer.

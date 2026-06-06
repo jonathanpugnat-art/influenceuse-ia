@@ -34,7 +34,6 @@ import { MonthView } from "@/components/calendar/month-view";
 import { WeekView } from "@/components/calendar/week-view";
 import { ListView } from "@/components/calendar/list-view";
 import { ContentDetailModal } from "@/components/calendar/content-detail-modal";
-import { ContentPlanDialog } from "@/components/calendar/content-plan-dialog";
 import { ScheduleForDayDialog } from "@/components/calendar/schedule-for-day-dialog";
 import { BatchProgressPanel } from "@/components/calendar/batch-progress-panel";
 import { RecyclePanel } from "@/components/calendar/recycle-panel";
@@ -42,6 +41,7 @@ import { trpc } from "@/lib/trpc";
 import { filterCalendarEventsByInfluencer } from "@/lib/calendar-utils";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useCalendarAgentStore } from "@/hooks/use-calendar-agent-store";
 import type { CalendarEvent, CalendarView } from "@/components/calendar/types";
 
 const sectionVariants: Variants = {
@@ -67,7 +67,8 @@ export default function CalendarPage() {
   const [view, setView] = useState<CalendarView>("month");
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [planOpen, setPlanOpen] = useState(false);
+  const { isOpen: agentOpen, toggleOpen: toggleAgentPanel } =
+    useCalendarAgentStore();
   // Sprint 14 — schedule-for-day flow: clicking an empty day opens a picker
   // that lets the user assign one of their READY contents to that day.
   const [scheduleDay, setScheduleDay] = useState<Date | null>(null);
@@ -230,8 +231,14 @@ export default function CalendarPage() {
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => setPlanOpen(true)}
-            className="flex items-center gap-2 rounded-xl border border-violet-500/40 bg-violet-500/10 px-4 py-2.5 text-sm font-medium text-violet-200 transition-colors hover:bg-violet-500/20"
+            onClick={toggleAgentPanel}
+            aria-expanded={agentOpen}
+            className={cn(
+              "flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors",
+              agentOpen
+                ? "border-rose-400/40 bg-rose-500/15 text-rose-200"
+                : "border-violet-500/40 bg-violet-500/10 text-violet-200 hover:bg-violet-500/20"
+            )}
           >
             <Sparkles className="h-4 w-4" />
             {t("generatePlan")}
@@ -367,13 +374,6 @@ export default function CalendarPage() {
           setModalOpen(false);
           setSelectedEvent(null);
         }}
-      />
-
-      {/* Content plan dialog (Phase 3 — agent contenu) */}
-      <ContentPlanDialog
-        open={planOpen}
-        onClose={() => setPlanOpen(false)}
-        defaultInfluencerId={filterInfluencerId}
       />
 
       {/* Sprint 14 — schedule existing READY content for the clicked day */}

@@ -118,6 +118,15 @@
   100% { background-position: 0% 50%; }
 }
 
+@keyframes wizard-appearance-progress {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
+}
+
+.wizard-appearance-progress-bar {
+  animation: wizard-appearance-progress 1.8s ease-in-out infinite;
+}
+
 /* Dark mode exclusif — on utilise :root directement avec les valeurs dark */
 :root {
   --radius: 0.625rem;

@@ -5,6 +5,7 @@ import { db } from "@/server/db";
 import { CREDIT_COSTS } from "@/lib/constants";
 import {
   generateBaseImage as genBaseImage,
+  generateWizardAppearancePreview as genWizardAppearancePreview,
   generateContentImage,
   generateScenePlateImage,
   composeImageOnScenePlate,
@@ -196,6 +197,45 @@ export const contentRouter = createTRPCRouter({
       // back to the client so the create-influencer mutation can persist
       // them on the same Influencer row that ends up with this baseImageUrl.
       return result;
+    }),
+
+  /**
+   * generateWizardAppearancePreview — Fast FLUX Schnell preview for wizard step 2.
+   * No credits; final portraits use generateBaseImage (4× Nano).
+   */
+  generateWizardAppearancePreview: protectedProcedure
+    .input(
+      z.object({
+        age: z.number().int().min(18).max(80),
+        gender: z.enum(["female", "male", "nonbinary"]).default("female"),
+        style: styleInputSchema,
+        appearanceVariations: z
+          .object({
+            faceShape: z.number().int().min(0),
+            eyeShape: z.number().int().min(0),
+            eyeColor: z.number().int().min(0),
+            nose: z.number().int().min(0),
+            distinctiveFeature: z.number().int().min(0),
+            expression: z.number().int().min(0),
+          })
+          .optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      return genWizardAppearancePreview(
+        input.age,
+        {
+          gender: input.gender,
+          ethnicity: input.style.ethnicity,
+          hairColor: input.style.hairColor,
+          hairStyle: input.style.hairStyle,
+          bodyType: input.style.bodyType,
+          fashionStyle: input.style.fashionStyle,
+        },
+        input.appearanceVariations
+          ? normalizeAppearanceVariation(input.appearanceVariations)
+          : undefined
+      );
     }),
 
   /**

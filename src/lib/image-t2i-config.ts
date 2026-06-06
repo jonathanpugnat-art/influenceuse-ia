@@ -4,6 +4,9 @@ export type ImageT2iProviderMode = "auto" | "fal" | "replicate";
 
 export const DEFAULT_FAL_FLUX_T2I_MODEL = "fal-ai/flux-pro/v1.1";
 
+/** Fast wizard appearance preview (step 2) — FAL FLUX Schnell only. */
+export const WIZARD_APPEARANCE_PREVIEW_FAL_MODEL = "fal-ai/flux/schnell";
+
 export function resolveImageT2iProviderMode(
   env: Record<string, string | undefined> = process.env
 ): ImageT2iProviderMode {

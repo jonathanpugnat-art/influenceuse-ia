@@ -1,6 +1,7 @@
 import {
   mapDimensionsToFalImageSize,
   resolveFalFluxT2iModel,
+  WIZARD_APPEARANCE_PREVIEW_FAL_MODEL,
 } from "@/lib/image-t2i-config";
 import { falQueueSubscribe } from "@/server/services/image-providers/fal-queue.client";
 import { runWithConcurrency } from "@/server/services/replicate-utils";
@@ -91,4 +92,27 @@ export async function runFalFluxT2iBatch(
     throw errors[0];
   }
   return { urls, model };
+}
+
+const WIZARD_SCHNELL_STEPS = 4;
+
+/** Single fast portrait preview for wizard step 2 (FAL FLUX Schnell). */
+export async function runFalFluxSchnellPreview(
+  input: FalFluxT2iInput
+): Promise<{ url: string; model: string }> {
+  const model = WIZARD_APPEARANCE_PREVIEW_FAL_MODEL;
+  const falInput: Record<string, unknown> = {
+    prompt: buildFalPrompt(input.prompt, input.negative_prompt),
+    image_size: mapDimensionsToFalImageSize(input.width, input.height),
+    num_inference_steps: input.num_inference_steps ?? WIZARD_SCHNELL_STEPS,
+    num_images: 1,
+    enable_safety_checker: true,
+  };
+
+  const result = await falQueueSubscribe(model, falInput, 90_000);
+  const urls = extractFalImageUrls(result);
+  if (urls.length === 0) {
+    throw new Error("FAL Schnell returned no image URLs");
+  }
+  return { url: urls[0]!, model };
 }
