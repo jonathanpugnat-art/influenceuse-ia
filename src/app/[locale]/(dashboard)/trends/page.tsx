@@ -93,11 +93,14 @@ export default function TrendsPage() {
     }
   }, [selectedInfluencerId, influencers]);
 
+  const planMaxFeed = config.data?.planMaxFeed ?? 50;
+  const feedLimit = Math.min(pageSize, planMaxFeed);
+
   const feed = trpc.trends.getFeed.useQuery(
     {
       influencerId: selectedInfluencerId,
       platform: platform === "ALL" ? undefined : platform,
-      limit: pageSize,
+      limit: feedLimit,
     },
     { enabled: Boolean(selectedInfluencerId) }
   );
@@ -106,7 +109,7 @@ export default function TrendsPage() {
     {
       influencerId: selectedInfluencerId,
       platform: platform === "ALL" ? undefined : platform,
-      limit: pageSize,
+      limit: feedLimit,
     },
     { enabled: Boolean(selectedInfluencerId) }
   );
@@ -658,12 +661,14 @@ export default function TrendsPage() {
               </div>
             )}
 
-            {globalAllItems.length >= pageSize && (
+            {globalAllItems.length >= feedLimit && feedLimit < planMaxFeed && (
               <div className="flex justify-center pt-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setPageSize((s) => s + 30)}
+                  onClick={() =>
+                    setPageSize((s) => Math.min(s + 30, planMaxFeed))
+                  }
                   disabled={globalFeed.isFetching}
                 >
                   {globalFeed.isFetching ? (
@@ -675,7 +680,7 @@ export default function TrendsPage() {
                 </Button>
               </div>
             )}
-            {globalAllItems.length < pageSize && pageSize > 30 && (
+            {feedLimit >= planMaxFeed && globalAllItems.length > 0 && (
               <p className="flex items-center justify-center gap-1 pt-2 text-xs text-slate-500">
                 <ArrowDown className="h-3 w-3" />
                 {t("endOfFeed")}

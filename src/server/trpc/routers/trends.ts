@@ -162,7 +162,7 @@ export const trendsRouter = createTRPCRouter({
       z.object({
         influencerId: z.string(),
         platform: z.enum(platformValues).optional(),
-        limit: z.number().int().min(1).max(50).optional(),
+        limit: z.coerce.number().int().min(1).max(200).optional(),
         cursor: z.string().optional(),
       })
     )
@@ -212,7 +212,7 @@ export const trendsRouter = createTRPCRouter({
       z.object({
         influencerId: z.string(),
         platform: z.enum(platformValues).optional(),
-        limit: z.number().int().min(1).max(50).optional(),
+        limit: z.coerce.number().int().min(1).max(200).optional(),
         cursor: z.string().optional(),
       })
     )
