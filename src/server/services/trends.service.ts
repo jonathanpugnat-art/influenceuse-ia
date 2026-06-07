@@ -395,12 +395,46 @@ export async function getFeedForInfluencer(
         { nicheTags: { has: "GENERAL" } },
         { nicheTags: { isEmpty: true } },
       ],
-      ...(opts.userLocale
-        ? { OR: [{ locale: opts.userLocale }, { locale: null }] }
-        : {}),
     },
     orderBy: [{ growthScore: "desc" }, { fetchedAt: "desc" }],
     take: hardCap + 1, // +1 to compute nextCursor
+    ...(opts.cursor
+      ? { skip: 1, cursor: { id: opts.cursor } }
+      : {}),
+  });
+
+  const hasMore = items.length > hardCap;
+  const trimmed = hasMore ? items.slice(0, hardCap) : items;
+  const nextCursor = hasMore ? trimmed[trimmed.length - 1]!.id : null;
+  return { items: trimmed, nextCursor };
+}
+
+/**
+ * Global trend feed — all niches, sorted by growthScore. NSFW gate only.
+ */
+export async function getGlobalTrendFeed(
+  opts: FeedOptions & {
+    isNsfw: boolean;
+    userPlan: keyof typeof PLANS;
+    userLocale?: string;
+  }
+): Promise<{ items: TrendItem[]; nextCursor: string | null }> {
+  const planCfg = PLANS[opts.userPlan];
+  const hardCap = Math.min(opts.limit ?? planCfg.trendsMaxFeed, planCfg.trendsMaxFeed);
+  const freshSince = new Date(
+    Date.now() - TREND_FEED_TTL_HOURS * 3600 * 1000
+  );
+
+  const nsfwClause = opts.isNsfw ? {} : { isNsfw: false };
+
+  const items = await db.trendItem.findMany({
+    where: {
+      ...nsfwClause,
+      fetchedAt: { gte: freshSince },
+      ...(opts.platform ? { platform: opts.platform } : {}),
+    },
+    orderBy: [{ growthScore: "desc" }, { fetchedAt: "desc" }],
+    take: hardCap + 1,
     ...(opts.cursor
       ? { skip: 1, cursor: { id: opts.cursor } }
       : {}),

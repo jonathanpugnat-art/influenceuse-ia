@@ -38,6 +38,8 @@ UNDERSTAND expressions like:
 
 RULES:
 - Always respond in the SAME language as the user's latest message (fr or en).
+- The "message" field MUST be written entirely in that language — never mix languages.
+- Set params.language to "fr" or "en" matching the user's latest message.
 - Never ask more than ONE question at a time in "message".
 - If a field can be reasonably inferred, fill it — do not ask unnecessarily.
 - "missingFields" lists only critical fields still unknown: postsPerWeek, startDate, endDate, platforms (and influencerId is handled separately — never include it).
@@ -80,7 +82,7 @@ export function buildCalendarAgentUserPrompt(opts: {
   return [
     `Today: ${opts.todayIso}`,
     `Current month: ${opts.monthStartIso} → ${opts.monthEndIso}`,
-    `Default locale hint: ${opts.locale}`,
+    `Required reply language: ${opts.locale === "fr" ? "French" : "English"} (params.language = "${opts.locale}")`,
     opts.influencerId
       ? `Selected influencer: ${opts.influencerName ?? "unknown"} (niche: ${opts.influencerNiche ?? "unknown"}, id: ${opts.influencerId})`
       : "No influencer selected yet — do NOT set readyToExecute true.",

@@ -64,10 +64,13 @@ export function CalendarAgentPanelWrapper({
   });
 
   const planMutation = trpc.content.generateContentPlan.useMutation({
-    onSuccess: (res) => {
+    onSuccess: (res, variables) => {
       toast.success(t("planSuccess", { count: res.postsCreated }));
       utils.publish.getCalendarEvents.invalidate();
-      appendAssistant(res.summary);
+      const planLanguage = variables.language ?? locale;
+      const summaryPrefix =
+        planLanguage === "fr" ? "Résumé du plan :\n\n" : "Plan summary:\n\n";
+      appendAssistant(`${summaryPrefix}${res.summary}`);
     },
     onError: (err) => {
       toast.error(err.message || t("planError"));

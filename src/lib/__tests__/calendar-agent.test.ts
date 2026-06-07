@@ -11,12 +11,12 @@ import {
 
 const INFLUENCER_ID = "inf_test_123";
 
-function userTurn(content: string): AgentTurnInput {
+function userTurn(content: string, uiLocale: "fr" | "en" = "fr"): AgentTurnInput {
   return {
     domain: "calendar",
     messages: [{ role: "user", content }],
     context: {
-      locale: detectMessageLocale(content),
+      locale: uiLocale,
       influencerId: INFLUENCER_ID,
     },
   };
@@ -117,6 +117,16 @@ describe("calendar-agent", () => {
       expect(detectMessageLocale("je veux poster ce mois")).toBe("fr");
       expect(result.message).toMatch(/Combien de posts par semaine/i);
       expect(result.params.language).toBe("fr");
+    });
+
+    it("responds in French when message mixes FR cues with English loanwords", () => {
+      const result = buildFallbackCalendarTurn(
+        userTurn("3 posts par semaine ce mois, vibe été, niche fitness"),
+        "en"
+      );
+
+      expect(result.params.language).toBe("fr");
+      expect(result.message).toMatch(/Parfait, je peux générer ton plan éditorial/i);
     });
 
     it("responds in English for English input", () => {

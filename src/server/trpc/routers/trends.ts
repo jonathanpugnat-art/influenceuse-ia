@@ -7,6 +7,7 @@ import { checkCredits, deductCredits } from "@/server/services/credits.service";
 import { PLANS } from "@/lib/constants";
 import {
   getFeedForInfluencer,
+  getGlobalTrendFeed,
   getWizardTrendInspiration,
   personalizeFeedForInfluencer,
   personalizeSingleTrendForInfluencer,
@@ -37,6 +38,70 @@ async function loadOwnedInfluencer(clerkId: string, influencerId: string) {
     throw new TRPCError({ code: "NOT_FOUND", message: "Influencer not found" });
   }
   return { user, influencer };
+}
+
+type TrendRecRow = {
+  id: string;
+  trendItemId: string;
+  generatedHook: string;
+  generatedFields: unknown;
+  llmModel: string | null;
+  createdAt: Date;
+};
+
+async function loadRecommendationsForTrends(
+  influencerId: string,
+  trendItemIds: string[]
+): Promise<Map<string, TrendRecRow>> {
+  if (trendItemIds.length === 0) return new Map();
+  const recs = await db.trendRecommendation.findMany({
+    where: {
+      influencerId,
+      trendItemId: { in: trendItemIds },
+      userDismissed: false,
+    },
+    select: {
+      id: true,
+      trendItemId: true,
+      generatedHook: true,
+      generatedFields: true,
+      llmModel: true,
+      createdAt: true,
+    },
+  });
+  return new Map(recs.map((r) => [r.trendItemId, r]));
+}
+
+function mapTrendItemsForUi(items: TrendItem[], byTrendId: Map<string, TrendRecRow>) {
+  const itemsWithFormat = items.map((item) => ({
+    ...item,
+    formatBrief: parseTrendFormatBrief(item.formatBrief),
+    hasMedia: item.mediaUrls.length > 0 || Boolean(item.thumbnailUrl),
+  }));
+
+  return itemsWithFormat.map((trendItem) => ({
+    id: trendItem.id,
+    platform: trendItem.platform,
+    title: trendItem.title,
+    description: trendItem.description,
+    hashtags: trendItem.hashtags,
+    soundName: trendItem.soundName,
+    growthScore: trendItem.growthScore,
+    sourceUrl: trendItem.sourceUrl,
+    thumbnailUrl: trendItem.thumbnailUrl,
+    thumbnailUrlAlt: trendItem.thumbnailUrlAlt,
+    embedUrl: trendItem.embedUrl,
+    authorHandle: trendItem.authorHandle,
+    nicheTags: trendItem.nicheTags,
+    locale: trendItem.locale,
+    region: trendItem.region,
+    fetchedAt: trendItem.fetchedAt,
+    mediaKind: trendItem.mediaKind,
+    hasMedia: trendItem.hasMedia,
+    formatBrief: trendItem.formatBrief,
+    formatAnalyzedAt: trendItem.formatAnalyzedAt,
+    recommendation: byTrendId.get(trendItem.id) ?? null,
+  }));
 }
 
 // ──────────────────────────────────────────────
@@ -124,61 +189,63 @@ export const trendsRouter = createTRPCRouter({
         }
       );
 
-      // Pull existing recommendations for these items in one go.
-      const recs =
-        items.length === 0
-          ? []
-          : await db.trendRecommendation.findMany({
-              where: {
-                influencerId: influencer.id,
-                trendItemId: { in: items.map((i) => i.id) },
-                userDismissed: false,
-              },
-              select: {
-                id: true,
-                trendItemId: true,
-                generatedHook: true,
-                generatedFields: true,
-                llmModel: true,
-                createdAt: true,
-              },
-            });
-      const byTrendId = new Map(recs.map((r) => [r.trendItemId, r]));
-
-      const itemsWithFormat = items.map((item) => ({
-        ...item,
-        formatBrief: parseTrendFormatBrief(item.formatBrief),
-        hasMedia: item.mediaUrls.length > 0 || Boolean(item.thumbnailUrl),
-      }));
+      const byTrendId = await loadRecommendationsForTrends(
+        influencer.id,
+        items.map((i) => i.id)
+      );
 
       return {
         feature: {
           planLocked: !planCfg.hasTrends,
           planName: planCfg.name,
         },
-        items: itemsWithFormat.map((trendItem) => ({
-          id: trendItem.id,
-          platform: trendItem.platform,
-          title: trendItem.title,
-          description: trendItem.description,
-          hashtags: trendItem.hashtags,
-          soundName: trendItem.soundName,
-          growthScore: trendItem.growthScore,
-          sourceUrl: trendItem.sourceUrl,
-          thumbnailUrl: trendItem.thumbnailUrl,
-          thumbnailUrlAlt: trendItem.thumbnailUrlAlt,
-          embedUrl: trendItem.embedUrl,
-          authorHandle: trendItem.authorHandle,
-          nicheTags: trendItem.nicheTags,
-          locale: trendItem.locale,
-          region: trendItem.region,
-          fetchedAt: trendItem.fetchedAt,
-          mediaKind: trendItem.mediaKind,
-          hasMedia: trendItem.hasMedia,
-          formatBrief: trendItem.formatBrief,
-          formatAnalyzedAt: trendItem.formatAnalyzedAt,
-          recommendation: byTrendId.get(trendItem.id) ?? null,
-        })),
+        items: mapTrendItemsForUi(items, byTrendId),
+        nextCursor,
+      };
+    }),
+
+  /**
+   * getGlobalFeed — All niches, sorted by growth. NSFW gate from influencer only.
+   */
+  getGlobalFeed: protectedProcedure
+    .input(
+      z.object({
+        influencerId: z.string(),
+        platform: z.enum(platformValues).optional(),
+        limit: z.number().int().min(1).max(50).optional(),
+        cursor: z.string().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { user, influencer } = await loadOwnedInfluencer(
+        ctx.userId,
+        input.influencerId
+      );
+      const planCfg = PLANS[user.plan as Plan];
+      const effectiveLimit = planCfg.hasTrends
+        ? input.limit
+        : Math.min(input.limit ?? planCfg.trendsMaxFeed, planCfg.trendsMaxFeed);
+
+      const { items, nextCursor } = await getGlobalTrendFeed({
+        limit: effectiveLimit,
+        cursor: input.cursor,
+        platform: input.platform,
+        isNsfw: influencer.isNsfw,
+        userPlan: user.plan as Plan,
+        userLocale: user.locale,
+      });
+
+      const byTrendId = await loadRecommendationsForTrends(
+        influencer.id,
+        items.map((i) => i.id)
+      );
+
+      return {
+        feature: {
+          planLocked: !planCfg.hasTrends,
+          planName: planCfg.name,
+        },
+        items: mapTrendItemsForUi(items, byTrendId),
         nextCursor,
       };
     }),
@@ -494,7 +561,6 @@ export const trendsRouter = createTRPCRouter({
 
       const result = await runTrendsFetch({
         force: input?.force ?? false,
-        locale: user.locale,
       });
       return result;
     }),

@@ -12,6 +12,8 @@ import {
   buildCalendarExecutionParams,
   buildFallbackCalendarTurn,
   calendarAgentTurnToOutput,
+  localizeCalendarAgentTurn,
+  resolveCalendarAgentLocale,
 } from "@/lib/calendar-agent";
 import { db } from "@/server/db";
 
@@ -98,8 +100,9 @@ export async function runCalendarAgentTurn(
   input: AgentTurnInput,
   userId: string
 ): Promise<AgentTurnOutput> {
-  const locale =
+  const uiLocale =
     readContextString(input.context, "locale") === "en" ? "en" : "fr";
+  const conversationLocale = resolveCalendarAgentLocale(input, uiLocale);
   const influencerId = readContextString(input.context, "influencerId");
 
   const today = new Date();
@@ -124,7 +127,7 @@ export async function runCalendarAgentTurn(
   if (!influencerId) {
     return {
       message:
-        locale === "fr"
+        conversationLocale === "fr"
           ? "Choisis d'abord une influenceuse pour générer le plan."
           : "Select an influencer first to generate the plan.",
       quickReplies: [],
@@ -140,7 +143,7 @@ export async function runCalendarAgentTurn(
     todayIso,
     monthStartIso,
     monthEndIso,
-    locale,
+    locale: conversationLocale,
     influencerId,
     influencerName,
     influencerNiche,
@@ -149,39 +152,42 @@ export async function runCalendarAgentTurn(
 
   let parsed: CalendarAgentTurnResult;
   try {
-    parsed = await callCalendarHaikuJson(userPrompt);
+    parsed = localizeCalendarAgentTurn(
+      await callCalendarHaikuJson(userPrompt),
+      conversationLocale
+    );
   } catch (error) {
     console.warn("[calendar-agent] Haiku failed, using fallback:", error);
-    parsed = buildFallbackCalendarTurn(input, locale);
+    parsed = buildFallbackCalendarTurn(input, uiLocale);
   }
 
   if (!parsed.readyToExecute) {
-    return calendarAgentTurnToOutput(parsed, null, locale);
+    return calendarAgentTurnToOutput(parsed, null, conversationLocale);
   }
 
   const executionParams = buildCalendarExecutionParams({
     params: parsed.params,
     influencerId,
-    locale: parsed.params.language ?? locale,
+    locale: conversationLocale,
   });
 
   if (!executionParams) {
     return calendarAgentTurnToOutput(
-      {
-        ...parsed,
-        readyToExecute: false,
-        missingFields: parsed.missingFields.length
-          ? parsed.missingFields
-          : ["startDate"],
-        message:
-          locale === "fr"
-            ? "Sur quelle période veux-tu planifier (ex. ce mois) ?"
-            : "Which period should we plan for (e.g. this month)?",
-      },
+      localizeCalendarAgentTurn(
+        {
+          ...parsed,
+          readyToExecute: false,
+          missingFields: parsed.missingFields.length
+            ? parsed.missingFields
+            : ["startDate"],
+          message: "",
+        },
+        conversationLocale
+      ),
       null,
-      locale
+      conversationLocale
     );
   }
 
-  return calendarAgentTurnToOutput(parsed, executionParams, locale);
+  return calendarAgentTurnToOutput(parsed, executionParams, conversationLocale);
 }

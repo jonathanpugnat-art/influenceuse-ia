@@ -63,6 +63,24 @@ describe("content-plan-prompts", () => {
       expect(p).toContain('"posts"');
       expect(p).toContain('"hashtags"');
     });
+
+    it("frames the model as a strategic social media manager", () => {
+      const p = buildContentPlanSystemPrompt({
+        influencerName: "Lina",
+        influencerGender: "female",
+        niche: "FITNESS",
+        personality: "energetic coach",
+        bio: "HIIT & nutrition tips",
+        language: "fr",
+        platforms: ["INSTAGRAM"],
+        days: 7,
+        postsPerDay: 2,
+      });
+      expect(p).toContain("social media manager");
+      expect(p).toContain("FORMAT MIX");
+      expect(p).toContain("strategy brief");
+      expect(p).toContain("PHOTO, REEL, and CAROUSEL");
+    });
   });
 
   describe("buildIdeasSystemPrompt", () => {

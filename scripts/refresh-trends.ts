@@ -30,7 +30,7 @@ async function main() {
   console.log(`Deleted ${oldSnaps.count} stale TrendSnapshot row(s) from today.`);
 
   console.log("Triggering fresh fetch (force=true)…");
-  const result = await runTrendsFetch({ force: true, locale: "fr" });
+  const result = await runTrendsFetch({ force: true });
   console.log(JSON.stringify(result, null, 2));
 
   await db.$disconnect();

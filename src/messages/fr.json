@@ -1363,7 +1363,22 @@
     "sortGrowth": "Tri : croissance",
     "sortFresh": "Tri : plus récent",
     "loadMore": "Charger plus",
-    "endOfFeed": "Fin du feed."
+    "endOfFeed": "Fin du feed.",
+    "aiAnalysisBanner": "Analyse IA",
+    "aiAnalysisLoading": "Analyse de ton feed en cours…",
+    "aiAnalysisReady": "{count} trends sélectionnés pour toi",
+    "aiAnalysisEmpty": "Pas assez de tendances pour une analyse personnalisée.",
+    "whyItWorks": "Pourquoi ça marche pour toi",
+    "suggestedAngle": "Angle suggéré",
+    "confidenceHigh": "Forte affinité",
+    "confidenceMedium": "Bonne opportunité",
+    "adaptTrendCta": "Adapter ce trend",
+    "sectionForYou": "Pour toi",
+    "sectionForYouSubtitle": "Recommandations IA basées sur ta niche et ta personnalité",
+    "sectionTrendingNow": "En ce moment",
+    "sectionTrendingNowSubtitle": "Toutes niches · Ce qui performe cette semaine",
+    "searchTrendPlaceholder": "Cherche un trend sur…",
+    "searchTrendSubmit": "Rechercher"
   },
   "pricing": {
     "title": "Tarifs",

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import {
   TrendingUp,
   Sparkles,
@@ -12,6 +12,7 @@ import {
   ArrowDown,
   Plus,
   Filter,
+  Search,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -29,6 +30,8 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TrendCard } from "@/components/trends/trend-card";
+import { TrendAiPickWrapper } from "@/components/trends/trend-ai-pick-wrapper";
+import { Input } from "@/components/ui/input";
 import { usePhotoCreator } from "@/hooks/use-photo-creator";
 import { useReelCreator } from "@/hooks/use-reel-creator";
 
@@ -52,6 +55,8 @@ type NicheFilter = (typeof NICHE_OPTIONS)[number];
 
 export default function TrendsPage() {
   const t = useTranslations("trends");
+  const locale = useLocale();
+  const language = locale === "en" ? "en" : "fr";
   const router = useRouter();
   const applyPhotoSeed = usePhotoCreator((s) => s.applySeed);
   const updateReelParams = useReelCreator((s) => s.updateParams);
@@ -71,6 +76,8 @@ export default function TrendsPage() {
   const [analyzingFormatTrendId, setAnalyzingFormatTrendId] = useState<
     string | null
   >(null);
+  const [searchDraft, setSearchDraft] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const config = trpc.trends.config.useQuery();
   const influencersQuery = trpc.influencer.getAll.useQuery({ limit: 50 });
@@ -80,9 +87,11 @@ export default function TrendsPage() {
   );
 
   // Default to the first influencer once the list loads.
-  if (!selectedInfluencerId && influencers.length > 0) {
-    setSelectedInfluencerId(influencers[0]!.id);
-  }
+  useEffect(() => {
+    if (!selectedInfluencerId && influencers.length > 0) {
+      setSelectedInfluencerId(influencers[0]!.id);
+    }
+  }, [selectedInfluencerId, influencers]);
 
   const feed = trpc.trends.getFeed.useQuery(
     {
@@ -93,6 +102,28 @@ export default function TrendsPage() {
     { enabled: Boolean(selectedInfluencerId) }
   );
 
+  const globalFeed = trpc.trends.getGlobalFeed.useQuery(
+    {
+      influencerId: selectedInfluencerId,
+      platform: platform === "ALL" ? undefined : platform,
+      limit: pageSize,
+    },
+    { enabled: Boolean(selectedInfluencerId) }
+  );
+
+  const analyzeQuery = trpc.agent.trends.analyze.useQuery(
+    {
+      influencerId: selectedInfluencerId,
+      platform: platform === "ALL" ? undefined : platform,
+      language,
+      searchQuery: searchQuery || undefined,
+    },
+    {
+      enabled: Boolean(selectedInfluencerId),
+      staleTime: 5 * 60 * 1000,
+    }
+  );
+
   const utils = trpc.useUtils();
 
   const refreshMut = trpc.trends.refreshForInfluencer.useMutation({
@@ -101,6 +132,7 @@ export default function TrendsPage() {
         t("refreshSuccess", { count: r.created, cost: r.cost.toString() })
       );
       utils.trends.getFeed.invalidate();
+      utils.trends.getGlobalFeed.invalidate();
       utils.billing.getCurrentPlan.invalidate();
     },
     onError: (e) => toast.error(e.message),
@@ -110,6 +142,7 @@ export default function TrendsPage() {
     onSuccess: (_r, vars) => {
       toast.success(t("personalizeOneSuccess"));
       utils.trends.getFeed.invalidate();
+      utils.trends.getGlobalFeed.invalidate();
       utils.billing.getCurrentPlan.invalidate();
       setPersonalizingTrendId(null);
       void vars;
@@ -130,12 +163,17 @@ export default function TrendsPage() {
         toast.info(t("initialFetchSkipped"));
       }
       utils.trends.getFeed.invalidate();
+      utils.trends.getGlobalFeed.invalidate();
+      void utils.agent.trends.analyze.invalidate();
     },
     onError: (e) => toast.error(e.message),
   });
 
   const dismissMut = trpc.trends.dismiss.useMutation({
-    onSuccess: () => utils.trends.getFeed.invalidate(),
+    onSuccess: () => {
+      utils.trends.getFeed.invalidate();
+      utils.trends.getGlobalFeed.invalidate();
+    },
     onError: (e) => toast.error(e.message),
   });
 
@@ -199,6 +237,7 @@ export default function TrendsPage() {
     onSuccess: () => {
       toast.success(t("formatAnalyzeSuccess"));
       utils.trends.getFeed.invalidate();
+      utils.trends.getGlobalFeed.invalidate();
     },
     onError: (e) => toast.error(e.message),
   });
@@ -230,19 +269,40 @@ export default function TrendsPage() {
     });
   };
 
-  // ── Apply local filters + sort ──────────────────────────────────────────
-  // We do this client-side so the user can flip filters without re-fetching
-  // (the entire feed for an influencer is already in memory and small).
+  // Personalized feed (niche-filtered) — used for AI analysis input
   const allItems = feed.data?.items ?? [];
-  const filteredItems = useMemo(() => {
-    let list = allItems;
+  const globalAllItems = globalFeed.data?.items ?? [];
+
+  const aiPicks = useMemo(() => {
+    const picks = analyzeQuery.data?.picks ?? [];
+    const byId = new Map(allItems.map((item) => [item.id, item]));
+    return picks
+      .map((pick) => {
+        const trend = byId.get(pick.trendId);
+        if (!trend) return null;
+        return { trend, pick };
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+  }, [analyzeQuery.data?.picks, allItems]);
+
+  const pickIds = useMemo(() => new Set(aiPicks.map((p) => p.trend.id)), [aiPicks]);
+
+  const filteredGlobalItems = useMemo(() => {
+    let list = globalAllItems.filter((item) => !pickIds.has(item.id));
     if (niche !== "ALL") {
-      // The trend's nicheTags array is normalized to upper-case enum keys
-      // by `normalizeNicheTags()` in trends.service.ts. GENERAL trends
-      // always pass any niche filter (they're cross-niche by design).
       list = list.filter(
         (item) =>
           item.nicheTags.includes(niche) || item.nicheTags.includes("GENERAL")
+      );
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter(
+        (item) =>
+          item.title.toLowerCase().includes(q) ||
+          (item.description?.toLowerCase().includes(q) ?? false) ||
+          item.hashtags.some((tag) => tag.toLowerCase().includes(q)) ||
+          item.nicheTags.some((tag) => tag.toLowerCase().includes(q))
       );
     }
     if (sortMode === "fresh") {
@@ -253,14 +313,62 @@ export default function TrendsPage() {
       });
     }
     return list;
-  }, [allItems, niche, sortMode]);
+  }, [globalAllItems, pickIds, niche, sortMode, searchQuery]);
 
   const planLocked = feed.data?.feature.planLocked ?? false;
   const planName = feed.data?.feature.planName ?? "Free";
   const providerConfigured = config.data?.providerConfigured ?? true;
   const analysisCost = config.data?.analysisCost ?? 0.5;
   const analysisOneCost = config.data?.analysisOneCost ?? 0.1;
-  const recsMissingCount = filteredItems.filter((i) => !i.recommendation).length;
+  const recsMissingCount = filteredGlobalItems.filter((i) => !i.recommendation).length;
+
+  const onAdaptTrend = async (
+    trendItemId: string,
+    recommendationId: string | null
+  ) => {
+    if (!selectedInfluencerId) return;
+    applyDestinationRef.current = "creator";
+
+    if (recommendationId) {
+      applyMut.mutate({ influencerId: selectedInfluencerId, recommendationId });
+      return;
+    }
+
+    if (planLocked) {
+      toast.error(t("planLockedHint"));
+      return;
+    }
+
+    setPersonalizingTrendId(trendItemId);
+    try {
+      const result = await personalizeOneMut.mutateAsync({
+        influencerId: selectedInfluencerId,
+        trendItemId,
+      });
+      applyMut.mutate({
+        influencerId: selectedInfluencerId,
+        recommendationId: result.recommendationId,
+      });
+    } catch {
+      // toast handled by mutation
+    } finally {
+      setPersonalizingTrendId(null);
+    }
+  };
+
+  const trendCardCommon = {
+    needsPersonalization: !planLocked,
+    onApply,
+    onSchedule: planLocked ? undefined : onSchedule,
+    onDismiss,
+    onPersonalize: onPersonalizeOne,
+    isBusy: applyMut.isPending || dismissMut.isPending,
+    personalizeOneCost: analysisOneCost,
+    onAnalyzeFormat,
+    formatAnalyzeCost,
+  };
+
+  const isPageLoading = feed.isLoading || globalFeed.isLoading;
 
   return (
     <motion.div
@@ -313,7 +421,7 @@ export default function TrendsPage() {
               !selectedInfluencerId ||
               planLocked ||
               refreshMut.isPending ||
-              filteredItems.length === 0
+              allItems.length === 0
             }
             className="bg-violet-500 hover:bg-violet-600"
           >
@@ -393,14 +501,39 @@ export default function TrendsPage() {
         </div>
       </div>
 
+      {/* AI analysis banner */}
+      {selectedInfluencerId && (
+        <div className="rounded-xl border border-rose-500/30 bg-gradient-to-r from-rose-500/10 via-pink-500/5 to-transparent p-4">
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-rose-500/20">
+              {analyzeQuery.isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin text-rose-300" />
+              ) : (
+                <Sparkles className="h-4 w-4 text-rose-300" />
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-rose-100">{t("aiAnalysisBanner")}</p>
+              <p className="text-sm text-rose-200/70">
+                {analyzeQuery.isLoading
+                  ? t("aiAnalysisLoading")
+                  : aiPicks.length > 0
+                    ? t("aiAnalysisReady", { count: aiPicks.length })
+                    : t("aiAnalysisEmpty")}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Feed */}
-      {feed.isLoading ? (
+      {isPageLoading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-64 w-full rounded-2xl" />
           ))}
         </div>
-      ) : filteredItems.length === 0 ? (
+      ) : allItems.length === 0 && globalAllItems.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-900/30 p-12 text-center">
           <TrendingUp className="mx-auto mb-3 h-8 w-8 text-slate-600" />
           <p className="text-slate-300 font-medium">
@@ -427,60 +560,150 @@ export default function TrendsPage() {
         </div>
       ) : (
         <>
-          {recsMissingCount > 0 && !planLocked && (
-            <p className="text-sm text-slate-400">
-              {t("recsMissingV2", {
-                count: recsMissingCount,
-                cost: analysisOneCost.toString(),
-              })}
-            </p>
-          )}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredItems.map((trend) => (
-              <TrendCard
-                key={trend.id}
-                trend={trend}
-                needsPersonalization={!planLocked}
-                onApply={onApply}
-                onSchedule={planLocked ? undefined : onSchedule}
-                onDismiss={onDismiss}
-                onPersonalize={onPersonalizeOne}
-                isBusy={applyMut.isPending || dismissMut.isPending}
-                isPersonalizing={personalizingTrendId === trend.id}
-                personalizeOneCost={analysisOneCost}
-                onAnalyzeFormat={onAnalyzeFormat}
-                isAnalyzingFormat={analyzingFormatTrendId === trend.id}
-                formatAnalyzeCost={formatAnalyzeCost}
-              />
-            ))}
+          {/* Section 1 — Pour toi */}
+          <section className="space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold text-white">{t("sectionForYou")}</h2>
+              <p className="text-sm text-slate-400">{t("sectionForYouSubtitle")}</p>
+            </div>
+
+            {analyzeQuery.isLoading ? (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={`ai-${i}`} className="h-72 w-full rounded-2xl" />
+                ))}
+              </div>
+            ) : aiPicks.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-rose-500/20 bg-rose-500/5 p-6 text-center text-sm text-rose-200/70">
+                {t("aiAnalysisEmpty")}
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {aiPicks.map(({ trend, pick }) => (
+                  <div key={trend.id} className="space-y-2">
+                    {!trend.recommendation && !planLocked ? (
+                      <Button
+                        className="w-full bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700"
+                        disabled={
+                          applyMut.isPending ||
+                          personalizeOneMut.isPending ||
+                          personalizingTrendId === trend.id
+                        }
+                        onClick={() =>
+                          void onAdaptTrend(trend.id, trend.recommendation?.id ?? null)
+                        }
+                      >
+                        {personalizingTrendId === trend.id ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Sparkles className="mr-2 h-4 w-4" />
+                        )}
+                        {t("adaptTrendCta")}
+                      </Button>
+                    ) : null}
+                    <TrendAiPickWrapper
+                      whyItWorks={pick.whyItWorks}
+                      suggestedAngle={pick.suggestedAngle}
+                      confidence={pick.confidence}
+                      trendCardProps={{
+                        trend,
+                        ...trendCardCommon,
+                        isPersonalizing: personalizingTrendId === trend.id,
+                        isAnalyzingFormat: analyzingFormatTrendId === trend.id,
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <div className="relative py-2">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-800" />
+            </div>
           </div>
 
-          {/* Load more — only show when we got at least pageSize items
-              (heuristic: there might be more in the cache). The router
-              caps at planMaxFeed so this stops naturally. */}
-          {allItems.length >= pageSize && (
-            <div className="flex justify-center pt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPageSize((s) => s + 30)}
-                disabled={feed.isFetching}
-              >
-                {feed.isFetching ? (
-                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Plus className="mr-2 h-3.5 w-3.5" />
-                )}
-                {t("loadMore")}
-              </Button>
+          {/* Section 2 — En ce moment */}
+          <section className="space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold text-white">{t("sectionTrendingNow")}</h2>
+              <p className="text-sm text-slate-400">{t("sectionTrendingNowSubtitle")}</p>
             </div>
-          )}
-          {allItems.length < pageSize && pageSize > 30 && (
-            <p className="flex items-center justify-center gap-1 pt-2 text-xs text-slate-500">
-              <ArrowDown className="h-3 w-3" />
-              {t("endOfFeed")}
-            </p>
-          )}
+
+            {recsMissingCount > 0 && !planLocked && (
+              <p className="text-sm text-slate-400">
+                {t("recsMissingV2", {
+                  count: recsMissingCount,
+                  cost: analysisOneCost.toString(),
+                })}
+              </p>
+            )}
+
+            {filteredGlobalItems.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-slate-800 bg-slate-900/30 p-8 text-center text-sm text-slate-400">
+                {t("emptyFiltered")}
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {filteredGlobalItems.map((trend) => (
+                  <TrendCard
+                    key={trend.id}
+                    trend={trend}
+                    {...trendCardCommon}
+                    isPersonalizing={personalizingTrendId === trend.id}
+                    isAnalyzingFormat={analyzingFormatTrendId === trend.id}
+                  />
+                ))}
+              </div>
+            )}
+
+            {globalAllItems.length >= pageSize && (
+              <div className="flex justify-center pt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPageSize((s) => s + 30)}
+                  disabled={globalFeed.isFetching}
+                >
+                  {globalFeed.isFetching ? (
+                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Plus className="mr-2 h-3.5 w-3.5" />
+                  )}
+                  {t("loadMore")}
+                </Button>
+              </div>
+            )}
+            {globalAllItems.length < pageSize && pageSize > 30 && (
+              <p className="flex items-center justify-center gap-1 pt-2 text-xs text-slate-500">
+                <ArrowDown className="h-3 w-3" />
+                {t("endOfFeed")}
+              </p>
+            )}
+          </section>
+
+          {/* Optional vibe search */}
+          <form
+            className="flex flex-col gap-2 sm:flex-row"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setSearchQuery(searchDraft.trim());
+            }}
+          >
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              <Input
+                value={searchDraft}
+                onChange={(e) => setSearchDraft(e.target.value)}
+                placeholder={t("searchTrendPlaceholder")}
+                className="pl-9"
+              />
+            </div>
+            <Button type="submit" variant="outline">
+              {t("searchTrendSubmit")}
+            </Button>
+          </form>
         </>
       )}
     </motion.div>

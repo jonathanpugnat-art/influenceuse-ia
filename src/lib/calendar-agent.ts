@@ -18,17 +18,65 @@ import type {
 
 const MAX_PLAN_DAYS = 14;
 
-export function detectMessageLocale(text: string): "fr" | "en" {
-  const sample = text.toLowerCase();
-  const frenchHints =
-    /\b(ce mois|cette semaine|semaine|été|vibe|niche|je veux|par semaine|sur instagram)\b/i;
-  const englishHints =
-    /\b(this month|this week|per week|summer vibe|niche|i want|on instagram)\b/i;
+const FRENCH_LOCALE_PATTERNS = [
+  /\bce mois\b/,
+  /\bcette semaine\b/,
+  /\bpar semaine\b/,
+  /\b(?:fois|x|×)\s*par\s*semaine\b/,
+  /\bsemaine\b/,
+  /\bété\b/,
+  /\bje veux\b/,
+  /\bsur instagram\b/,
+  /\bgénérer\b/,
+  /\bplanifier\b/,
+  /\bcombien de posts\b/,
+  /\bquelle période\b/,
+  /\b(?:^|\s)(?:je|tu|vous|des|une|pour|avec|mon|ma|mes)(?:\s|$)/,
+];
 
-  if (frenchHints.test(sample) && !englishHints.test(sample)) return "fr";
-  if (englishHints.test(sample) && !frenchHints.test(sample)) return "en";
-  if (/[àâçéèêëîïôùûü]|(?:\bje\b|\bpour\b|\bdes\b)/i.test(sample)) return "fr";
-  return "en";
+const ENGLISH_LOCALE_PATTERNS = [
+  /\bthis month\b/,
+  /\bthis week\b/,
+  /\bper week\b/,
+  /\bposts per week\b/,
+  /\bi want\b/,
+  /\bon instagram\b/,
+  /\bhow many posts\b/,
+  /\bwhich period\b/,
+  /\b(?:^|\s)(?:the|and|with|your|would|could|my)(?:\s|$)/,
+];
+
+export function detectMessageLocale(text: string): "fr" | "en" | null {
+  const sample = text.toLowerCase();
+  let frScore = 0;
+  let enScore = 0;
+
+  for (const pattern of FRENCH_LOCALE_PATTERNS) {
+    if (pattern.test(sample)) frScore += 1;
+  }
+  for (const pattern of ENGLISH_LOCALE_PATTERNS) {
+    if (pattern.test(sample)) enScore += 1;
+  }
+  if (/[àâçéèêëîïôùûü]/.test(sample)) frScore += 2;
+
+  if (frScore > enScore) return "fr";
+  if (enScore > frScore) return "en";
+  return null;
+}
+
+export function resolveCalendarAgentLocale(
+  input: AgentTurnInput,
+  fallback: "fr" | "en" = "fr"
+): "fr" | "en" {
+  const userMessages = input.messages.filter((m) => m.role === "user");
+  for (let i = userMessages.length - 1; i >= 0; i--) {
+    const detected = detectMessageLocale(userMessages[i]!.content);
+    if (detected) return detected;
+  }
+
+  const ctxLocale = input.context?.locale;
+  if (ctxLocale === "fr" || ctxLocale === "en") return ctxLocale;
+  return fallback;
 }
 
 export function countQuestions(message: string): number {
@@ -102,6 +150,48 @@ function buildClarifyingMessage(
     default:
       return "Can you clarify your posting frequency?";
   }
+}
+
+function buildQuickReplies(
+  missingFields: string[],
+  locale: "fr" | "en"
+): string[] | undefined {
+  if (!missingFields.length) return undefined;
+
+  if (missingFields.includes("platforms")) {
+    return ["Instagram", "TikTok", "Instagram + TikTok"];
+  }
+  if (missingFields.includes("postsPerWeek")) {
+    return locale === "fr"
+      ? ["2×/semaine", "3×/semaine", "1 post/jour"]
+      : ["2×/week", "3×/week", "1 post/day"];
+  }
+  return locale === "fr"
+    ? ["Ce mois", "2 prochaines semaines", "Cette semaine"]
+    : ["This month", "Next 2 weeks", "This week"];
+}
+
+export function localizeCalendarAgentTurn(
+  parsed: CalendarAgentTurnResult,
+  locale: "fr" | "en"
+): CalendarAgentTurnResult {
+  const message =
+    parsed.missingFields.length > 0
+      ? buildClarifyingMessage(parsed.missingFields, locale)
+      : parsed.readyToExecute
+        ? locale === "fr"
+          ? "Parfait, je peux générer ton plan éditorial."
+          : "Great, I can generate your editorial plan."
+        : parsed.message;
+
+  return {
+    ...parsed,
+    message,
+    params: {
+      ...parsed.params,
+      language: locale,
+    },
+  };
 }
 
 export function postsPerWeekToPlanShape(opts: {
@@ -178,14 +268,14 @@ export function buildCalendarExecutionParams(opts: {
 
 export function buildFallbackCalendarTurn(
   input: AgentTurnInput,
-  locale: "fr" | "en"
+  fallback: "fr" | "en"
 ): CalendarAgentTurnResult {
   const lastUser = [...input.messages].reverse().find((m) => m.role === "user");
   const text = lastUser?.content.toLowerCase() ?? "";
+  const conversationLocale = resolveCalendarAgentLocale(input, fallback);
   const today = new Date();
   const monthStart = format(startOfMonth(today), "yyyy-MM-dd");
   const monthEnd = format(endOfMonth(today), "yyyy-MM-dd");
-  const resolvedLocale = detectMessageLocale(lastUser?.content ?? "") || locale;
 
   const params: CalendarAgentParams = {
     postsPerWeek: parsePostsPerWeek(text),
@@ -193,10 +283,10 @@ export function buildFallbackCalendarTurn(
       text.includes("ce mois") || text.includes("this month") ? monthStart : null,
     endDate:
       text.includes("ce mois") || text.includes("this month") ? monthEnd : null,
-    vibe: parseVibe(text, resolvedLocale),
+    vibe: parseVibe(text, conversationLocale),
     goals: parseGoals(text),
     platforms: parsePlatforms(text),
-    language: resolvedLocale,
+    language: conversationLocale,
   };
 
   const missing: string[] = [];
@@ -205,19 +295,15 @@ export function buildFallbackCalendarTurn(
   if (!params.endDate) missing.push("endDate");
   if (!params.platforms?.length) missing.push("platforms");
 
-  const message =
-    missing.length > 0
-      ? buildClarifyingMessage(missing, resolvedLocale)
-      : resolvedLocale === "fr"
-        ? "Parfait, je peux générer ton plan éditorial."
-        : "Great, I can generate your editorial plan.";
-
-  return {
-    params,
-    missingFields: missing,
-    message,
-    readyToExecute: missing.length === 0,
-  };
+  return localizeCalendarAgentTurn(
+    {
+      params,
+      missingFields: missing,
+      message: "",
+      readyToExecute: missing.length === 0,
+    },
+    conversationLocale
+  );
 }
 
 function buildPlanPreviewMessage(
@@ -246,17 +332,11 @@ export function calendarAgentTurnToOutput(
   executionParams: CalendarPlanExecutionParams | null,
   locale: "fr" | "en"
 ): AgentTurnOutput {
-  const quickReplies =
-    parsed.missingFields.length > 0
-      ? parsed.missingFields.includes("platforms")
-        ? ["Instagram", "TikTok", "Instagram + TikTok"]
-        : parsed.missingFields.includes("postsPerWeek")
-          ? ["2×/semaine", "3×/semaine", "1 post/jour"]
-          : ["Ce mois", "2 prochaines semaines", "Cette semaine"]
-      : undefined;
+  const replyLocale = parsed.params.language ?? locale;
+  const quickReplies = buildQuickReplies(parsed.missingFields, replyLocale);
 
   const message = executionParams
-    ? `${parsed.message}\n\n${buildPlanPreviewMessage(executionParams, locale)}`
+    ? `${parsed.message}\n\n${buildPlanPreviewMessage(executionParams, replyLocale)}`
     : parsed.message;
 
   return {
