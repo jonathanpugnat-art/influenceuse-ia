@@ -30,6 +30,7 @@ import {
   getMatchedBorderlineKeywords,
   type ContentImageEngine,
 } from "@/lib/prompts/nano-borderline";
+import { usesExtendedBodyGeneration, defaultWizardAppearanceV2 } from "@/lib/appearance-v2";
 import { softenPromptForEditorial } from "@/lib/prompts/safety-soften";
 import {
   selectIdentityPackRefs,
@@ -68,6 +69,39 @@ export interface InfluencerStyle {
   hairStyle?: string;
   bodyType?: string;
   fashionStyle?: string;
+  skinTone?: string;
+  height?: string;
+  bustLevel?: number;
+  hipsLevel?: number;
+  shouldersLevel?: number;
+  tattoos?: string[];
+  makeupLevel?: string;
+  bodyGenerationMode?: "standard" | "extended";
+}
+
+function buildPortraitPromptFromStyle(
+  influencerAge: number,
+  style: InfluencerStyle,
+  variations?: AppearanceVariation
+): string {
+  return buildBasePortraitPrompt({
+    age: influencerAge,
+    gender: style.gender,
+    ethnicity: style.ethnicity ?? "caucasian",
+    hairColor: style.hairColor ?? "brown",
+    hairStyle:
+      style.hairStyle ?? (style.gender === "male" ? "short" : "long straight"),
+    bodyType: style.bodyType ?? "average",
+    fashionStyle: style.fashionStyle ?? "casual",
+    skinTone: style.skinTone,
+    height: style.height,
+    bustLevel: style.bustLevel,
+    hipsLevel: style.hipsLevel,
+    shouldersLevel: style.shouldersLevel,
+    tattoos: style.tattoos,
+    makeupLevel: style.makeupLevel,
+    variations,
+  });
 }
 
 export interface ImageGenerationInput {
@@ -104,12 +138,19 @@ export interface ImageGenerationInput {
   identityPack?: IdentityPackRecord | null;
   /** Studio look preset — route to Kontext-first for better one-shot IG quality. */
   instagramShot?: boolean;
+  /** Optional scraped trend metadata for Claude enrichment faithfulness. */
+  trendContext?: {
+    title?: string;
+    hashtags?: string[];
+  };
 }
 
 export interface ImageGenerationOutput {
   imageUrls: string[];
   promptUsed: string;
   negativePrompt: string;
+  /** True when safety fallback rewrote the prompt (Social lane only). */
+  promptWasSoftened?: boolean;
   parameters: Record<string, unknown>;
   /**
    * Only populated by `generateBaseImage`. Identifies the random visual
@@ -539,6 +580,27 @@ async function generatePremiumImagesWithModeration(
 // Public API
 // ──────────────────────────────────────────────
 
+/** Skip FAL Schnell preview for 1h after balance/lock 403 (avoids ~1s wasted per preview). */
+let falWizardPreviewBlockedUntil = 0;
+
+function isFalWizardPreviewBlocked(): boolean {
+  return Date.now() < falWizardPreviewBlockedUntil;
+}
+
+function markFalWizardPreviewBlocked(error: unknown): void {
+  const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  if (
+    msg.includes("403") ||
+    msg.includes("exhausted balance") ||
+    msg.includes("user is locked")
+  ) {
+    falWizardPreviewBlockedUntil = Date.now() + 60 * 60 * 1000;
+    console.warn(
+      "[ai-image] FAL wizard preview disabled for 1h (balance/lock). Using Replicate only."
+    );
+  }
+}
+
 /**
  * Fast wizard step-2 preview — single portrait via FAL `flux/schnell`.
  * No credits charged; final 4-variant generation uses `generateBaseImage`.
@@ -548,35 +610,61 @@ export async function generateWizardAppearancePreview(
   style: InfluencerStyle,
   presetVariations?: AppearanceVariation
 ): Promise<{ imageUrl: string; promptUsed: string; model: string }> {
-  if (!isFalImageConfigured()) {
-    throw new Error(
-      "FAL_KEY is not configured — wizard appearance preview requires FAL FLUX Schnell."
-    );
-  }
-
   const variations = presetVariations ?? pickAppearanceVariations();
-  const prompt = buildBasePortraitPrompt({
-    age: influencerAge,
-    gender: style.gender,
-    ethnicity: style.ethnicity ?? "caucasian",
-    hairColor: style.hairColor ?? "brown",
-    hairStyle: style.hairStyle ?? (style.gender === "male" ? "short" : "long straight"),
-    bodyType: style.bodyType ?? "average",
-    fashionStyle: style.fashionStyle ?? "casual",
-    variations,
-  });
+  const prompt = buildPortraitPromptFromStyle(influencerAge, style, variations);
 
   const negativePrompt = buildNegativePrompt(false, style.gender ?? "female");
+  const extendedBody = usesExtendedBodyGeneration(style);
 
-  const { url, model } = await runFalFluxSchnellPreview({
+  if (extendedBody) {
+    const premium = await generatePremiumImagesWithModeration(
+      prompt,
+      negativePrompt,
+      1
+    );
+    const storedUrl = await uploadFromUrl(
+      premium.urls[0]!,
+      `wizard-preview-ext-${nanoid(8)}.jpg`
+    );
+    return {
+      imageUrl: storedUrl,
+      promptUsed: premium.promptUsed,
+      model: premium.model,
+    };
+  }
+
+  const fluxInput: FalFluxT2iInput = {
     prompt,
     negative_prompt: negativePrompt,
     width: PORTRAIT_IMAGE_PARAMS.width,
     height: PORTRAIT_IMAGE_PARAMS.height,
-  });
+    num_inference_steps: 4,
+  };
 
-  const storedUrl = await uploadFromUrl(url, `wizard-preview-${nanoid(8)}.jpg`);
+  if (isFalImageConfigured() && !isFalWizardPreviewBlocked()) {
+    try {
+      const { url, model } = await runFalFluxSchnellPreview(fluxInput);
+      const storedUrl = await uploadFromUrl(
+        url,
+        `wizard-preview-${nanoid(8)}.jpg`
+      );
+      return { imageUrl: storedUrl, promptUsed: prompt, model };
+    } catch (error) {
+      markFalWizardPreviewBlocked(error);
+      const msg = error instanceof Error ? error.message : String(error);
+      if (!isFalWizardPreviewBlocked()) {
+        console.warn(
+          `[ai-image] FAL wizard preview unavailable (${msg.slice(0, 120)}), falling back to Replicate…`
+        );
+      }
+    }
+  }
 
+  const { urls, model } = await runReplicateFluxT2iMultiple(fluxInput, 1);
+  const storedUrl = await uploadFromUrl(
+    urls[0]!,
+    `wizard-preview-${nanoid(8)}.jpg`
+  );
   return { imageUrl: storedUrl, promptUsed: prompt, model };
 }
 
@@ -605,19 +693,41 @@ export async function generateBaseImage(
   const variations = presetVariations ?? pickAppearanceVariations();
   const fingerprint = appearanceFingerprint(style, influencerAge, variations);
 
-  const prompt = buildBasePortraitPrompt({
-    age: influencerAge,
-    gender: style.gender,
-    ethnicity: style.ethnicity ?? "caucasian",
-    hairColor: style.hairColor ?? "brown",
-    hairStyle: style.hairStyle ?? (style.gender === "male" ? "short" : "long straight"),
-    bodyType: style.bodyType ?? "average",
-    fashionStyle: style.fashionStyle ?? "casual",
-    variations,
-  });
+  const prompt = buildPortraitPromptFromStyle(influencerAge, style, variations);
 
   const negativePrompt = buildNegativePrompt(false, style.gender ?? "female");
   const numVariants = 4;
+  const extendedBody = usesExtendedBodyGeneration(style);
+
+  if (extendedBody) {
+    console.log(
+      `[ai-image] Extended body generation (fingerprint=${fingerprint})…`
+    );
+    const premium = await generatePremiumImagesWithModeration(
+      prompt,
+      negativePrompt,
+      numVariants
+    );
+    const storedUrls = await Promise.all(
+      premium.urls.map(async (url, i) => {
+        const filename = `base-${nanoid(6)}-${i}.jpg`;
+        return uploadFromUrl(url, filename);
+      })
+    );
+    await deductCredits(userId, cost);
+    return {
+      imageUrls: storedUrls,
+      promptUsed: premium.promptUsed,
+      negativePrompt,
+      parameters: {
+        replicateModel: premium.model,
+        provider: premium.provider,
+        bodyGenerationMode: "extended",
+      },
+      appearanceVariations: variations,
+      appearanceFingerprint: fingerprint,
+    };
+  }
 
   // Wizard portrait: Nano Banana first (same iPhone-realism as feed photos).
   // Flux 1.1 Pro only when Google safety blocks the prompt.
@@ -686,6 +796,54 @@ export async function generateBaseImage(
 }
 
 /**
+ * Sprint B — seed-only base portrait generator for the wizard gallery.
+ *
+ * Unlike `generateBaseImage`, this is NOT user-facing: it skips credit
+ * checks/deductions and produces ONE stored portrait. Intended to be called
+ * from an offline script (scripts/seed-base-portraits.ts) to populate the
+ * `BasePortrait` catalog. Uses the same Nano→Flux pipeline as real portraits
+ * so gallery bases match the visual quality of generated ones.
+ */
+export async function generateSeedBasePortrait(
+  influencerAge: number,
+  style: InfluencerStyle
+): Promise<{ imageUrl: string; promptUsed: string }> {
+  const variations = pickAppearanceVariations();
+  const prompt = buildPortraitPromptFromStyle(influencerAge, style, variations);
+  const negativePrompt = buildNegativePrompt(false, style.gender ?? "female");
+
+  let outputUrls: string[];
+  const nanoParams: Record<string, unknown> = {
+    ...NANO_BANANA_DEFAULTS,
+    aspect_ratio: "3:4",
+    prompt,
+    image_input: [] as string[],
+  };
+
+  try {
+    outputUrls = await runMultiplePredictions(MODEL_SFW_NANO, nanoParams, 1);
+  } catch (err) {
+    if (!isContentSafetyFilterError(err)) throw err;
+    outputUrls = await runMultiplePredictions(
+      MODEL_SFW_T2I,
+      {
+        ...PORTRAIT_IMAGE_PARAMS,
+        prompt,
+        negative_prompt: negativePrompt,
+        safety_tolerance: 5,
+      },
+      1
+    );
+  }
+
+  const rawUrl = outputUrls[0];
+  if (!rawUrl) throw new Error("Seed portrait generation returned no image.");
+
+  const stored = await uploadFromUrl(rawUrl, `base-portrait-${nanoid(8)}.jpg`);
+  return { imageUrl: stored, promptUsed: prompt };
+}
+
+/**
  * Scene-first photo cost: one shared plate + one credit per final image.
  */
 export function sceneFirstPhotoCreditCost(numberOfImages: number): number {
@@ -696,6 +854,7 @@ export function sceneFirstPhotoCreditCost(numberOfImages: number): number {
 async function resolveEnrichedSceneAndOutfit(input: {
   sceneDescription?: string;
   outfit?: string;
+  trendContext?: ImageGenerationInput["trendContext"];
 }): Promise<{ sceneDescription?: string; outfit?: string }> {
   const enriched = await enrichPhotoPromptFields(input);
   return {
@@ -708,6 +867,7 @@ async function applyPhotoPromptEnrichment(input: ImageGenerationInput): Promise<
   const { sceneDescription, outfit } = await resolveEnrichedSceneAndOutfit({
     sceneDescription: input.sceneDescription,
     outfit: input.outfit,
+    trendContext: input.trendContext,
   });
   return {
     ...input,
@@ -721,7 +881,12 @@ export async function generateScenePlateImage(
   userId: string,
   input: Pick<
     ImageGenerationInput,
-    "influencerId" | "scene" | "sceneDescription" | "lighting" | "location"
+    | "influencerId"
+    | "scene"
+    | "sceneDescription"
+    | "lighting"
+    | "location"
+    | "trendContext"
   >,
   options?: { omitCreditBilling?: boolean }
 ): Promise<{ scenePlateUrl: string; platePrompt: string }> {
@@ -736,6 +901,7 @@ export async function generateScenePlateImage(
 
   const { sceneDescription: enrichedScene } = await resolveEnrichedSceneAndOutfit({
     sceneDescription: input.sceneDescription,
+    trendContext: input.trendContext,
   });
 
   const platePrompt = buildScenePlatePrompt({
@@ -841,6 +1007,7 @@ export async function composeImageOnScenePlate(
   let outputUrls: string[];
   let usedParams = nanoParams;
   let promptUsed = composePrompt;
+  let promptWasSoftened = false;
   try {
     outputUrls = await runMultiplePredictions(MODEL_SFW_NANO, nanoParams, numImages);
   } catch (err) {
@@ -853,6 +1020,7 @@ export async function composeImageOnScenePlate(
       );
       usedParams = { ...nanoParams, prompt: soft };
       promptUsed = soft;
+      promptWasSoftened = true;
     } else {
       throw err;
     }
@@ -873,6 +1041,7 @@ export async function composeImageOnScenePlate(
     imageUrls: storedUrls,
     promptUsed,
     negativePrompt,
+    promptWasSoftened,
     parameters: {
       ...usedParams,
       contentEngine: "nano",
@@ -1072,6 +1241,7 @@ export async function generateContentImage(
 
     let outputUrls: string[];
     let usedParams = plan.params;
+    let promptWasSoftened = false;
     try {
       outputUrls = await runMultiplePredictions(
         plan.model,
@@ -1112,6 +1282,7 @@ export async function generateContentImage(
         usedParams = { ...kontextPlan.params, prompt: softPrompt };
         prompt = softPrompt;
         usedEngine = "kontext";
+        promptWasSoftened = true;
       } else {
         throw err;
       }
@@ -1132,6 +1303,7 @@ export async function generateContentImage(
       imageUrls: storedUrls,
       promptUsed: prompt,
       negativePrompt,
+      promptWasSoftened,
       parameters: {
         ...usedParams,
         contentEngine: usedEngine,

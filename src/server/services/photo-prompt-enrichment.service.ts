@@ -11,9 +11,15 @@ const enrichResultSchema = z.object({
   outfitEn: z.string().max(400).optional(),
 });
 
+export type PhotoTrendContext = {
+  title?: string;
+  hashtags?: string[];
+};
+
 export type PhotoPromptEnrichmentInput = {
   sceneDescription?: string;
   outfit?: string;
+  trendContext?: PhotoTrendContext;
 };
 
 export type PhotoPromptEnrichmentResult = {
@@ -53,6 +59,36 @@ function appendPropsSuffix(enrichedCore: string, original: string): string {
   return `${enrichedCore.trim()} ${props}`.trim();
 }
 
+function buildEnrichmentUserPrompt(opts: {
+  sceneCore: string;
+  rawOutfit: string;
+  trendContext?: PhotoTrendContext;
+}): string {
+  const lines = [
+    "Scene (user language, translate/expand faithfully):",
+    opts.sceneCore,
+  ];
+
+  if (opts.rawOutfit) {
+    lines.push("", "Outfit (translate faithfully):", opts.rawOutfit);
+  }
+
+  const title = opts.trendContext?.title?.trim();
+  const hashtags = opts.trendContext?.hashtags?.filter(Boolean);
+  if (title || (hashtags && hashtags.length > 0)) {
+    lines.push(
+      "",
+      "Original trend context (for faithfulness, do not override user intent):"
+    );
+    if (title) lines.push(`Title: ${title}`);
+    if (hashtags && hashtags.length > 0) {
+      lines.push(`Hashtags: ${hashtags.join(", ")}`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
 /**
  * Translates / expands user scene (and outfit when needed) for image models.
  * Falls back to the original text if the LLM is unavailable.
@@ -76,13 +112,11 @@ export async function enrichPhotoPromptFields(
   }
 
   const sceneCore = stripScenePropsSuffix(rawScene);
-  const userPrompt = [
-    `Scene (user language, translate/expand faithfully):`,
+  const userPrompt = buildEnrichmentUserPrompt({
     sceneCore,
-    rawOutfit ? `\nOutfit (translate faithfully):\n${rawOutfit}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+    rawOutfit,
+    trendContext: input.trendContext,
+  });
 
   try {
     const parsed = await callPhotoEnrichmentJsonLLM({

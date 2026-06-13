@@ -37,6 +37,7 @@ import {
 } from "@/lib/generation-errors";
 
 import { buildPhotoPayload } from "@/lib/photo-payload";
+import { ContentLaneBadge } from "@/components/content/content-lane-picker";
 
 export function PhotoPreview({
   isWelcomeFlow = false,
@@ -149,6 +150,9 @@ export function PhotoPreview({
     if (statusData.status === "READY" && statusData.mediaUrls.length > 0) {
       setGeneratedUrls(statusData.mediaUrls);
       setGenerationStep("done");
+      if (statusData.promptWasSoftened) {
+        toast.warning(t("promptSoftenedToast"), { duration: 8000 });
+      }
       setTimeout(() => {
         setIsGenerating(false);
         setGenerationStep("");

@@ -213,6 +213,7 @@ export default function TrendsPage() {
           customPrompt: blob.customPrompt,
           caption: blob.hook,
           hashtags: blob.hashtags,
+          trendContext: blob.trendContext,
           sceneFirst: false,
           useFaceReference: true,
         });

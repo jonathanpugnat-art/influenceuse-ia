@@ -132,6 +132,10 @@ model Influencer {
   name         String
   slug         String           @unique
   bio          String           @db.Text
+  /// Brief narratif complet généré par l'agent wizard —
+  /// décrit le positionnement, la personnalité, le but et la vision contenu.
+  /// Utilisé comme contexte dans tous les agents en aval.
+  brief        String?          @db.Text
   personality  String           @db.Text
   gender       String           @default("female")
   niche        Niche
@@ -169,6 +173,30 @@ model Influencer {
   @@index([slug])
   @@index([userId, status])
   @@index([appearanceFingerprint])
+}
+
+/// Portrait de base pré-généré, proposé dans la galerie du wizard (étape 2).
+/// L'utilisateur choisit une base au lieu de générer from scratch — cohérence
+/// et onboarding plus rapides. Peuplé hors-ligne via scripts/seed-base-portraits.ts.
+model BasePortrait {
+  id           String   @id @default(cuid())
+  niche        Niche
+  gender       String   @default("female")
+  ethnicity    String
+  bodyType     String
+  imageUrl     String
+  thumbnailUrl String?
+  isNsfw       Boolean  @default(false)
+  /// Mots-clés de positionnement ("premium", "soft", "sporty"…) — servent au
+  /// matching avec le brief Aura pour mettre en avant les bases pertinentes.
+  tags         String[]
+  active       Boolean  @default(true)
+  /// Tri manuel optionnel (plus petit = affiché en premier).
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@index([niche, gender, active])
+  @@index([active, isNsfw])
 }
 
 /// Compte social connecté à une influenceuse

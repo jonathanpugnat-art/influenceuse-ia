@@ -11,11 +11,13 @@ import { callPhotoPromptJsonLLM } from "@/server/services/ai-text.service";
 
 function buildUserPrompt(
   input: PhotoAgentTurnInput,
-  outfitOptions: string[]
+  outfitOptions: string[],
+  influencerBrief?: string
 ): string {
   const lines = [
     `Locale: ${input.locale}`,
     `Gender: ${input.gender}`,
+    `Content mode: ${input.contentMode ?? "SFW"}`,
     `Assistant turns so far: ${input.assistantTurnCount} (max 2 before brief)`,
     input.userMessage ? `Latest user message: ${input.userMessage}` : "",
     input.selectedLookId ? `User selected look: ${input.selectedLookId}` : "",
@@ -31,12 +33,16 @@ function buildUserPrompt(
       : input.selectedLookId
         ? "Set phase to outfits; pick 2-4 outfits from the available list."
         : "Set phase to looks; pick up to 3 look ids matching user intent.",
+    influencerBrief?.trim()
+      ? `INFLUENCER BRIEF:\n${influencerBrief.trim()}\n\nUse this brief to pick looks and outfits that match her positioning — do NOT suggest off-brand aesthetics (e.g. café aesthetic for a boudoir OF influencer).`
+      : "",
   ];
   return lines.filter(Boolean).join("\n\n");
 }
 
 export async function runPhotoStudioAgentTurn(
-  input: PhotoAgentTurnInput
+  input: PhotoAgentTurnInput,
+  influencerBrief?: string
 ): Promise<PhotoAgentTurnOutput> {
   const outfitOptions = input.selectedLookId
     ? getOutfitOptionsForLook(input.selectedLookId, input.gender)
@@ -71,14 +77,18 @@ export async function runPhotoStudioAgentTurn(
   try {
     const llmResult = await callPhotoPromptJsonLLM({
       systemPrompt: PHOTO_AGENT_SYSTEM_PROMPT,
-      userPrompt: buildUserPrompt(input, outfitOptions),
+      userPrompt: buildUserPrompt(input, outfitOptions, influencerBrief),
       maxTokens: 400,
       temperature: 0.55,
       validate: validatePhotoAgentTurn,
     });
 
     if (llmResult.phase === "looks" && llmResult.suggestedLookIds.length === 0) {
-      const looks = pickLooksForIntent(input.userMessage ?? "", 3);
+      const looks = pickLooksForIntent(
+        input.userMessage ?? "",
+        3,
+        input.contentMode ?? "SFW"
+      );
       return {
         ...llmResult,
         suggestedLookIds: looks.map((l) => l.id),

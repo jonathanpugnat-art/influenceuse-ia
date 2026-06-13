@@ -8,6 +8,10 @@ import {
 } from "@/lib/instagram-oauth-errors";
 import * as instagram from "@/server/services/instagram.service";
 import { getAppUrl, getInstagramOAuthRedirectUri } from "@/lib/app-url";
+import {
+  INSTAGRAM_OAUTH_RETURN_COOKIE,
+  sanitizeOAuthReturnPath,
+} from "@/lib/instagram-oauth-return";
 
 const APP_URL = getAppUrl();
 
@@ -60,7 +64,20 @@ export async function GET(req: NextRequest) {
   try {
     const redirectUri = getInstagramOAuthRedirectUri();
     const authUrl = instagram.getAuthUrl(redirectUri, influencerId);
-    return NextResponse.redirect(authUrl);
+    const returnPath = sanitizeOAuthReturnPath(
+      req.nextUrl.searchParams.get("redirectTo")
+    );
+    const response = NextResponse.redirect(authUrl);
+    if (returnPath) {
+      response.cookies.set(INSTAGRAM_OAUTH_RETURN_COOKIE, returnPath, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 600,
+        path: "/",
+      });
+    }
+    return response;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const friendly = formatInstagramOAuthError(message);

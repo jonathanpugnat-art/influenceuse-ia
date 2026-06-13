@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { Settings2 } from "lucide-react";
+import { Settings2, Loader2 } from "lucide-react";
 import {
   Collapsible,
   CollapsibleContent,
@@ -20,6 +20,7 @@ import { type InfluencerGender } from "@/lib/photo-niche-defaults";
 import { trpc } from "@/lib/trpc";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 export default function PhotoCreatorPage() {
   const t = useTranslations("content");
@@ -43,6 +44,40 @@ export default function PhotoCreatorPage() {
   const welcomeInfluencer = influencerIdFromUrl
     ? influencers.find((i) => i.id === influencerIdFromUrl)
     : undefined;
+
+  const identityPackStatusQuery = trpc.influencer.getIdentityPackStatus.useQuery(
+    { influencerId: influencerIdFromUrl! },
+    {
+      enabled:
+        Boolean(influencerIdFromUrl) &&
+        Boolean(welcomeInfluencer) &&
+        !welcomeInfluencer?.isNsfw,
+      refetchInterval: (query) => {
+        const status = query.state.data?.status;
+        if (status === "ready" || status === "failed") return false;
+        return 5000;
+      },
+    }
+  );
+
+  const identityPackStatus = identityPackStatusQuery.data?.status;
+  const showIdentityPackBanner =
+    identityPackStatus === "generating" || identityPackStatus === "pending";
+  const prevIdentityPackStatusRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const current = identityPackStatus;
+    const prev = prevIdentityPackStatusRef.current;
+    if (
+      (prev === "generating" || prev === "pending") &&
+      current === "ready"
+    ) {
+      toast.success(t("identityPackReadyToast"));
+    }
+    if (current) {
+      prevIdentityPackStatusRef.current = current;
+    }
+  }, [identityPackStatus, t]);
 
   useEffect(() => {
     const id = influencerIdFromUrl;
@@ -78,6 +113,13 @@ export default function PhotoCreatorPage() {
           portraitUrl={portraitUrl}
           onDismiss={() => setWelcomeDismissed(true)}
         />
+      )}
+
+      {showIdentityPackBanner && (
+        <div className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-100">
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+          <span>{t("identityPackGeneratingBanner")}</span>
+        </div>
       )}
 
       {/* Mobile config drawer */}

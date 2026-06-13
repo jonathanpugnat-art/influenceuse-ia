@@ -34,6 +34,7 @@ import {
   LOCALHOST_REF_MESSAGE,
 } from "@/lib/generation-errors";
 import { resolvePublicMediaUrl } from "@/server/lib/resolve-public-media-url";
+import { extendedStyleSchema } from "@/lib/appearance-v2";
 import { buildReelSceneFrameParams } from "@/lib/reel-scene-frame";
 import { hasUserSceneDescription } from "@/lib/photo-scene-user";
 import {
@@ -85,6 +86,12 @@ const photoCreatorInputSchema = z
     useFaceReference: z.boolean().default(true),
     lookId: z.string().nullable().optional(),
     instagramShot: z.boolean().optional(),
+    trendContext: z
+      .object({
+        title: z.string().max(500).optional(),
+        hashtags: z.array(z.string().max(80)).max(30).optional(),
+      })
+      .optional(),
   })
   .superRefine((data, ctx) => {
     if (!data.outfit.trim()) {
@@ -140,17 +147,7 @@ function parseScenePlateUrl(params: unknown): string | undefined {
   return typeof url === "string" && url.startsWith("http") ? url : undefined;
 }
 
-// ──────────────────────────────────────────────
-// Router
-// ──────────────────────────────────────────────
-
-const styleInputSchema = z.object({
-  ethnicity: z.string().optional(),
-  hairColor: z.string().optional(),
-  hairStyle: z.string().optional(),
-  bodyType: z.string().optional(),
-  fashionStyle: z.string().optional(),
-});
+const styleInputSchema = extendedStyleSchema;
 
 export const contentRouter = createTRPCRouter({
   /**
@@ -231,6 +228,14 @@ export const contentRouter = createTRPCRouter({
           hairStyle: input.style.hairStyle,
           bodyType: input.style.bodyType,
           fashionStyle: input.style.fashionStyle,
+          skinTone: input.style.skinTone,
+          height: input.style.height,
+          bustLevel: input.style.bustLevel,
+          hipsLevel: input.style.hipsLevel,
+          shouldersLevel: input.style.shouldersLevel,
+          tattoos: input.style.tattoos,
+          makeupLevel: input.style.makeupLevel,
+          bodyGenerationMode: input.style.bodyGenerationMode,
         },
         input.appearanceVariations
           ? normalizeAppearanceVariation(input.appearanceVariations)
@@ -245,6 +250,17 @@ export const contentRouter = createTRPCRouter({
     .input(photoCreatorInputSchema)
     .mutation(async ({ ctx, input }) => {
       const user = await getDbUser(ctx.userId);
+
+      if (input.contentMode === "NSFW") {
+        const planConfig = PLANS[user.plan as Plan];
+        if (!planConfig.hasNsfw) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message:
+              "Le contenu Premium (OnlyFans) nécessite un plan Creator ou supérieur.",
+          });
+        }
+      }
 
       const influencer = await db.influencer.findUnique({
         where: { id: input.influencerId },
@@ -357,6 +373,7 @@ export const contentRouter = createTRPCRouter({
               appearanceVariations,
               identityPack,
               instagramShot: input.instagramShot === true,
+              trendContext: input.trendContext,
             }
           );
 
@@ -371,6 +388,7 @@ export const contentRouter = createTRPCRouter({
               generationParams: {
                 ...initialGenerationParams,
                 identityPackStatus: identityPack?.status ?? null,
+                promptWasSoftened: result.promptWasSoftened === true,
                 modelParams: result.parameters as object,
               } as object,
             },
@@ -473,6 +491,7 @@ export const contentRouter = createTRPCRouter({
               sceneDescription: input.sceneDescription,
               lighting: input.timeOfDay,
               location: input.location,
+              trendContext: input.trendContext,
             }
           );
 
@@ -1052,12 +1071,15 @@ export const contentRouter = createTRPCRouter({
         parseScenePlateUrl(content.generationParams) ??
         (photoPhase === "scene_ready" ? content.thumbnailUrl ?? undefined : undefined);
 
+      const params = content.generationParams as Record<string, unknown> | null;
+
       return {
         status: content.status,
         mediaUrls: content.mediaUrls,
         thumbnailUrl: content.thumbnailUrl,
         photoPhase,
         scenePlateUrl,
+        promptWasSoftened: params?.promptWasSoftened === true,
         errorMessage: job?.error
           ? photoPhase === "scene_generating"
             ? formatPhotoSceneErrorForUser(job.error)

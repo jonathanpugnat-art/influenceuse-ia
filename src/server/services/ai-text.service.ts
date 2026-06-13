@@ -19,6 +19,7 @@ import {
   renderFingerprintPrompt,
 } from "@/server/services/personality-memory.service";
 import { CREDIT_COSTS } from "@/lib/constants";
+import { WIZARD_AGENT_MODEL } from "@/lib/prompts/wizard-prompts";
 
 // ──────────────────────────────────────────────
 // Types
@@ -153,7 +154,8 @@ async function callAnthropicWithModel(
   messages: ChatMessage[],
   model: string,
   maxTokens: number,
-  temperature: number
+  temperature: number,
+  cacheSystemPrompt: boolean = false
 ): Promise<string> {
   const client = getAnthropic();
   const system = messages.find((m) => m.role === "system")?.content;
@@ -164,13 +166,30 @@ async function callAnthropicWithModel(
       content: m.content,
     }));
 
-  const response = await client.messages.create({
-    model,
-    max_tokens: maxTokens,
-    temperature,
-    system,
-    messages: userTurns,
-  });
+  const response = await client.messages.create(
+    {
+      model,
+      max_tokens: maxTokens,
+      temperature,
+      ...(system
+        ? cacheSystemPrompt
+          ? {
+              system: [
+                {
+                  type: "text" as const,
+                  text: system,
+                  cache_control: { type: "ephemeral" as const },
+                },
+              ],
+            }
+          : { system }
+        : {}),
+      messages: userTurns,
+    },
+    cacheSystemPrompt
+      ? { headers: { "anthropic-beta": "prompt-caching-2024-07-31" } }
+      : undefined
+  );
 
   // Concatenate all text blocks (Claude returns an array of content blocks)
   const text = response.content
@@ -249,7 +268,8 @@ export async function callPhotoEnrichmentJsonLLM<T>(opts: {
     baseMessages,
     PHOTO_ENRICHMENT_MODEL,
     maxTokens,
-    temperature
+    temperature,
+    true
   );
   const parsed = tryParse(first);
   if (parsed !== null) return parsed;
@@ -268,12 +288,99 @@ export async function callPhotoEnrichmentJsonLLM<T>(opts: {
     repair,
     PHOTO_ENRICHMENT_MODEL,
     maxTokens,
-    Math.min(temperature, 0.4)
+    Math.min(temperature, 0.4),
+    true
   );
   const repaired = tryParse(second);
   if (repaired !== null) return repaired;
 
   throw new Error("Photo enrichment: Claude returned invalid JSON after repair pass.");
+}
+
+/**
+ * Wizard agent JSON — Claude Sonnet with optional prompt caching on system prompt.
+ */
+export async function callWizardJsonLLM<T>(opts: {
+  systemPrompt: string;
+  userPrompt: string;
+  maxTokens?: number;
+  temperature?: number;
+  cacheSystemPrompt?: boolean;
+  validate: (raw: unknown) => T;
+  repairInstruction?: string;
+}): Promise<T> {
+  if (!process.env.ANTHROPIC_API_KEY?.trim()) {
+    throw new Error("ANTHROPIC_API_KEY is not configured.");
+  }
+
+  const { systemPrompt, userPrompt, validate } = opts;
+  const maxTokens = opts.maxTokens ?? 400;
+  const temperature = opts.temperature ?? 0.4;
+  const cacheSystemPrompt = opts.cacheSystemPrompt ?? false;
+  const model = WIZARD_AGENT_MODEL;
+  const baseMessages: ChatMessage[] = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userPrompt },
+  ];
+
+  const tryParse = (text: string): T | null => {
+    const cleaned = text
+      .trim()
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/```\s*$/i, "")
+      .trim();
+    try {
+      return validate(JSON.parse(cleaned));
+    } catch (error) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(
+          "[callWizardJsonLLM] parse/validate failed:",
+          error instanceof Error ? error.message : error,
+          "raw:",
+          cleaned.slice(0, 280)
+        );
+      }
+      return null;
+    }
+  };
+
+  const first = await callAnthropicWithModel(
+    baseMessages,
+    model,
+    maxTokens,
+    temperature,
+    cacheSystemPrompt
+  );
+  const parsed = tryParse(first);
+  if (parsed !== null) return parsed;
+
+  const repair: ChatMessage[] = [
+    ...baseMessages,
+    { role: "assistant", content: first },
+    {
+      role: "user",
+      content:
+        opts.repairInstruction ??
+        "Return only valid JSON matching the requested schema.",
+    },
+  ];
+  const second = await callAnthropicWithModel(
+    repair,
+    model,
+    maxTokens,
+    Math.min(temperature, 0.35),
+    cacheSystemPrompt
+  );
+  const repaired = tryParse(second);
+  if (repaired !== null) return repaired;
+
+  console.warn(
+    "[callWizardJsonLLM] repair pass failed. first:",
+    first.slice(0, 280),
+    "second:",
+    second.slice(0, 280)
+  );
+  throw new Error("Wizard agent: Claude returned invalid JSON after repair pass.");
 }
 
 /**

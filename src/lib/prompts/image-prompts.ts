@@ -8,6 +8,13 @@ import {
   resolvePosePhrase,
 } from "@/lib/photo-scene-pose";
 import { usesSelfieCameraFraming } from "@/lib/photo-scene-inference";
+import {
+  APPEARANCE_MAP,
+  mapAppearance,
+  mapProportionLevels,
+  mapTattoos,
+  mapWizardHairStyle,
+} from "@/lib/prompts/appearance-map";
 
 export type Gender = "female" | "male" | "nonbinary";
 export type GenderedTemplate = { female: string; male: string; nonbinary: string };
@@ -37,7 +44,7 @@ export function genderLabel(gender: Gender): string {
 /** Wizard base portrait — must match feed photos (iPhone UGC), not studio/editorial. */
 export const BASE_PORTRAIT_TEMPLATE =
   "candid vertical iPhone portrait photo of a {age} year old {ethnicity} {gender}, " +
-  "{hair_color} {hair_style} hair, {body_type} build, {fashion_style} outfit, " +
+  "{skin_tone}, {height}, {hair_color} {hair_style} hair, {body_type} build, {proportions}, {makeup}, {tattoos}, {fashion_style} outfit, " +
   "{distinct_traits}, " +
   "shot on iPhone front camera or friend took it with flash, harsh natural flash, " +
   "real skin with visible pores and small blemishes, slightly oily T-zone, faint under-eye circles, " +
@@ -197,6 +204,14 @@ export function appearanceFingerprint(
     hairStyle?: string;
     bodyType?: string;
     fashionStyle?: string;
+    skinTone?: string;
+    height?: string;
+    bustLevel?: number;
+    hipsLevel?: number;
+    shouldersLevel?: number;
+    tattoos?: string[];
+    makeupLevel?: string;
+    bodyGenerationMode?: string;
   },
   age: number,
   variations: AppearanceVariation
@@ -205,9 +220,17 @@ export function appearanceFingerprint(
     age,
     style.gender ?? "female",
     style.ethnicity ?? "caucasian",
+    style.skinTone ?? "medium",
+    style.height ?? "average",
     style.hairColor ?? "brown",
     style.hairStyle ?? "long straight",
     style.bodyType ?? "average",
+    style.bustLevel ?? 0,
+    style.hipsLevel ?? 0,
+    style.shouldersLevel ?? 0,
+    (style.tattoos ?? []).join("+"),
+    style.makeupLevel ?? "natural",
+    style.bodyGenerationMode ?? "standard",
     style.fashionStyle ?? "casual",
     variations.faceShape,
     variations.eyeShape,
@@ -620,22 +643,50 @@ export function buildBasePortraitPrompt(input: {
   bodyType: string;
   fashionStyle: string;
   gender?: Gender;
-  /**
-   * Random visual traits that make every influencer unique even when the
-   * wizard inputs are identical. If omitted, we pick a fresh random set —
-   * but callers should usually generate them upstream so they can be
-   * persisted on the Influencer row (for fingerprinting + reproducibility).
-   */
+  skinTone?: string;
+  height?: string;
+  bustLevel?: number;
+  hipsLevel?: number;
+  shouldersLevel?: number;
+  tattoos?: string[];
+  makeupLevel?: string;
   variations?: AppearanceVariation;
 }): string {
   const variations = input.variations ?? pickAppearanceVariations();
+  const proportions = mapProportionLevels({
+    bustLevel: input.bustLevel,
+    hipsLevel: input.hipsLevel,
+    shouldersLevel: input.shouldersLevel,
+  });
+  const tattooText = mapTattoos(input.tattoos);
   return BASE_PORTRAIT_TEMPLATE.replace("{age}", String(input.age))
-    .replace("{ethnicity}", input.ethnicity.toLowerCase())
+    .replace("{ethnicity}", mapAppearance(APPEARANCE_MAP.ethnicity, input.ethnicity))
     .replace("{gender}", genderLabel(input.gender ?? "female"))
-    .replace("{hair_color}", input.hairColor.toLowerCase())
-    .replace("{hair_style}", input.hairStyle.toLowerCase())
-    .replace("{body_type}", input.bodyType.toLowerCase())
-    .replace("{fashion_style}", input.fashionStyle.toLowerCase())
+    .replace(
+      "{skin_tone}",
+      input.skinTone
+        ? mapAppearance(APPEARANCE_MAP.skinTone, input.skinTone)
+        : "natural skin tone"
+    )
+    .replace(
+      "{height}",
+      input.height ? mapAppearance(APPEARANCE_MAP.height, input.height) : "average height"
+    )
+    .replace("{hair_color}", mapAppearance(APPEARANCE_MAP.hairColor, input.hairColor))
+    .replace("{hair_style}", mapWizardHairStyle(input.hairStyle))
+    .replace("{body_type}", mapAppearance(APPEARANCE_MAP.bodyType, input.bodyType))
+    .replace("{proportions}", proportions || "balanced proportions")
+    .replace(
+      "{makeup}",
+      input.makeupLevel
+        ? mapAppearance(APPEARANCE_MAP.makeupLevel, input.makeupLevel)
+        : "minimal natural makeup"
+    )
+    .replace("{tattoos}", tattooText || "no visible tattoos")
+    .replace(
+      "{fashion_style}",
+      mapAppearance(APPEARANCE_MAP.fashionStyle, input.fashionStyle)
+    )
     .replace("{distinct_traits}", renderAppearanceVariations(variations));
 }
 
@@ -707,12 +758,17 @@ export function buildFullPrompt(input: PromptBuildInput): string {
   // ── 3. Person description ────────────────────────────────────────────────
   const personParts: string[] = [`a ${genderWord}`];
   if (input.age) personParts.push(`${input.age} years old`);
-  if (input.ethnicity) personParts.push(input.ethnicity.toLowerCase());
+  if (input.ethnicity)
+    personParts.push(mapAppearance(APPEARANCE_MAP.ethnicity, input.ethnicity));
   if (input.hairColor || input.hairStyle) {
-    const hair = [input.hairColor, input.hairStyle].filter(Boolean).join(" ");
-    personParts.push(`${hair.toLowerCase()} hair`);
+    const colorEn = input.hairColor
+      ? mapAppearance(APPEARANCE_MAP.hairColor, input.hairColor)
+      : "";
+    const styleEn = input.hairStyle ? mapWizardHairStyle(input.hairStyle) : "";
+    personParts.push(`${[colorEn, styleEn].filter(Boolean).join(" ")} hair`);
   }
-  if (input.bodyType) personParts.push(`${input.bodyType.toLowerCase()} build`);
+  if (input.bodyType)
+    personParts.push(`${mapAppearance(APPEARANCE_MAP.bodyType, input.bodyType)} build`);
   parts.push(personParts.join(", "));
 
   // ── 3b. Shared visual DNA (Sprint 14) ────────────────────────────────────

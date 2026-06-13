@@ -23,6 +23,8 @@ import {
 import { useInfluencerWizard } from "@/hooks/use-influencer-wizard";
 import { TemplatePicker } from "@/components/influencer/template-picker";
 import { WizardIdentityPreview } from "@/components/influencer/wizard-identity-preview";
+import { WizardVisionCard } from "@/components/influencer/wizard-vision-card";
+import { WizardAiHelper } from "@/components/influencer/wizard-ai-helper";
 import { pickRandomInfluencerName } from "@/lib/influencer-name-suggestions";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
@@ -228,6 +230,15 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       {/* Sprint 7 — pre-baked persona templates */}
       <TemplatePicker />
+
+      <WizardAiHelper
+        step={1}
+        setValue={(field, value, options) =>
+          setValue(field, value as never, options)
+        }
+      />
+
+      <WizardVisionCard />
 
       <WizardIdentityPreview />
 

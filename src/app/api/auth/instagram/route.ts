@@ -9,8 +9,38 @@ import {
 import * as instagram from "@/server/services/instagram.service";
 import { defaultLocale } from "@/i18n";
 import { getAppUrl, getInstagramOAuthRedirectUri } from "@/lib/app-url";
+import {
+  INSTAGRAM_OAUTH_RETURN_COOKIE,
+  sanitizeOAuthReturnPath,
+} from "@/lib/instagram-oauth-return";
 
 const APP_URL = getAppUrl();
+
+function buildOAuthRedirectResponse(
+  req: NextRequest,
+  influencerId: string | null,
+  query: Record<string, string | undefined>
+): NextResponse {
+  const returnPath = sanitizeOAuthReturnPath(
+    req.cookies.get(INSTAGRAM_OAUTH_RETURN_COOKIE)?.value
+  );
+
+  let target: URL;
+  if (returnPath) {
+    target = new URL(returnPath, APP_URL);
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== "") {
+        target.searchParams.set(key, value);
+      }
+    }
+  } else {
+    target = instagramSocialRedirectUrl(APP_URL, influencerId, query);
+  }
+
+  const response = NextResponse.redirect(target);
+  response.cookies.delete(INSTAGRAM_OAUTH_RETURN_COOKIE);
+  return response;
+}
 
 /**
  * GET /api/auth/instagram
@@ -33,19 +63,15 @@ export async function GET(req: NextRequest) {
   if (error) {
     const errorDesc = searchParams.get("error_description") ?? error;
     const friendly = formatInstagramOAuthError(errorDesc);
-    return NextResponse.redirect(
-      instagramSocialRedirectUrl(APP_URL, influencerIdFromState, {
-        instagram_error: friendly,
-      })
-    );
+    return buildOAuthRedirectResponse(req, influencerIdFromState, {
+      instagram_error: friendly,
+    });
   }
 
   if (!code || !state) {
-    return NextResponse.redirect(
-      instagramSocialRedirectUrl(APP_URL, influencerIdFromState, {
-        instagram_error: "Connexion interrompue (code ou state manquant). Réessaie.",
-      })
-    );
+    return buildOAuthRedirectResponse(req, influencerIdFromState, {
+      instagram_error: "Connexion interrompue (code ou state manquant). Réessaie.",
+    });
   }
 
   const influencerId = state;
@@ -53,22 +79,18 @@ export async function GET(req: NextRequest) {
 
   const user = await db.user.findUnique({ where: { clerkId: userId } });
   if (!user) {
-    return NextResponse.redirect(
-      instagramSocialRedirectUrl(APP_URL, influencerId, {
-        instagram_error: "Session expirée. Reconnecte-toi à Aura puis réessaie.",
-      })
-    );
+    return buildOAuthRedirectResponse(req, influencerId, {
+      instagram_error: "Session expirée. Reconnecte-toi à Aura puis réessaie.",
+    });
   }
 
   const influencer = await db.influencer.findUnique({
     where: { id: influencerId },
   });
   if (!influencer || influencer.userId !== user.id) {
-    return NextResponse.redirect(
-      instagramSocialRedirectUrl(APP_URL, influencerId, {
-        instagram_error: "Profil influenceuse invalide.",
-      })
-    );
+    return buildOAuthRedirectResponse(req, influencerId, {
+      instagram_error: "Profil influenceuse invalide.",
+    });
   }
 
   try {
@@ -102,14 +124,15 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    return NextResponse.redirect(
-      instagramSocialRedirectUrl(APP_URL, influencerId, { instagram: "connected" })
-    );
+    return buildOAuthRedirectResponse(req, influencerId, {
+      instagram: "connected",
+      connected: "instagram",
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const friendly = formatInstagramOAuthError(message);
-    return NextResponse.redirect(
-      instagramSocialRedirectUrl(APP_URL, influencerId, { instagram_error: friendly })
-    );
+    return buildOAuthRedirectResponse(req, influencerId, {
+      instagram_error: friendly,
+    });
   }
 }

@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { photoAgentTurnOutputSchema } from "@/lib/photo-studio-agent";
+import { wizardStep2LookSchema } from "@/lib/prompts/wizard-prompts";
 
 export const agentDomainSchema = z.enum([
   "wizard",
@@ -46,6 +48,31 @@ export type CalendarPlanExecutionParams = z.infer<
   typeof calendarPlanExecutionParamsSchema
 >;
 
+export const wizardStep1SuggestionsOutputSchema = z.object({
+  name: z.string().max(50).optional(),
+  gender: z.enum(["female", "male", "nonbinary"]).optional(),
+  niche: z
+    .enum([
+      "FASHION",
+      "FITNESS",
+      "LIFESTYLE",
+      "TRAVEL",
+      "TECH",
+      "GAMING",
+      "ADULT",
+      "FOOD",
+    ])
+    .optional(),
+  bio: z.string().max(300).optional(),
+  personality: z.string().max(500).optional(),
+  age: z.number().int().min(18).max(35).optional(),
+  brief: z.string().max(1000).optional(),
+});
+
+export type WizardStep1SuggestionsOutput = z.infer<
+  typeof wizardStep1SuggestionsOutputSchema
+>;
+
 export const agentTurnOutputSchema = z.object({
   message: z.string().min(1).max(2000),
   quickReplies: z.array(z.string().max(120)).max(6).optional(),
@@ -53,6 +80,14 @@ export const agentTurnOutputSchema = z.object({
   action: z.string().max(80).optional(),
   readyToExecute: z.boolean().optional(),
   executionParams: calendarPlanExecutionParamsSchema.optional(),
+  /** Wizard step 1 only — other domains omit this field. */
+  wizardStep1Suggestions: wizardStep1SuggestionsOutputSchema.optional(),
+  /** Wizard step 4 only — 2 (pro + authentic) or occasionally 3 variants. */
+  bioOptions: z.array(z.string().min(1).max(300)).min(1).max(3).optional(),
+  /** Wizard step 2 — appearance adjustments from chat. */
+  wizardStep2Look: wizardStep2LookSchema.optional(),
+  /** Photo studio agent — looks/outfits/ready phase. */
+  photoAgentResult: photoAgentTurnOutputSchema.optional(),
 });
 
 export type AgentTurnOutput = z.infer<typeof agentTurnOutputSchema>;

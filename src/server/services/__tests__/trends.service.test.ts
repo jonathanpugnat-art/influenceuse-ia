@@ -15,6 +15,7 @@ import {
   matchesNiche,
   normalizeHashtags,
   normalizeNicheTags,
+  recommendationToPhotoParams,
   trendRecommendationFieldsSchema,
 } from "@/server/services/trends.service";
 
@@ -133,6 +134,69 @@ describe("trends.service / pure helpers", () => {
     it("rejects an empty hook", () => {
       const r = trendRecommendationFieldsSchema.safeParse({ ...valid, hook: "" });
       expect(r.success).toBe(false);
+    });
+  });
+
+  describe("recommendationToPhotoParams", () => {
+    const baseFields = {
+      trendId: "t1",
+      hook: "Hook test",
+      concept: "Concept",
+      type: "PHOTO" as const,
+      platform: "INSTAGRAM" as const,
+      scene: "bedroom",
+      pose: "portrait",
+      expression: "natural",
+      outfit: "black sports bra",
+      customPrompt: "miroir chambre, lumière matinale, préparation avant run",
+      confidence: "high" as const,
+      citations: ["trend.title"],
+    };
+
+    it("uses customPrompt alone without generic bedroom sceneBase", () => {
+      const blob = recommendationToPhotoParams(
+        {
+          id: "rec1",
+          trendItemId: "t1",
+          generatedFields: baseFields,
+        },
+        "inf1",
+        ["grwm", "fitness"]
+      );
+      expect(blob.sceneDescription).toBe(baseFields.customPrompt);
+      expect(blob.sceneDescription).not.toMatch(/bedroom.*miroir/i);
+    });
+
+    it("falls back to sceneBase when customPrompt is empty", () => {
+      const blob = recommendationToPhotoParams(
+        {
+          id: "rec1",
+          trendItemId: "t1",
+          generatedFields: { ...baseFields, customPrompt: "" },
+        },
+        "inf1",
+        ["grwm"]
+      );
+      expect(blob.sceneDescription.length).toBeGreaterThan(0);
+      expect(blob.sceneDescription).not.toBe(baseFields.customPrompt);
+    });
+
+    it("returns trendContext from stored fields", () => {
+      const blob = recommendationToPhotoParams(
+        {
+          id: "rec1",
+          trendItemId: "t1",
+          generatedFields: {
+            ...baseFields,
+            trendTitle: "GRWM morning routine",
+            trendHashtags: ["grwm", "morning"],
+          },
+        },
+        "inf1",
+        ["fallback"]
+      );
+      expect(blob.trendContext?.title).toBe("GRWM morning routine");
+      expect(blob.trendContext?.hashtags).toEqual(["grwm", "morning"]);
     });
   });
 });

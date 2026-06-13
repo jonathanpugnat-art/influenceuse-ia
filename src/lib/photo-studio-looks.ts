@@ -1,8 +1,13 @@
 import type { PhotoParams } from "@/hooks/use-photo-creator";
 import type { InfluencerGender } from "@/lib/photo-niche-defaults";
 import { pickDefaultPoseForScene } from "@/lib/photo-scene-pose";
-import { getSceneInspirationText } from "@/lib/prompts/image-prompts";
+import {
+  getPremiumPhotoDefaults,
+  getSocialPhotoDefaults,
+  PREMIUM_SCENE_DESCRIPTION,
+} from "@/lib/premium-content";
 import { CONTENT_TEMPLATES } from "@/lib/templates/content-templates";
+import { getSceneInspirationText } from "@/lib/prompts/image-prompts";
 
 /** Extra outfit chips per look (default outfit comes from the template). */
 const LOOK_OUTFIT_ALTERNATIVES: Record<
@@ -45,6 +50,18 @@ const LOOK_OUTFIT_ALTERNATIVES: Record<
     female: ["robe parisienne chic", "blazer et jean taille haute", "ensemble tweed"],
     male: ["blazer marine et jean", "manteau camel et écharpe", "chemise blanche et pantalon"],
   },
+  "boudoir-bedroom": {
+    female: ["lingerie dentelle rouge", "body noir satin", "ensemble boudoir crème"],
+    male: ["boxer satin et t-shirt loose", "peignoir soie ouvert", "short de pyjama et débardeur"],
+  },
+  "lingerie-mirror": {
+    female: ["lingerie dentelle noire", "body transparent et shorty", "brassière et culotte assortis"],
+    male: ["boxer moulant et t-shirt blanc", "ensemble lounge satin", "short et débardeur"],
+  },
+  "premium-morning": {
+    female: ["body dentelle et robe de chambre", "ensemble lingerie pastel", "caraco soie et short"],
+    male: ["peignoir et boxer", "t-shirt oversize et short de nuit", "ensemble lounge"],
+  },
 };
 
 export type PhotoStudioLook = {
@@ -55,6 +72,7 @@ export type PhotoStudioLook = {
   nameEn: string;
   /** Optional showcase image under /public/landing/showcase */
   previewSrc?: string;
+  lane?: "social" | "premium";
 };
 
 export const PHOTO_STUDIO_LOOKS: PhotoStudioLook[] = CONTENT_TEMPLATES.map((tpl) => ({
@@ -64,7 +82,40 @@ export const PHOTO_STUDIO_LOOKS: PhotoStudioLook[] = CONTENT_TEMPLATES.map((tpl)
   nameFr: tpl.name,
   nameEn: tpl.nameEn,
   previewSrc: lookPreviewForTemplate(tpl.id),
+  lane: "social" as const,
 }));
+
+export const PREMIUM_STUDIO_LOOKS: PhotoStudioLook[] = [
+  {
+    id: "boudoir-bedroom",
+    templateId: "boudoir-bedroom",
+    emoji: "🛏️",
+    nameFr: "Boudoir chambre",
+    nameEn: "Bedroom boudoir",
+    lane: "premium",
+  },
+  {
+    id: "lingerie-mirror",
+    templateId: "lingerie-mirror",
+    emoji: "🪞",
+    nameFr: "Miroir lingerie",
+    nameEn: "Lingerie mirror",
+    lane: "premium",
+  },
+  {
+    id: "premium-morning",
+    templateId: "premium-morning",
+    emoji: "🌅",
+    nameFr: "Matin intime",
+    nameEn: "Intimate morning",
+    lane: "premium",
+  },
+];
+
+export const ALL_STUDIO_LOOKS: PhotoStudioLook[] = [
+  ...PHOTO_STUDIO_LOOKS,
+  ...PREMIUM_STUDIO_LOOKS,
+];
 
 function lookPreviewForTemplate(id: string): string | undefined {
   const map: Record<string, string> = {
@@ -82,13 +133,29 @@ function lookPreviewForTemplate(id: string): string | undefined {
 
 export function getStudioLook(id: string | null | undefined): PhotoStudioLook | undefined {
   if (!id) return undefined;
-  return PHOTO_STUDIO_LOOKS.find((l) => l.id === id);
+  return ALL_STUDIO_LOOKS.find((l) => l.id === id);
+}
+
+export function getLooksForLane(contentMode: "SFW" | "NSFW"): PhotoStudioLook[] {
+  return contentMode === "NSFW" ? PREMIUM_STUDIO_LOOKS : PHOTO_STUDIO_LOOKS;
 }
 
 export function getOutfitOptionsForLook(
   lookId: string,
   gender: InfluencerGender
 ): string[] {
+  const premiumLook = PREMIUM_STUDIO_LOOKS.find((l) => l.id === lookId);
+  if (premiumLook) {
+    const alts = LOOK_OUTFIT_ALTERNATIVES[lookId];
+    const genderAlts =
+      gender === "male"
+        ? alts?.male
+        : gender === "nonbinary"
+          ? alts?.nonbinary ?? alts?.female
+          : alts?.female;
+    return [...new Set((genderAlts ?? []).map((s) => s.trim()).filter(Boolean))];
+  }
+
   const tpl = CONTENT_TEMPLATES.find((t) => t.id === lookId);
   if (!tpl) return [];
 
@@ -127,12 +194,31 @@ export function buildLookSceneDescription(
   return `${base}. ${detail}`.trim();
 }
 
-/** Apply a studio look — fills scene, pose, outfit, lighting, enables Instagram Shot lane. */
+/** Apply a studio look — fills scene, pose, outfit; respects Social vs Premium lane. */
 export function applyStudioLook(
   lookId: string,
   gender: InfluencerGender,
-  sceneDetail?: string
+  sceneDetail?: string,
+  contentMode: "SFW" | "NSFW" = "SFW"
 ): Partial<PhotoParams> {
+  const premiumLook = PREMIUM_STUDIO_LOOKS.find((l) => l.id === lookId);
+  if (premiumLook || contentMode === "NSFW") {
+    const outfits = getOutfitOptionsForLook(lookId, gender);
+    const outfit = outfits[0] ?? "lingerie dentelle, boudoir tasteful";
+    const premiumDefaults = getPremiumPhotoDefaults();
+    return {
+      ...premiumDefaults,
+      lookId,
+      instagramShot: false,
+      scene: "bedroom",
+      sceneDescription: PREMIUM_SCENE_DESCRIPTION,
+      outfit,
+      sceneDetail: sceneDetail ?? "",
+      sceneFirst: false,
+      expression: "seductive",
+    };
+  }
+
   const tpl = CONTENT_TEMPLATES.find((t) => t.id === lookId);
   if (!tpl) return {};
 
@@ -145,6 +231,7 @@ export function applyStudioLook(
   );
 
   return {
+    ...getSocialPhotoDefaults(pose),
     lookId,
     instagramShot: true,
     scene: tpl.params.scene,

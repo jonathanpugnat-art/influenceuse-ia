@@ -8,6 +8,7 @@ import { PLANS } from "@/lib/constants";
 import type { Plan } from "@/generated/prisma/client";
 
 import { getDbUser } from "@/server/helpers/get-db-user";
+import { parseIdentityPack } from "@/lib/identity-pack";
 
 // ──────────────────────────────────────────────
 // Helpers
@@ -44,13 +45,17 @@ const nicheValues = [
 
 const statusValues = ["ACTIVE", "PAUSED", "ARCHIVED"] as const;
 
-const styleSchema = z.object({
-  ethnicity: z.string().optional(),
-  hairColor: z.string().optional(),
-  hairStyle: z.string().optional(),
-  bodyType: z.string().optional(),
-  fashionStyle: z.string().optional(),
-});
+import { extendedStyleSchema } from "@/lib/appearance-v2";
+
+const styleSchema = extendedStyleSchema;
+
+/** Brief is server-only context for agents — never expose via tRPC reads. */
+function stripInfluencerBrief<T extends { brief?: string | null }>(
+  row: T
+): Omit<T, "brief"> {
+  const { brief: _brief, ...rest } = row;
+  return rest;
+}
 
 // ──────────────────────────────────────────────
 // Router
@@ -106,7 +111,7 @@ export const influencerRouter = createTRPCRouter({
       ]);
 
       return {
-        influencers,
+        influencers: influencers.map(stripInfluencerBrief),
         total,
         page,
         totalPages: Math.ceil(total / limit),
@@ -141,7 +146,7 @@ export const influencerRouter = createTRPCRouter({
         });
       }
 
-      return influencer;
+      return stripInfluencerBrief(influencer);
     }),
 
   /**
@@ -193,6 +198,7 @@ export const influencerRouter = createTRPCRouter({
         gender: z.enum(["female", "male", "nonbinary"]).default("female"),
         bio: z.string().min(10).max(2000),
         personality: z.string().min(10).max(2000),
+        brief: z.string().max(1000).optional(),
         niche: z.enum(nicheValues),
         age: z.number().int().min(18).max(80),
         style: styleSchema,
@@ -274,6 +280,7 @@ export const influencerRouter = createTRPCRouter({
           slug,
           bio: input.bio,
           personality: input.personality,
+          brief: input.brief?.trim() || undefined,
           niche: input.niche,
           age: input.age,
           style: input.style as object,
@@ -333,7 +340,7 @@ export const influencerRouter = createTRPCRouter({
         });
       }
 
-      return influencer;
+      return stripInfluencerBrief(influencer);
     }),
 
   /**
@@ -365,6 +372,60 @@ export const influencerRouter = createTRPCRouter({
     }),
 
   /**
+   * getIdentityPackStatus — Poll wizard wait screen + photo studio banner.
+   */
+  getIdentityPackStatus: protectedProcedure
+    .input(z.object({ influencerId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const { influencer } = await verifyOwnership(
+        input.influencerId,
+        ctx.userId
+      );
+      const pack = parseIdentityPack(influencer.identityPack);
+      return {
+        status: pack?.status ?? ("pending" as const),
+        shotsReady: pack?.shots?.length ?? 0,
+        totalShots: 4 as const,
+      };
+    }),
+
+  /**
+   * regenerateIdentityPack — Relance le kit identité en arrière-plan (wizard retry).
+   */
+  regenerateIdentityPack: protectedProcedure
+    .input(z.object({ influencerId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const { user, influencer } = await verifyOwnership(
+        input.influencerId,
+        ctx.userId
+      );
+      if (!influencer.baseImageUrl?.trim()) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Pas de portrait de base",
+        });
+      }
+      if (influencer.isNsfw) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Le kit identité n'est pas disponible en mode NSFW.",
+        });
+      }
+
+      const baseUrl = influencer.baseImageUrl.trim();
+      ctx.scheduleAfter(async () => {
+        const { scheduleIdentityPackGeneration } = await import(
+          "@/server/services/identity-pack.service"
+        );
+        await scheduleIdentityPackGeneration(user.id, input.influencerId, baseUrl, {
+          complimentary: true,
+        });
+      });
+
+      return { started: true as const };
+    }),
+
+  /**
    * update – Met à jour une influenceuse
    */
   update: protectedProcedure
@@ -375,6 +436,7 @@ export const influencerRouter = createTRPCRouter({
         gender: z.enum(["female", "male", "nonbinary"]).optional(),
         bio: z.string().min(10).max(2000).optional(),
         personality: z.string().min(10).max(2000).optional(),
+        brief: z.string().max(1000).optional().nullable(),
         niche: z.enum(nicheValues).optional(),
         age: z.number().int().min(18).max(80).optional(),
         style: styleSchema.optional(),
@@ -420,7 +482,7 @@ export const influencerRouter = createTRPCRouter({
         },
       });
 
-      return influencer;
+      return stripInfluencerBrief(influencer);
     }),
 
   /**

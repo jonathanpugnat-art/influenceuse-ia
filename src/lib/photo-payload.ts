@@ -19,5 +19,6 @@ export function buildPhotoPayload(params: PhotoParams) {
     useFaceReference: params.useFaceReference,
     lookId: params.lookId ?? undefined,
     instagramShot: params.instagramShot,
+    trendContext: params.trendContext,
   };
 }

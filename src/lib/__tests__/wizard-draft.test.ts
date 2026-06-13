@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { isMeaningfulWizardDraft } from "@/lib/wizard-draft";
+import { defaultWizardAppearanceV2 } from "@/lib/appearance-v2";
 import type { WizardData } from "@/hooks/use-influencer-wizard";
 
 const emptyData: WizardData = {
@@ -14,8 +15,8 @@ const emptyData: WizardData = {
   hairColor: "",
   hairLength: "",
   hairTexture: "",
-  bodyType: "",
   fashionStyles: [],
+  ...defaultWizardAppearanceV2(),
   baseImageUrl: "",
   instagramEnabled: false,
   instagramUsername: "",

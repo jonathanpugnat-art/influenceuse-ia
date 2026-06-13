@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useMemo } from "react";
+import { use, useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useForm, Controller } from "react-hook-form";
@@ -17,6 +17,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { trpc } from "@/lib/trpc";
 import { CREDIT_COSTS } from "@/lib/constants";
+import { defaultWizardAppearanceV2 } from "@/lib/appearance-v2";
+import { WizardAppearanceV2Panel } from "@/components/influencer/wizard-appearance-v2-panel";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -128,9 +130,41 @@ export default function EditInfluencerPage({
       hairStyle: s.hairStyle as string | undefined,
       bodyType: s.bodyType as string | undefined,
       fashionStyle: s.fashionStyle as string | undefined,
+      skinTone: s.skinTone as string | undefined,
+      height: s.height as string | undefined,
+      bustLevel: typeof s.bustLevel === "number" ? s.bustLevel : undefined,
+      hipsLevel: typeof s.hipsLevel === "number" ? s.hipsLevel : undefined,
+      shouldersLevel:
+        typeof s.shouldersLevel === "number" ? s.shouldersLevel : undefined,
+      tattoos: Array.isArray(s.tattoos) ? (s.tattoos as string[]) : undefined,
+      makeupLevel: s.makeupLevel as string | undefined,
+      bodyGenerationMode: s.bodyGenerationMode as
+        | "standard"
+        | "extended"
+        | undefined,
     };
   }, [influencer?.style]);
 
+  const [appearanceV2, setAppearanceV2] = useState(defaultWizardAppearanceV2);
+
+  useEffect(() => {
+    if (!influencer) return;
+    setAppearanceV2({
+      ...defaultWizardAppearanceV2(),
+      skinTone: style.skinTone ?? defaultWizardAppearanceV2().skinTone,
+      height: style.height ?? defaultWizardAppearanceV2().height,
+      bustLevel: style.bustLevel ?? 0,
+      hipsLevel: style.hipsLevel ?? 0,
+      shouldersLevel: style.shouldersLevel ?? 0,
+      bodyType: style.bodyType ?? "",
+      makeupLevel: style.makeupLevel ?? defaultWizardAppearanceV2().makeupLevel,
+      tattoos: style.tattoos ?? [],
+      bodyGenerationMode:
+        style.bodyGenerationMode ?? defaultWizardAppearanceV2().bodyGenerationMode,
+    });
+  }, [influencer, style]);
+
+  const allowNsfw = creditsData?.features.hasNsfw ?? false;
   const creditsRemaining = creditsData?.creditsRemaining ?? 0;
   const cost = CREDIT_COSTS.BASE_IMAGE;
   const hasEnoughCredits = creditsRemaining >= cost;
@@ -140,12 +174,22 @@ export default function EditInfluencerPage({
     setRegenerating(true);
     generateBaseImageMutation.mutate({
       age: influencer.age,
+      gender:
+        (influencer.gender as "female" | "male" | "nonbinary") ?? "female",
       style: {
         ethnicity: style.ethnicity,
         hairColor: style.hairColor,
         hairStyle: style.hairStyle,
-        bodyType: style.bodyType,
+        bodyType: appearanceV2.bodyType || style.bodyType,
         fashionStyle: style.fashionStyle,
+        skinTone: appearanceV2.skinTone,
+        height: appearanceV2.height,
+        bustLevel: appearanceV2.bustLevel,
+        hipsLevel: appearanceV2.hipsLevel,
+        shouldersLevel: appearanceV2.shouldersLevel,
+        tattoos: appearanceV2.tattoos,
+        makeupLevel: appearanceV2.makeupLevel,
+        bodyGenerationMode: appearanceV2.bodyGenerationMode,
       },
     });
   };
@@ -162,6 +206,21 @@ export default function EditInfluencerPage({
       niche: formData.niche,
       age: formData.age,
       isNsfw: formData.isNsfw,
+      style: {
+        ethnicity: style.ethnicity,
+        hairColor: style.hairColor,
+        hairStyle: style.hairStyle,
+        bodyType: appearanceV2.bodyType || style.bodyType,
+        fashionStyle: style.fashionStyle,
+        skinTone: appearanceV2.skinTone,
+        height: appearanceV2.height,
+        bustLevel: appearanceV2.bustLevel,
+        hipsLevel: appearanceV2.hipsLevel,
+        shouldersLevel: appearanceV2.shouldersLevel,
+        tattoos: appearanceV2.tattoos,
+        makeupLevel: appearanceV2.makeupLevel,
+        bodyGenerationMode: appearanceV2.bodyGenerationMode,
+      },
       ...(baseImageUrl ? { baseImageUrl, avatarUrl: baseImageUrl } : {}),
       ...(baseImageUrl && regeneratedVariations
         ? { appearanceVariations: regeneratedVariations }
@@ -289,12 +348,35 @@ export default function EditInfluencerPage({
               )}
             </div>
 
-            {/* NSFW toggle — hidden for now, will be re-enabled later */}
+            {allowNsfw && (
+              <div className="flex items-center justify-between rounded-xl border border-slate-800/50 bg-slate-800/20 p-4">
+                <div>
+                  <Label className="text-slate-300">Mode NSFW (Premium)</Label>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Contenu suggestif / boudoir (OnlyFans). Pas d&apos;identity pack.
+                  </p>
+                </div>
+                <Controller
+                  name="isNsfw"
+                  control={form.control}
+                  render={({ field }) => (
+                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                  )}
+                />
+              </div>
+            )}
           </div>
 
           {/* Colonne 2 — Apparence */}
           <div className="space-y-6 rounded-2xl border border-slate-800/50 bg-slate-900/50 p-6 backdrop-blur-xl">
             <h2 className="text-lg font-semibold text-white">Apparence</h2>
+
+            <WizardAppearanceV2Panel
+              data={appearanceV2}
+              onChange={(partial) =>
+                setAppearanceV2((prev) => ({ ...prev, ...partial }))
+              }
+            />
 
             {/* Image actuelle ou variantes régénérées */}
             {regeneratedUrls.length > 0 ? (

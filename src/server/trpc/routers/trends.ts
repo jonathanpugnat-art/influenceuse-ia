@@ -20,6 +20,10 @@ import {
   trendFormatAnalyzeCost,
 } from "@/server/services/trends.service";
 import { parseTrendFormatBrief } from "@/lib/trends/trend-format-brief";
+import {
+  pickPosterUrlFromTrend,
+  resolveTrendInlinePreview,
+} from "@/lib/trends/trend-video-items";
 import { resolveTrendsProvider } from "@/server/services/trend-provider";
 import type { Plan, TrendItem } from "@/generated/prisma/client";
 
@@ -79,29 +83,45 @@ function mapTrendItemsForUi(items: TrendItem[], byTrendId: Map<string, TrendRecR
     hasMedia: item.mediaUrls.length > 0 || Boolean(item.thumbnailUrl),
   }));
 
-  return itemsWithFormat.map((trendItem) => ({
-    id: trendItem.id,
-    platform: trendItem.platform,
-    title: trendItem.title,
-    description: trendItem.description,
-    hashtags: trendItem.hashtags,
-    soundName: trendItem.soundName,
-    growthScore: trendItem.growthScore,
-    sourceUrl: trendItem.sourceUrl,
-    thumbnailUrl: trendItem.thumbnailUrl,
-    thumbnailUrlAlt: trendItem.thumbnailUrlAlt,
-    embedUrl: trendItem.embedUrl,
-    authorHandle: trendItem.authorHandle,
-    nicheTags: trendItem.nicheTags,
-    locale: trendItem.locale,
-    region: trendItem.region,
-    fetchedAt: trendItem.fetchedAt,
-    mediaKind: trendItem.mediaKind,
-    hasMedia: trendItem.hasMedia,
-    formatBrief: trendItem.formatBrief,
-    formatAnalyzedAt: trendItem.formatAnalyzedAt,
-    recommendation: byTrendId.get(trendItem.id) ?? null,
-  }));
+  return itemsWithFormat.map((trendItem) => {
+    const posterUrl = pickPosterUrlFromTrend({
+      thumbnailUrl: trendItem.thumbnailUrl,
+      thumbnailUrlAlt: trendItem.thumbnailUrlAlt,
+      mediaUrls: trendItem.mediaUrls,
+    });
+    const inlinePreview = resolveTrendInlinePreview({
+      platform: trendItem.platform,
+      sourceUrl: trendItem.sourceUrl,
+      embedUrl: trendItem.embedUrl,
+      mediaUrls: trendItem.mediaUrls,
+    });
+
+    return {
+      id: trendItem.id,
+      platform: trendItem.platform,
+      title: trendItem.title,
+      description: trendItem.description,
+      hashtags: trendItem.hashtags,
+      soundName: trendItem.soundName,
+      growthScore: trendItem.growthScore,
+      sourceUrl: trendItem.sourceUrl,
+      thumbnailUrl: trendItem.thumbnailUrl ?? posterUrl,
+      thumbnailUrlAlt: trendItem.thumbnailUrlAlt,
+      embedUrl: trendItem.embedUrl,
+      mediaUrls: trendItem.mediaUrls,
+      inlinePreview,
+      authorHandle: trendItem.authorHandle,
+      nicheTags: trendItem.nicheTags,
+      locale: trendItem.locale,
+      region: trendItem.region,
+      fetchedAt: trendItem.fetchedAt,
+      mediaKind: trendItem.mediaKind,
+      hasMedia: trendItem.hasMedia,
+      formatBrief: trendItem.formatBrief,
+      formatAnalyzedAt: trendItem.formatAnalyzedAt,
+      recommendation: byTrendId.get(trendItem.id) ?? null,
+    };
+  });
 }
 
 // ──────────────────────────────────────────────

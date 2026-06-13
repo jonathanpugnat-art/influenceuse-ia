@@ -30,7 +30,7 @@ export function CalendarAgentPanelWrapper({
   const filterInfluencerId = searchParams.get("influencer") ?? undefined;
 
   const open = useCalendarAgentStore((s) => s.isOpen);
-  const [influencerId, setInfluencerId] = useState(filterInfluencerId ?? "");
+  const [influencerId, setInfluencerId] = useState("");
   const executedPlanKeyRef = useRef<string | null>(null);
 
   const { data: influencersData } = trpc.influencer.getAll.useQuery(
@@ -39,12 +39,6 @@ export function CalendarAgentPanelWrapper({
   );
   const influencers = influencersData?.influencers ?? [];
   const activeInfluencerId = filterInfluencerId ?? influencerId;
-
-  useEffect(() => {
-    if (filterInfluencerId) {
-      setInfluencerId(filterInfluencerId);
-    }
-  }, [filterInfluencerId]);
 
   const utils = trpc.useUtils();
 

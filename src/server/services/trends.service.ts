@@ -181,6 +181,10 @@ export const trendRecommendationFieldsSchema = z.object({
   customPrompt: z.string().min(0).max(400),
   /** Filled from formatBrief after vision analysis (English). */
   sceneDescription: z.string().max(800).optional(),
+  /** Source trend title preserved for downstream photo enrichment. */
+  trendTitle: z.string().max(500).optional(),
+  /** Source trend hashtags preserved for downstream photo enrichment. */
+  trendHashtags: z.array(z.string().min(1).max(80)).max(30).optional(),
   confidence: z.enum(["high", "medium", "low"]),
   citations: z.array(z.string().min(1).max(60)).max(8),
 });
@@ -598,6 +602,8 @@ export async function personalizeFeedForInfluencer(
     if (brief?.sceneDescription) {
       cleaned.sceneDescription = brief.sceneDescription;
     }
+    cleaned.trendTitle = trend.title;
+    cleaned.trendHashtags = trend.hashtags;
 
     const upserted = await db.trendRecommendation.upsert({
       where: {
@@ -707,6 +713,8 @@ export async function personalizeSingleTrendForInfluencer(
   if (brief?.sceneDescription) {
     cleaned.sceneDescription = brief.sceneDescription;
   }
+  cleaned.trendTitle = item.title;
+  cleaned.trendHashtags = item.hashtags;
   if (brief?.contentType === "REEL") {
     cleaned.type = "REEL";
   } else if (isVideoTrendItem(item.mediaKind) && cleaned.type !== "PHOTO") {
@@ -772,6 +780,11 @@ export interface ApplyToPhotoParamsResult {
   /** Pass-through reference for analytics / re-applying later. */
   trendItemId: string;
   recommendationId: string;
+  /** Optional scraped trend metadata for photo prompt enrichment. */
+  trendContext?: {
+    title?: string;
+    hashtags?: string[];
+  };
 }
 
 export type ApplyToCreatorResult =
@@ -825,11 +838,24 @@ export function recommendationToPhotoParams(
 
   const scene = clampScene(fields.scene);
   const sceneBase = getSceneInspirationText(scene);
+  const customPrompt = fields.customPrompt?.trim() ?? "";
   const sceneDescription =
-    fields.sceneDescription?.trim() ||
-    (fields.customPrompt.trim().length > 0
-      ? [sceneBase, fields.customPrompt.trim()].filter(Boolean).join(". ")
-      : sceneBase);
+    fields.sceneDescription?.trim() || customPrompt || sceneBase;
+
+  const trendTitle = fields.trendTitle?.trim();
+  const trendHashtags =
+    fields.trendHashtags && fields.trendHashtags.length > 0
+      ? fields.trendHashtags
+      : hashtags.length > 0
+        ? hashtags
+        : undefined;
+  const trendContext =
+    trendTitle || trendHashtags
+      ? {
+          title: trendTitle || undefined,
+          hashtags: trendHashtags,
+        }
+      : undefined;
 
   return {
     type: clampContentType(fields.type),
@@ -847,6 +873,7 @@ export function recommendationToPhotoParams(
     citations: fields.citations,
     trendItemId: rec.trendItemId,
     recommendationId: rec.id,
+    trendContext,
   };
 }
 

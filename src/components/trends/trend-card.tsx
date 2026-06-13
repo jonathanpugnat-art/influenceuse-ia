@@ -21,6 +21,10 @@ import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import {
+  buildInstagramEmbedUrl,
+  buildTikTokEmbedUrl,
+} from "@/lib/trends/trend-video-items";
 
 // We keep the prop type local — the page is the single consumer and we want
 // to avoid a circular type import from the tRPC AppRouter.
@@ -42,6 +46,9 @@ export interface TrendCardProps {
     thumbnailUrl?: string | null;
     /** Optional 2nd image swapped on hover for a tiny "alive" effect. */
     thumbnailUrlAlt?: string | null;
+    /** Direct MP4 or platform embed for inline preview (no click required). */
+    inlinePreview?: { kind: "video" | "embed"; url: string } | null;
+    mediaUrls?: string[];
     /** Optional creator handle ("@username") for attribution. */
     authorHandle?: string | null;
     fetchedAt: Date | string;
@@ -138,15 +145,33 @@ export function TrendCard({
   const fields = readFields(trend.recommendation?.generatedFields);
   const hasRec = trend.recommendation !== null;
   const [hovered, setHovered] = useState(false);
-  const isVideo = trend.mediaKind === "video";
-  const heroLink = (isVideo && trend.embedUrl) || trend.sourceUrl || "#";
+  const [videoFailed, setVideoFailed] = useState(false);
+  const isVideo =
+    trend.mediaKind === "video" || Boolean(trend.inlinePreview);
+  const inlinePreview = trend.inlinePreview;
+  const fallbackEmbedUrl =
+    trend.platform === "TIKTOK"
+      ? buildTikTokEmbedUrl(trend.embedUrl ?? trend.sourceUrl)
+      : trend.platform === "INSTAGRAM"
+        ? buildInstagramEmbedUrl(trend.embedUrl ?? trend.sourceUrl)
+        : null;
+  const showInlineVideo =
+    inlinePreview?.kind === "video" && !videoFailed;
+  const embedSrc =
+    inlinePreview?.kind === "embed"
+      ? inlinePreview.url
+      : videoFailed
+        ? fallbackEmbedUrl
+        : !inlinePreview
+          ? fallbackEmbedUrl
+          : null;
+  const showInlineEmbed = Boolean(embedSrc) && !showInlineVideo;
+  const heroLink = trend.sourceUrl || "#";
 
-  // Pick which thumbnail to render — alt on hover, primary at rest.
-  // Both come from Unsplash (curated) or the provider (Apify), so they're
-  // already sized down via query params. Next/image still optimizes them.
-  const heroSrc = hovered && trend.thumbnailUrlAlt
-    ? trend.thumbnailUrlAlt
-    : trend.thumbnailUrl ?? null;
+  const heroSrc =
+    hovered && trend.thumbnailUrlAlt
+      ? trend.thumbnailUrlAlt
+      : trend.thumbnailUrl ?? null;
 
   return (
     <motion.article
@@ -159,18 +184,34 @@ export function TrendCard({
       onMouseLeave={() => setHovered(false)}
       className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-800/60 bg-slate-900/40 backdrop-blur-xl transition-all hover:border-violet-500/40 hover:shadow-lg hover:shadow-violet-500/10"
     >
-      {/* ── Hero (thumbnail + play overlay) ─────────────────────── */}
-      <a
-        href={heroLink}
-        target="_blank"
-        rel="noopener noreferrer"
+      {/* ── Hero (inline video / thumbnail) ─────────────────────── */}
+      <div
         className={cn(
-          "relative block aspect-[4/5] w-full overflow-hidden",
-          !heroSrc && fallbackGradient(trend.platform)
+          "relative block aspect-[4/5] w-full overflow-hidden bg-black",
+          !showInlineVideo && !showInlineEmbed && !heroSrc && fallbackGradient(trend.platform)
         )}
-        aria-label={t("openSource")}
       >
-        {heroSrc && (
+        {showInlineVideo ? (
+          <video
+            src={inlinePreview!.url}
+            poster={heroSrc ?? undefined}
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="metadata"
+            className="absolute inset-0 h-full w-full object-cover"
+            onError={() => setVideoFailed(true)}
+          />
+        ) : showInlineEmbed && embedSrc ? (
+          <iframe
+            src={embedSrc}
+            title={trend.title}
+            allow="autoplay; encrypted-media; picture-in-picture"
+            className="absolute inset-0 h-full w-full border-0"
+            loading="lazy"
+          />
+        ) : heroSrc ? (
           <Image
             src={heroSrc}
             alt={trend.title}
@@ -179,13 +220,23 @@ export function TrendCard({
             className="object-cover transition-transform duration-500 group-hover:scale-105"
             unoptimized
           />
+        ) : null}
+
+        {trend.sourceUrl && !showInlineVideo && !showInlineEmbed && (
+          <a
+            href={heroLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="absolute inset-0 z-[1]"
+            aria-label={t("openSource")}
+          />
         )}
 
         {/* Bottom dark gradient for text legibility */}
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/10 to-transparent" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/10 to-transparent" />
 
         {/* Top — platform badge + growth */}
-        <div className="absolute inset-x-0 top-0 flex items-center justify-between p-3">
+        <div className="absolute inset-x-0 top-0 z-[2] flex items-center justify-between p-3">
           <Badge
             variant="outline"
             className={cn(
@@ -211,20 +262,34 @@ export function TrendCard({
           )}
         </div>
 
-        {/* Center play overlay (visible on hover) */}
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/90 text-slate-900 shadow-xl">
-            <Play className="ml-0.5 h-6 w-6 fill-current" />
+        {/* Play overlay only when there's no inline preview */}
+        {!showInlineVideo && !showInlineEmbed && (
+          <div className="pointer-events-none absolute inset-0 z-[2] flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/90 text-slate-900 shadow-xl">
+              <Play className="ml-0.5 h-6 w-6 fill-current" />
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Bottom — author handle (Apify) */}
+        {/* Bottom — author handle */}
         {trend.authorHandle && (
-          <div className="absolute bottom-2 left-3 text-xs font-medium text-white/90 drop-shadow">
+          <div className="absolute bottom-2 left-3 z-[2] text-xs font-medium text-white/90 drop-shadow">
             {trend.authorHandle}
           </div>
         )}
-      </a>
+
+        {trend.sourceUrl && (showInlineVideo || showInlineEmbed) && (
+          <a
+            href={heroLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="absolute bottom-2 right-3 z-[2] flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors hover:bg-black/70"
+            aria-label={t("openSource")}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        )}
+      </div>
 
       {/* ── Body ────────────────────────────────────────────────── */}
       <div className="flex flex-1 flex-col p-4">

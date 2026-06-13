@@ -126,6 +126,18 @@ export async function POST(req: NextRequest) {
           }
         }
 
+        const existingByEmail = await db.user.findUnique({
+          where: { email: normalized },
+        });
+        if (existingByEmail && existingByEmail.clerkId !== clerkId) {
+          await db.user.update({
+            where: { id: existingByEmail.id },
+            data: { clerkId, email: normalized, name, imageUrl },
+          });
+          console.log(`[clerk-webhook] Re-linked user: ${email}`);
+          break;
+        }
+
         await db.user.upsert({
           where: { clerkId },
           update: { email, name, imageUrl },

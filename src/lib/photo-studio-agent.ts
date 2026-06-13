@@ -1,6 +1,8 @@
 import { z } from "zod";
 import {
   PHOTO_STUDIO_LOOKS,
+  PREMIUM_STUDIO_LOOKS,
+  ALL_STUDIO_LOOKS,
   type PhotoStudioLook,
 } from "@/lib/photo-studio-looks";
 import type { InfluencerGender } from "@/lib/photo-niche-defaults";
@@ -20,6 +22,7 @@ export const photoAgentTurnInputSchema = z.object({
   selectedOutfit: z.string().optional(),
   /** Number of assistant turns already shown (0 = first assistant reply). Max 2 before ready. */
   assistantTurnCount: z.number().int().min(0).max(2),
+  contentMode: z.enum(["SFW", "NSFW"]).optional().default("SFW"),
   history: z
     .array(
       z.object({
@@ -61,7 +64,13 @@ Return STRICT JSON only:
 }
 
 Valid look ids (pick up to 3 that match intent):
+Social looks:
 ${PHOTO_STUDIO_LOOKS.map((l) => `- ${l.id}: ${l.nameEn}`).join("\n")}
+
+Premium / OnlyFans looks (suggestive boudoir only):
+${PREMIUM_STUDIO_LOOKS.map((l) => `- ${l.id}: ${l.nameEn}`).join("\n")}
+
+When contentMode is NSFW, prefer premium looks. When SFW, only social looks.
 
 When phase is "outfits", suggestedOutfits must be concrete outfit descriptions (2-4 options).
 When phase is "ready", showBrief is true and arrays can be empty.`;
@@ -76,6 +85,9 @@ const LOOK_KEYWORDS: Record<string, string[]> = {
   "morning-routine": ["morning", "matin", "routine", "pyjama", "home", "maison"],
   "street-style": ["street", "rue", "urban", "ville", "fashion", "mode"],
   "paris-landmark": ["paris", "landmark", "monument", "tour eiffel", "city"],
+  "boudoir-bedroom": ["boudoir", "bedroom", "chambre", "lingerie", "intime", "of", "onlyfans"],
+  "lingerie-mirror": ["lingerie", "mirror", "miroir", "dentelle", "lace", "sexy", "sensuel"],
+  "premium-morning": ["morning", "matin", "intime", "pyjama", "soie", "boudoir"],
 };
 
 function scoreLookForText(look: PhotoStudioLook, text: string): number {
@@ -92,10 +104,13 @@ function scoreLookForText(look: PhotoStudioLook, text: string): number {
 
 export function pickLooksForIntent(
   text: string,
-  max = 3
+  max = 3,
+  contentMode: "SFW" | "NSFW" = "SFW"
 ): PhotoStudioLook[] {
+  const pool =
+    contentMode === "NSFW" ? PREMIUM_STUDIO_LOOKS : PHOTO_STUDIO_LOOKS;
   const trimmed = text.trim();
-  const scored = PHOTO_STUDIO_LOOKS.map((look) => ({
+  const scored = pool.map((look) => ({
     look,
     score: trimmed ? scoreLookForText(look, trimmed) : 0,
   })).sort((a, b) => b.score - a.score);
@@ -103,19 +118,18 @@ export function pickLooksForIntent(
   const withHits = scored.filter((s) => s.score > 0).map((s) => s.look);
   if (withHits.length >= max) return withHits.slice(0, max);
 
-  const defaults = [
-    "cafe-aesthetic",
-    "street-style",
-    "morning-routine",
-  ] as const;
+  const defaults =
+    contentMode === "NSFW"
+      ? (["boudoir-bedroom", "lingerie-mirror", "premium-morning"] as const)
+      : (["cafe-aesthetic", "street-style", "morning-routine"] as const);
   const picked = new Map<string, PhotoStudioLook>();
   for (const l of withHits) picked.set(l.id, l);
   for (const id of defaults) {
     if (picked.size >= max) break;
-    const look = PHOTO_STUDIO_LOOKS.find((l) => l.id === id);
+    const look = pool.find((l) => l.id === id);
     if (look) picked.set(look.id, look);
   }
-  for (const look of PHOTO_STUDIO_LOOKS) {
+  for (const look of pool) {
     if (picked.size >= max) break;
     picked.set(look.id, look);
   }
@@ -157,7 +171,7 @@ export function buildFallbackAgentTurn(
     input.userMessage?.trim() ||
     input.history.filter((m) => m.role === "user").pop()?.content ||
     "";
-  const looks = pickLooksForIntent(intent, 3);
+  const looks = pickLooksForIntent(intent, 3, input.contentMode ?? "SFW");
 
   return {
     message: fr
@@ -172,7 +186,7 @@ export function buildFallbackAgentTurn(
 
 export function validatePhotoAgentTurn(raw: unknown): PhotoAgentTurnOutput {
   const parsed = photoAgentTurnOutputSchema.parse(raw);
-  const validIds = new Set(PHOTO_STUDIO_LOOKS.map((l) => l.id));
+  const validIds = new Set(ALL_STUDIO_LOOKS.map((l) => l.id));
   return {
     ...parsed,
     suggestedLookIds: parsed.suggestedLookIds.filter((id) => validIds.has(id)),
@@ -180,7 +194,7 @@ export function validatePhotoAgentTurn(raw: unknown): PhotoAgentTurnOutput {
 }
 
 export function getLookById(id: string): PhotoStudioLook | undefined {
-  return PHOTO_STUDIO_LOOKS.find((l) => l.id === id);
+  return ALL_STUDIO_LOOKS.find((l) => l.id === id);
 }
 
 export function lookLabel(look: PhotoStudioLook, locale: string): string {

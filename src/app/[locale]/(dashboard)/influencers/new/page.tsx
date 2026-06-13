@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { WizardProgress } from "@/components/influencer/wizard-progress";
 import {
@@ -15,8 +16,9 @@ import { WizardStepIdentity } from "@/components/influencer/wizard-step-identity
 import { WizardStepAppearance } from "@/components/influencer/wizard-step-appearance";
 import { WizardStepSocial } from "@/components/influencer/wizard-step-social";
 import { WizardStepSummary } from "@/components/influencer/wizard-step-summary";
-import { WizardExpressLauncher } from "@/components/influencer/wizard-express-launcher";
+import { WizardEntryChoice } from "@/components/influencer/wizard-entry-choice";
 import { useInfluencerWizard } from "@/hooks/use-influencer-wizard";
+import { formatInstagramOAuthError } from "@/lib/instagram-oauth-errors";
 import { isMeaningfulWizardDraft } from "@/lib/wizard-draft";
 import {
   AlertDialog,
@@ -31,6 +33,9 @@ import {
 
 export default function NewInfluencerPage() {
   const t = useTranslations("wizard");
+  const locale = useLocale();
+  const searchParams = useSearchParams();
+  const oauthHandledRef = useRef(false);
   const {
     step,
     setStep,
@@ -40,6 +45,8 @@ export default function NewInfluencerPage() {
     data,
     generatedImages,
     selectedImageIndex,
+    createdInfluencerId,
+    entryMode,
   } = useInfluencerWizard();
   const [slideDirection, setSlideDirection] = useState<"forward" | "backward">(
     "forward"
@@ -89,6 +96,34 @@ export default function NewInfluencerPage() {
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [hydrationReady, showDraftDialog]);
+
+  useEffect(() => {
+    if (!hydrationReady || showDraftDialog || oauthHandledRef.current) return;
+
+    const connected = searchParams.get("connected");
+    const instagramError = searchParams.get("instagram_error");
+    const stepParam = searchParams.get("step");
+
+    if (connected === "instagram") {
+      oauthHandledRef.current = true;
+      toast.success(t("instagramConnectedToast"));
+      setStep(3);
+      window.history.replaceState({}, "", `/${locale}/influencers/new?step=3`);
+      return;
+    }
+
+    if (instagramError) {
+      oauthHandledRef.current = true;
+      toast.error(formatInstagramOAuthError(instagramError), { duration: 12000 });
+      setStep(3);
+      window.history.replaceState({}, "", `/${locale}/influencers/new?step=3`);
+      return;
+    }
+
+    if (stepParam === "3") {
+      setStep(3);
+    }
+  }, [hydrationReady, showDraftDialog, locale, searchParams, setStep, t]);
 
   const goNext = () => {
     setSlideDirection("forward");
@@ -205,56 +240,63 @@ export default function NewInfluencerPage() {
         <p className="mt-1 text-sm text-slate-400">{t("pageSubtitle")}</p>
       </div>
 
-      {step === 1 && (
-        <WizardExpressLauncher
+      {step === 1 && entryMode === "unset" ? (
+        <WizardEntryChoice
           onStarted={() => setSlideDirection("forward")}
         />
+      ) : (
+        <>
+          <WizardProgress
+            currentStep={step}
+            maxReachableStep={maxReachableStep}
+            onStepClick={goToStep}
+          />
+
+          <div className="text-center">
+            <h2
+              ref={stepHeadingRef}
+              id="wizard-step-heading"
+              tabIndex={-1}
+              className="text-lg font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 rounded"
+            >
+              {info.title}
+            </h2>
+            <p className="mt-1 text-sm text-slate-400">{info.subtitle}</p>
+          </div>
+
+          <div className="relative min-h-[400px]">
+            <AnimatePresence mode="wait" custom={slideDirection}>
+              <motion.div
+                key={step}
+                custom={slideDirection}
+                variants={slideVariants}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                transition={{
+                  type: "spring" as const,
+                  bounce: 0.1,
+                  duration: 0.4,
+                }}
+              >
+                {step === 1 && <WizardStepIdentity onNext={goNext} />}
+                {step === 2 && (
+                  <WizardStepAppearance onNext={goNext} onPrev={goPrev} />
+                )}
+                {step === 3 && (
+                  <WizardStepSocial
+                    onNext={goNext}
+                    onPrev={goPrev}
+                    influencerId={createdInfluencerId}
+                    locale={locale}
+                  />
+                )}
+                {step === 4 && <WizardStepSummary onPrev={goPrev} />}
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        </>
       )}
-
-      <WizardProgress
-        currentStep={step}
-        maxReachableStep={maxReachableStep}
-        onStepClick={goToStep}
-      />
-
-      <div className="text-center">
-        <h2
-          ref={stepHeadingRef}
-          id="wizard-step-heading"
-          tabIndex={-1}
-          className="text-lg font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 rounded"
-        >
-          {info.title}
-        </h2>
-        <p className="mt-1 text-sm text-slate-400">{info.subtitle}</p>
-      </div>
-
-      <div className="relative min-h-[400px]">
-        <AnimatePresence mode="wait" custom={slideDirection}>
-          <motion.div
-            key={step}
-            custom={slideDirection}
-            variants={slideVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={{
-              type: "spring" as const,
-              bounce: 0.1,
-              duration: 0.4,
-            }}
-          >
-            {step === 1 && <WizardStepIdentity onNext={goNext} />}
-            {step === 2 && (
-              <WizardStepAppearance onNext={goNext} onPrev={goPrev} />
-            )}
-            {step === 3 && (
-              <WizardStepSocial onNext={goNext} onPrev={goPrev} />
-            )}
-            {step === 4 && <WizardStepSummary onPrev={goPrev} />}
-          </motion.div>
-        </AnimatePresence>
-      </div>
     </div>
   );
 }

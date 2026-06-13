@@ -5,6 +5,7 @@ import {
   isIdentityStepComplete,
   isAppearanceStepComplete,
 } from "@/lib/wizard-validation";
+import { defaultWizardAppearanceV2 } from "@/lib/appearance-v2";
 import type { WizardData } from "@/hooks/use-influencer-wizard";
 
 const baseData: WizardData = {
@@ -19,8 +20,8 @@ const baseData: WizardData = {
   hairColor: "",
   hairLength: "",
   hairTexture: "",
-  bodyType: "",
   fashionStyles: [],
+  ...defaultWizardAppearanceV2(),
   baseImageUrl: "",
   instagramEnabled: false,
   instagramUsername: "",

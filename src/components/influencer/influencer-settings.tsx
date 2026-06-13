@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { AlertTriangle, Save, Trash2, Archive } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -56,6 +57,8 @@ export function InfluencerSettings({
 }) {
   const router = useRouter();
   const utils = trpc.useUtils();
+  const { data: plan } = trpc.billing.getCurrentPlan.useQuery();
+  const allowNsfw = plan?.features.hasNsfw ?? false;
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const {
@@ -150,7 +153,17 @@ export function InfluencerSettings({
                 </SelectContent>
               </Select>
             </div>
-            {/* NSFW checkbox — hidden for now, will be re-enabled later */}
+            {allowNsfw && (
+              <div className="flex items-center justify-between rounded-xl border border-slate-800/50 bg-slate-800/20 p-4 sm:col-span-2">
+                <div>
+                  <Label className="text-slate-300">Mode NSFW (Premium)</Label>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Active le contenu suggestif / boudoir pour cette influenceuse.
+                  </p>
+                </div>
+                <Switch checked={isNsfw} onCheckedChange={setIsNsfw} />
+              </div>
+            )}
           </div>
 
           <div className="mt-4 space-y-2">

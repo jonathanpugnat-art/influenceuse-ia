@@ -25,13 +25,12 @@ import {
   pickDefaultPoseForScene,
 } from "@/lib/photo-scene-pose";
 import { PhotoGenerationPreview } from "@/components/content/photo-generation-preview";
+import { ContentLanePicker } from "@/components/content/content-lane-picker";
 import {
   CreatorHybridPanel,
   useCreatorExpertMode,
 } from "@/components/content/creator-hybrid-panel";
 import {
-  getPremiumPhotoDefaults,
-  getSocialPhotoDefaults,
   laneFromContentMode,
   PREMIUM_OUTFIT_SUGGESTIONS,
   type ContentLane,
@@ -185,14 +184,6 @@ export function PhotoParams({ embeddedExpert = false }: { embeddedExpert?: boole
   const displayOutfitSuggestions = isPremium
     ? [...PREMIUM_OUTFIT_SUGGESTIONS]
     : outfitSuggestions;
-
-  const setContentLane = (lane: ContentLane) => {
-    if (lane === "premium") {
-      updateParams(getPremiumPhotoDefaults(params.pose));
-    } else {
-      updateParams(getSocialPhotoDefaults(params.pose));
-    }
-  };
   const portraitUrl =
     selectedInfluencer?.baseImageUrl?.trim() ||
     selectedInfluencer?.avatarUrl?.trim() ||
@@ -345,93 +336,18 @@ export function PhotoParams({ embeddedExpert = false }: { embeddedExpert?: boole
           )}
         </div>
 
-        {/* Content lane — Social vs OnlyFans Premium (suggestive only) */}
         {params.influencerId && (
-          <div className="space-y-2 rounded-xl border border-slate-800/50 bg-slate-800/20 p-3">
-            <Label className="text-xs text-slate-400">{t("contentLaneLabel")}</Label>
-            <div className="flex flex-wrap gap-1.5">
-              <Chip
-                label={t("contentLaneSocial")}
-                emoji="📱"
-                selected={contentLane === "social"}
-                onClick={() => setContentLane("social")}
-              />
-              <Chip
-                label={t("contentLanePremium")}
-                emoji="🔒"
-                selected={contentLane === "premium"}
-                onClick={() => setContentLane("premium")}
-              />
-            </div>
-            <p className="text-[11px] leading-snug text-slate-500">
-              {isPremium ? t("contentLanePremiumHint") : t("contentLaneSocialHint")}
-            </p>
-          </div>
-        )}
-
-        {/* Scene-first pipeline (Pro / Agency, SFW) */}
-        {influencers.length > 0 && !isPremium && canSceneFirst && (
-          <div className="space-y-2 rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <Label className="text-xs text-emerald-200/90">{t("sceneFirstLabel")}</Label>
-                <p className="mt-0.5 text-xs leading-snug text-slate-500">
-                  {t("sceneFirstHint")}
+          <>
+            <ContentLanePicker />
+            {influencers.length > 0 &&
+              laneFromContentMode(params.contentMode) === "social" &&
+              !canSceneFirst &&
+              planQuery.isSuccess && (
+                <p className="rounded-lg border border-slate-800/60 bg-slate-900/40 px-3 py-2 text-[11px] leading-snug text-slate-500">
+                  {t("sceneFirstProOnly")}
                 </p>
-              </div>
-              <Switch
-                checked={params.sceneFirst && params.useFaceReference}
-                disabled={!params.useFaceReference}
-                onCheckedChange={(v) => updateParams({ sceneFirst: v })}
-                className="shrink-0"
-              />
-            </div>
-            {!params.useFaceReference && (
-              <p className="text-[11px] text-amber-600/90">{t("sceneFirstNeedsFaceRef")}</p>
-            )}
-          </div>
-        )}
-        {influencers.length > 0 && !isPremium && !canSceneFirst && planQuery.isSuccess && (
-          <p className="rounded-lg border border-slate-800/60 bg-slate-900/40 px-3 py-2 text-[11px] leading-snug text-slate-500">
-            {t("sceneFirstProOnly")}
-          </p>
-        )}
-
-        {/* Face reference (SFW + Flux image conditioning) */}
-        {influencers.length > 0 && (
-          <div className="space-y-2 rounded-xl border border-slate-800/50 bg-slate-800/20 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <Label className="text-xs text-slate-300">{t("faceReferenceLabel")}</Label>
-                <p className="mt-0.5 text-xs leading-snug text-slate-500">{t("faceReferenceHint")}</p>
-              </div>
-              <Switch
-                checked={params.useFaceReference}
-                disabled={
-                  isPremium ||
-                  !(
-                    Boolean(selectedInfluencer?.baseImageUrl?.trim()) ||
-                    Boolean(selectedInfluencer?.avatarUrl?.trim())
-                  )
-                }
-                onCheckedChange={(v) =>
-                  updateParams({
-                    useFaceReference: v,
-                    sceneFirst: v ? params.sceneFirst : false,
-                  })
-                }
-                className="shrink-0"
-              />
-            </div>
-            {isPremium ? (
-              <p className="text-xs text-amber-500/90">{t("faceReferencePremiumNote")}</p>
-            ) : !selectedInfluencer ? null : !(
-                selectedInfluencer.baseImageUrl?.trim() ||
-                selectedInfluencer.avatarUrl?.trim()
-              ) ? (
-              <p className="text-xs text-slate-500">{t("faceReferenceNoRef")}</p>
-            ) : null}
-          </div>
+              )}
+          </>
         )}
 
         {/* Sprint 15 — portrait + visual DNA reminder for realism */}
@@ -699,26 +615,6 @@ export function PhotoParams({ embeddedExpert = false }: { embeddedExpert?: boole
             ))}
           </div>
         </div>
-
-        {/* Premium intensity — suggestive / soft only (no explicit) */}
-        {isPremium && (
-          <div className="space-y-2 rounded-xl border border-rose-500/20 bg-rose-500/5 p-3">
-            <Label className="text-xs text-rose-200/90">{t("premiumIntensity")}</Label>
-            <div className="flex flex-wrap gap-1.5">
-              <Chip
-                label={t("nsfwSuggestive")}
-                selected={params.nsfwLevel === "suggestive"}
-                onClick={() => updateParams({ nsfwLevel: "suggestive" })}
-              />
-              <Chip
-                label={t("nsfwSoft")}
-                selected={params.nsfwLevel === "soft"}
-                onClick={() => updateParams({ nsfwLevel: "soft" })}
-              />
-            </div>
-            <p className="text-[11px] text-slate-500">{t("premiumIntensityHint")}</p>
-          </div>
-        )}
 
         {/* Advanced prompt (collapsible) */}
         <div className="space-y-2">

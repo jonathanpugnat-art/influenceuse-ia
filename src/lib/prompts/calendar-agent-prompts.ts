@@ -77,17 +77,22 @@ export function buildCalendarAgentUserPrompt(opts: {
   influencerId?: string;
   influencerName?: string;
   influencerNiche?: string;
+  influencerBrief?: string;
   conversation: string;
 }): string {
-  return [
+  const lines = [
     `Today: ${opts.todayIso}`,
     `Current month: ${opts.monthStartIso} → ${opts.monthEndIso}`,
     `Required reply language: ${opts.locale === "fr" ? "French" : "English"} (params.language = "${opts.locale}")`,
     opts.influencerId
       ? `Selected influencer: ${opts.influencerName ?? "unknown"} (niche: ${opts.influencerNiche ?? "unknown"}, id: ${opts.influencerId})`
       : "No influencer selected yet — do NOT set readyToExecute true.",
-    "",
-    "Conversation:",
-    opts.conversation,
-  ].join("\n");
+  ];
+
+  if (opts.influencerBrief?.trim()) {
+    lines.push("", `INFLUENCER BRIEF:\n${opts.influencerBrief.trim()}`);
+  }
+
+  lines.push("", "Conversation:", opts.conversation);
+  return lines.join("\n");
 }

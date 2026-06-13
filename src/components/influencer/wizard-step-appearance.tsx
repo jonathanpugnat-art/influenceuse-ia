@@ -10,8 +10,12 @@ import {
   Coins,
   AlertCircle,
   Dice5,
+  Wand2,
+  Loader2,
 } from "lucide-react";
-import { WizardCollisionBanner } from "@/components/influencer/wizard-collision-banner";
+import { WizardAppearanceV2Panel } from "@/components/influencer/wizard-appearance-v2-panel";
+import { WizardBaseGallery } from "@/components/influencer/wizard-base-gallery";
+import { WizardAiHelper } from "@/components/influencer/wizard-ai-helper";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -29,6 +33,8 @@ import {
   randomAppearanceVariation,
 } from "@/lib/prompts/appearance-variation-ui";
 import { WizardAppearanceExpert } from "@/components/influencer/wizard-appearance-expert";
+import { WizardCollisionBanner } from "@/components/influencer/wizard-collision-banner";
+import { useWizardAgent } from "@/hooks/use-wizard-agent";
 import { WizardPortraitComparison } from "@/components/influencer/wizard-portrait-comparison";
 import { WizardTrendsInspire } from "@/components/influencer/wizard-trends-inspire";
 import { isIdentityStepComplete } from "@/lib/wizard-validation";
@@ -149,6 +155,9 @@ export function WizardStepAppearance({
   onPrev: () => void;
 }) {
   const t = useTranslations("wizard");
+  const { suggestLook, isSuggestingLook } = useWizardAgent({
+    step: 2,
+  });
 
   const ethnicities = useMemo(
     () =>
@@ -220,8 +229,14 @@ export function WizardStepAppearance({
   } = useInfluencerWizard();
   const expressAutoStarted = useRef(false);
   const previewRequestId = useRef(0);
+  const previewCooldownUntil = useRef(0);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [isPreviewGenerating, setIsPreviewGenerating] = useState(false);
+  // Sprint B — gallery is the default entry; express jumps straight to the
+  // generative ("customize") flow since it auto-generates a portrait.
+  const [appearanceTab, setAppearanceTab] = useState<"gallery" | "customize">(
+    expressMode ? "customize" : "gallery"
+  );
 
   const { data: creditsData } = trpc.billing.getCurrentPlan.useQuery();
   const creditsRemaining = creditsData?.creditsRemaining ?? 0;
@@ -282,6 +297,14 @@ export function WizardStepAppearance({
         hairStyle,
         bodyType: data.bodyType || undefined,
         fashionStyle,
+        skinTone: data.skinTone || undefined,
+        height: data.height || undefined,
+        bustLevel: data.bustLevel,
+        hipsLevel: data.hipsLevel,
+        shouldersLevel: data.shouldersLevel,
+        tattoos: data.tattoos?.length ? data.tattoos : undefined,
+        makeupLevel: data.makeupLevel || undefined,
+        bodyGenerationMode: data.bodyGenerationMode,
       },
       appearanceVariations: variations,
     };
@@ -289,6 +312,8 @@ export function WizardStepAppearance({
 
   const runAppearancePreview = useCallback(() => {
     if (isGenerating || generatedImages.length > 0) return;
+    if (Date.now() < previewCooldownUntil.current) return;
+    if (previewMutation.isPending) return;
 
     const requestId = ++previewRequestId.current;
     setIsPreviewGenerating(true);
@@ -299,9 +324,11 @@ export function WizardStepAppearance({
         setPreviewImageUrl(result.imageUrl);
         setIsPreviewGenerating(false);
       },
-      onError: () => {
+      onError: (err) => {
         if (requestId !== previewRequestId.current) return;
         setIsPreviewGenerating(false);
+        previewCooldownUntil.current = Date.now() + 60_000;
+        toast.error(err.message || t("previewFailedToast"));
       },
     });
   }, [
@@ -309,6 +336,7 @@ export function WizardStepAppearance({
     generatedImages.length,
     isGenerating,
     previewMutation,
+    t,
   ]);
 
   const handleGenerate = () => {
@@ -332,6 +360,13 @@ export function WizardStepAppearance({
     setSelectedImageIndex(index);
     const url = generatedImages[index];
     if (url) updateData({ baseImageUrl: url });
+  };
+
+  // Sprint B — picking a gallery base sets the portrait directly (no credits,
+  // no generation). selectedPortraitUrl falls back to data.baseImageUrl, so
+  // this enables "Next" without polluting the generated variants list.
+  const handleSelectBase = (url: string) => {
+    updateData({ baseImageUrl: url });
   };
 
   const selectedPortraitUrl =
@@ -395,7 +430,7 @@ export function WizardStepAppearance({
 
     const timer = window.setTimeout(() => {
       runAppearancePreview();
-    }, 700);
+    }, 2000);
 
     return () => window.clearTimeout(timer);
   }, [
@@ -407,6 +442,14 @@ export function WizardStepAppearance({
     fashionStyles,
     data.appearanceVariations,
     data.age,
+    data.skinTone,
+    data.height,
+    data.bodyType,
+    data.bustLevel,
+    data.hipsLevel,
+    data.shouldersLevel,
+    data.makeupLevel,
+    data.bodyGenerationMode,
     isGenerating,
     generatedImages.length,
     runAppearancePreview,
@@ -436,6 +479,38 @@ export function WizardStepAppearance({
         </div>
       )}
 
+      {!expressMode && (
+        <div className="flex gap-1 rounded-xl border border-slate-800/50 bg-slate-800/20 p-1">
+          {(["gallery", "customize"] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setAppearanceTab(tab)}
+              aria-pressed={appearanceTab === tab}
+              className={cn(
+                "flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all",
+                appearanceTab === tab
+                  ? "bg-violet-500/20 text-violet-200"
+                  : "text-slate-400 hover:text-slate-200"
+              )}
+            >
+              {tab === "gallery" ? t("galleryTab") : t("customizeTab")}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {appearanceTab === "gallery" && !expressMode ? (
+        <WizardBaseGallery
+          niche={data.niche}
+          gender={data.gender}
+          includeNsfw={data.isNsfw}
+          brief={data.brief}
+          selectedUrl={selectedPortraitUrl || undefined}
+          onSelect={handleSelectBase}
+        />
+      ) : (
+        <>
       <WizardTrendsInspire />
       {/* Credits */}
       <div className="flex items-center justify-between rounded-xl border border-slate-800/50 bg-slate-800/20 px-4 py-3">
@@ -554,20 +629,10 @@ export function WizardStepAppearance({
             </div>
           </div>
 
-          {/* Body type */}
-          <div className="space-y-2">
-            <Label className="text-slate-300">{t("bodyType")}</Label>
-            <div className="flex flex-wrap gap-2">
-              {bodyTypes.map((b) => (
-                <Chip
-                  key={b.value}
-                  label={b.label}
-                  selected={bodyType === b.value}
-                  onClick={() => setBodyType(b.value)}
-                />
-              ))}
-            </div>
-          </div>
+          {/* Corps / peau / proportions (Sims v2) */}
+          <WizardAppearanceV2Panel data={data} onChange={updateData} />
+
+          <WizardAiHelper step={2} />
 
           {/* Fashion styles */}
           <div className="space-y-2">
@@ -588,6 +653,20 @@ export function WizardStepAppearance({
           </div>
 
           <WizardAppearanceExpert data={data} updateData={updateData} />
+
+          <button
+            type="button"
+            onClick={() => void suggestLook()}
+            disabled={isSuggestingLook || isGenerating}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-violet-500/40 bg-violet-500/10 px-4 py-2.5 text-sm font-medium text-violet-200 transition-colors hover:bg-violet-500/20 disabled:opacity-40"
+          >
+            {isSuggestingLook ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Wand2 className="h-4 w-4" />
+            )}
+            {t("agentSuggestLook")}
+          </button>
 
           {/* Generate button (Sprint 12 — never blocked) */}
           <button
@@ -749,6 +828,8 @@ export function WizardStepAppearance({
           )}
         </div>
       </div>
+        </>
+      )}
 
       <div className="flex justify-between pt-2">
         <button

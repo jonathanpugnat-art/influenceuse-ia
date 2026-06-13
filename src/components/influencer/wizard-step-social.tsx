@@ -1,24 +1,155 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Info } from "lucide-react";
+import { CheckCircle2, Info, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import {
   InstagramIcon,
   TikTokIcon,
   OnlyFansIcon,
 } from "@/components/ui/social-icons";
 import { useTranslations } from "next-intl";
+import { toast } from "sonner";
 import { useInfluencerWizard } from "@/hooks/use-influencer-wizard";
+import { buildWizardCreateInput } from "@/lib/wizard-create-payload";
+import { buildWizardInstagramReturnPath } from "@/lib/instagram-oauth-return";
+import {
+  isAppearanceStepComplete,
+  isIdentityStepComplete,
+} from "@/lib/wizard-validation";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
+
+type InstagramConnectProps = {
+  enabled: boolean;
+  username: string;
+  influencerId: string | null;
+  locale: string;
+  isEnsuringInfluencer: boolean;
+};
+
+function InstagramConnectSection({
+  enabled,
+  username,
+  influencerId,
+  locale,
+  isEnsuringInfluencer,
+}: InstagramConnectProps) {
+  const t = useTranslations("wizard");
+  const utils = trpc.useUtils();
+  const [isRedirecting, setIsRedirecting] = useState(false);
+
+  const { data: accounts, refetch } = trpc.publish.getConnectedAccounts.useQuery(
+    { influencerId: influencerId ?? "" },
+    { enabled: Boolean(influencerId) }
+  );
+
+  const instagramAccount = accounts?.find((a) => a.platform === "INSTAGRAM");
+  const isConnected = Boolean(instagramAccount?.isConnected);
+  const connectedHandle = instagramAccount?.username?.replace(/^@/, "");
+
+  const disconnectMut = trpc.publish.disconnectAccount.useMutation({
+    onSuccess: () => {
+      if (influencerId) {
+        void utils.publish.getConnectedAccounts.invalidate({ influencerId });
+      }
+      toast.success(t("instagramDisconnected"));
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const trimmedUsername = username.trim();
+  const canConnect =
+    enabled &&
+    trimmedUsername.length > 0 &&
+    Boolean(influencerId) &&
+    !isConnected &&
+    !isEnsuringInfluencer &&
+    !isRedirecting;
+
+  const handleConnect = () => {
+    if (!influencerId) return;
+    setIsRedirecting(true);
+    const redirectTo = buildWizardInstagramReturnPath(locale, {
+      connected: "instagram",
+    });
+    const params = new URLSearchParams({
+      influencerId,
+      redirectTo,
+    });
+    window.location.href = `/api/auth/instagram/start?${params.toString()}`;
+  };
+
+  const handleDisconnect = () => {
+    if (!instagramAccount?.id) return;
+    disconnectMut.mutate({ socialAccountId: instagramAccount.id });
+  };
+
+  useEffect(() => {
+    if (influencerId) {
+      void refetch();
+    }
+  }, [influencerId, refetch]);
+
+  if (isConnected && connectedHandle) {
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+          <span>
+            {t("instagramConnectedBadge", { username: connectedHandle })}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={handleDisconnect}
+          disabled={disconnectMut.isPending}
+          className="w-full rounded-lg border border-slate-700 py-2 text-xs text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200 disabled:opacity-50"
+        >
+          {disconnectMut.isPending ? (
+            <span className="inline-flex items-center gap-1.5">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              {t("instagramDisconnecting")}
+            </span>
+          ) : (
+            t("instagramDisconnect")
+          )}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={!canConnect}
+      onClick={handleConnect}
+      className={cn(
+        "w-full rounded-lg border py-2 text-xs font-medium transition-colors",
+        canConnect
+          ? "border-pink-500/40 bg-pink-500/10 text-pink-200 hover:bg-pink-500/20"
+          : "border-slate-700 text-slate-500"
+      )}
+    >
+      {isRedirecting ? (
+        <span className="inline-flex items-center justify-center gap-1.5">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          {t("instagramConnecting")}
+        </span>
+      ) : isEnsuringInfluencer ? (
+        <span className="inline-flex items-center justify-center gap-1.5">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          {t("instagramPreparingProfile")}
+        </span>
+      ) : (
+        t("connectInstagram")
+      )}
+    </button>
+  );
+}
 
 function SocialCard({
   icon,
@@ -33,6 +164,7 @@ function SocialCard({
   disabledMessage,
   note,
   hideConnect,
+  instagramConnect,
 }: {
   icon: React.ReactNode;
   name: string;
@@ -46,7 +178,10 @@ function SocialCard({
   disabledMessage?: string;
   note?: string;
   hideConnect?: boolean;
+  instagramConnect?: InstagramConnectProps;
 }) {
+  const t = useTranslations("wizard");
+
   return (
     <div
       className={cn(
@@ -94,7 +229,7 @@ function SocialCard({
             <div className="mt-4 space-y-3">
               <div className="space-y-1.5">
                 <Label className="text-xs text-slate-400">
-                  Nom d&apos;utilisateur
+                  {t("socialUsernameLabel")}
                 </Label>
                 <Input
                   value={username}
@@ -104,31 +239,20 @@ function SocialCard({
                 />
               </div>
 
-              {!hideConnect && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      disabled
-                      className="w-full rounded-lg border border-slate-700 py-2 text-xs text-slate-500"
-                    >
-                      Connecter le compte
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    Bientôt disponible
-                  </TooltipContent>
-                </Tooltip>
-              )}
+              {!hideConnect && instagramConnect ? (
+                <InstagramConnectSection {...instagramConnect} />
+              ) : null}
 
               {note && (
                 <p className="text-xs italic text-slate-500">{note}</p>
               )}
 
-              <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                <span className="h-1.5 w-1.5 rounded-full bg-slate-600" />
-                Non connecté
-              </div>
+              {!hideConnect && !instagramConnect && (
+                <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                  <span className="h-1.5 w-1.5 rounded-full bg-slate-600" />
+                  {t("socialNotConnected")}
+                </div>
+              )}
             </div>
           </motion.div>
         )}
@@ -140,24 +264,74 @@ function SocialCard({
 export function WizardStepSocial({
   onNext,
   onPrev,
+  influencerId,
+  locale,
 }: {
   onNext: () => void;
   onPrev: () => void;
+  influencerId: string | null;
+  locale: string;
 }) {
   const t = useTranslations("wizard");
-  const { data, updateData } = useInfluencerWizard();
+  const {
+    data,
+    updateData,
+    generatedImages,
+    selectedImageIndex,
+    setCreatedInfluencerId,
+  } = useInfluencerWizard();
   const { data: plan } = trpc.billing.getCurrentPlan.useQuery();
   const allowNsfw = plan?.features.hasNsfw ?? false;
   const showOnlyFans = allowNsfw && data.isNsfw;
+  const ensureStartedRef = useRef(false);
 
-  const handleNext = () => {
-    onNext();
-  };
+  const selectedImageUrl =
+    data.baseImageUrl || generatedImages[selectedImageIndex] || null;
+
+  const ensureCreateMut = trpc.influencer.create.useMutation({
+    onSuccess: (inf) => {
+      setCreatedInfluencerId(inf.id);
+    },
+    onError: (err) => {
+      ensureStartedRef.current = false;
+      toast.error(err.message);
+    },
+  });
+
+  const shouldEnsureInfluencer =
+    data.instagramEnabled &&
+    data.instagramUsername.trim().length > 0 &&
+    !influencerId &&
+    isIdentityStepComplete(data) &&
+    isAppearanceStepComplete(data, generatedImages, selectedImageIndex);
+
+  useEffect(() => {
+    if (!shouldEnsureInfluencer || ensureCreateMut.isPending) return;
+    if (ensureCreateMut.isError) return;
+    if (ensureStartedRef.current) return;
+    ensureStartedRef.current = true;
+    ensureCreateMut.mutate(
+      buildWizardCreateInput(data, selectedImageUrl || undefined)
+    );
+  }, [
+    shouldEnsureInfluencer,
+    ensureCreateMut.isPending,
+    ensureCreateMut.isError,
+    ensureCreateMut.mutate,
+    data,
+    selectedImageUrl,
+  ]);
+
+  const effectiveInfluencerId = influencerId ?? ensureCreateMut.data?.id ?? null;
+  const isEnsuringInfluencer =
+    shouldEnsureInfluencer &&
+    !effectiveInfluencerId &&
+    (ensureCreateMut.isPending ||
+      (!ensureCreateMut.isError && !ensureCreateMut.isSuccess));
 
   return (
     <div className="space-y-6">
       <div className="space-y-4">
-        {/* Instagram */}
         <SocialCard
           icon={<InstagramIcon className="h-5 w-5 text-white" />}
           name="Instagram"
@@ -167,9 +341,15 @@ export function WizardStepSocial({
           onToggle={(v) => updateData({ instagramEnabled: v })}
           username={data.instagramUsername}
           onUsernameChange={(v) => updateData({ instagramUsername: v })}
+          instagramConnect={{
+            enabled: data.instagramEnabled,
+            username: data.instagramUsername,
+            influencerId: effectiveInfluencerId,
+            locale,
+            isEnsuringInfluencer,
+          }}
         />
 
-        {/* TikTok */}
         <SocialCard
           icon={<TikTokIcon className="h-5 w-5 text-white" />}
           name="TikTok"
@@ -197,13 +377,11 @@ export function WizardStepSocial({
         )}
       </div>
 
-      {/* Note */}
-      <div className="flex items-start gap-2 rounded-xl bg-slate-800/30 p-3">
-        <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
-        <p className="text-xs text-slate-500">{t("connectLater")}</p>
+      <div className="flex items-start gap-2 rounded-xl border border-violet-500/20 bg-violet-500/5 p-3">
+        <Info className="mt-0.5 h-4 w-4 shrink-0 text-violet-400/80" />
+        <p className="text-xs text-slate-400">{t("socialOptionalHint")}</p>
       </div>
 
-      {/* Navigation */}
       <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
         <button
           type="button"
@@ -212,24 +390,16 @@ export function WizardStepSocial({
         >
           ← {t("back")}
         </button>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={handleNext}
-            className="rounded-xl border border-slate-700 px-4 py-2.5 text-sm text-slate-300 transition-colors hover:bg-slate-800 hover:text-white"
-          >
-            {t("socialSkip")}
-          </button>
-          <button
-            type="button"
-            onClick={handleNext}
-            className="rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-6 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
-          >
-            {t("next")} →
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={onNext}
+          className="rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-6 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
+        >
+          {data.instagramEnabled || data.tiktokEnabled || data.onlyfansEnabled
+            ? `${t("next")} →`
+            : `${t("socialSkipToFinalize")} →`}
+        </button>
       </div>
     </div>
   );
 }
-

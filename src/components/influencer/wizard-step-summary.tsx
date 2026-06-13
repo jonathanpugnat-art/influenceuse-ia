@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Rocket,
@@ -10,6 +10,8 @@ import {
   Lock,
 } from "lucide-react";
 import { WizardCollisionBanner } from "@/components/influencer/wizard-collision-banner";
+import { WizardIdentityPackWait } from "@/components/influencer/wizard-identity-pack-wait";
+import { WizardAiHelper } from "@/components/influencer/wizard-ai-helper";
 import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -18,6 +20,7 @@ import {
   OnlyFansIcon,
 } from "@/components/ui/social-icons";
 import { useInfluencerWizard } from "@/hooks/use-influencer-wizard";
+import { buildWizardCreateInput } from "@/lib/wizard-create-payload";
 import { trpc } from "@/lib/trpc";
 import { nicheConfig, formatFollowers } from "@/lib/influencer-utils";
 import { useUpgradeOnLimitError } from "@/hooks/use-upgrade-on-limit-error";
@@ -41,7 +44,7 @@ const placeholderGradients = [
  */
 export function WizardStepSummary({ onPrev }: { onPrev: () => void }) {
   const router = useRouter();
-  const { data, generatedImages, selectedImageIndex, reset, setStep } =
+  const { data, generatedImages, selectedImageIndex, reset, setStep, createdInfluencerId, setCreatedInfluencerId } =
     useInfluencerWizard();
 
   const niche = nicheConfig[data.niche] ?? {
@@ -53,16 +56,56 @@ export function WizardStepSummary({ onPrev }: { onPrev: () => void }) {
   const t = useTranslations("wizard");
   const tInfluencer = useTranslations("influencer");
   const handleUpgrade = useUpgradeOnLimitError();
+  const [identityPackWait, setIdentityPackWait] = useState<{
+    id: string;
+    name: string;
+    portraitUrl: string | null;
+  } | null>(null);
+
+  const selectedImageUrl =
+    data.baseImageUrl || (generatedImages[selectedImageIndex] ?? null);
+
+  const shouldWaitForIdentityPack = useCallback(
+    (isNsfw: boolean, baseImageUrl: string | null | undefined) =>
+      Boolean(baseImageUrl?.trim()) && !isNsfw,
+    []
+  );
+
+  const finishWizardAndRedirect = useCallback(
+    (influencerId: string, name: string) => {
+      toast.success(t("firstPhotoCta", { name }));
+      reset();
+      router.push(`/content/photo?influencer=${influencerId}&welcome=1`);
+    },
+    [reset, router, t]
+  );
+
+  const beginPostCreateFlow = useCallback(
+    (inf: { id: string; name: string; isNsfw: boolean }) => {
+      setCreatedInfluencerId(inf.id);
+      if (shouldWaitForIdentityPack(inf.isNsfw, selectedImageUrl)) {
+        toast.info(t("identityPackStarted"));
+        setIdentityPackWait({
+          id: inf.id,
+          name: inf.name,
+          portraitUrl: selectedImageUrl,
+        });
+        return;
+      }
+      finishWizardAndRedirect(inf.id, inf.name);
+    },
+    [
+      finishWizardAndRedirect,
+      selectedImageUrl,
+      setCreatedInfluencerId,
+      shouldWaitForIdentityPack,
+      t,
+    ]
+  );
+
   const createMutation = trpc.influencer.create.useMutation({
     onSuccess: (inf) => {
-      toast.success(t("firstPhotoCta", { name: inf.name }));
-      if (selectedImageUrl && !data.isNsfw) {
-        toast.info(t("identityPackStarted"));
-      }
-      reset();
-      // Sprint 15 — land on the photo creator with the new influencer
-      // pre-selected so the wizard doesn't dead-end on an empty profile.
-      router.push(`/content/photo?influencer=${inf.id}&welcome=1`);
+      beginPostCreateFlow(inf);
     },
     onError: (err) => {
       if (handleUpgrade(err.message)) return;
@@ -70,61 +113,40 @@ export function WizardStepSummary({ onPrev }: { onPrev: () => void }) {
     },
   });
 
-  const selectedImageUrl =
-    data.baseImageUrl || (generatedImages[selectedImageIndex] ?? null);
+  const updateMutation = trpc.influencer.update.useMutation({
+    onSuccess: (inf) => {
+      beginPostCreateFlow(inf);
+    },
+    onError: (err) => {
+      if (handleUpgrade(err.message)) return;
+      toast.error(err.message);
+    },
+  });
 
   const handleCreate = () => {
-    // Sprint 14 — collect the toggles + handles from wizard step 3 and
-    // forward them to the backend. Previously dropped silently, which is
-    // why users saw empty "Réseaux" panels right after creating an
-    // influencer (Grok audit P1). Only platforms toggled on AND with a
-    // non-empty handle are sent; the backend de-dupes + strips '@'.
-    const socialAccounts: Array<{
-      platform: "INSTAGRAM" | "TIKTOK" | "ONLYFANS";
-      username: string;
-    }> = [];
-    if (data.instagramEnabled && data.instagramUsername?.trim()) {
-      socialAccounts.push({
-        platform: "INSTAGRAM",
-        username: data.instagramUsername.trim(),
+    const payload = buildWizardCreateInput(data, selectedImageUrl || undefined);
+
+    if (createdInfluencerId) {
+      updateMutation.mutate({
+        id: createdInfluencerId,
+        name: payload.name,
+        gender: payload.gender,
+        bio: payload.bio,
+        personality: payload.personality,
+        brief: payload.brief ?? null,
+        niche: payload.niche,
+        age: payload.age,
+        style: payload.style,
+        isNsfw: payload.isNsfw,
+        baseImageUrl: payload.baseImageUrl ?? null,
+        avatarUrl: payload.avatarUrl ?? null,
+        appearanceVariations: payload.appearanceVariations,
+        appearanceFingerprint: payload.appearanceFingerprint,
       });
-    }
-    if (data.tiktokEnabled && data.tiktokUsername?.trim()) {
-      socialAccounts.push({
-        platform: "TIKTOK",
-        username: data.tiktokUsername.trim(),
-      });
-    }
-    if (data.onlyfansEnabled && data.onlyfansUsername?.trim()) {
-      socialAccounts.push({
-        platform: "ONLYFANS",
-        username: data.onlyfansUsername.trim(),
-      });
+      return;
     }
 
-    createMutation.mutate({
-      name: data.name,
-      gender: data.gender,
-      bio: data.bio,
-      personality: data.personality,
-      niche: data.niche as "FASHION",
-      age: data.age,
-      style: {
-        ethnicity: data.ethnicity || undefined,
-        hairColor: data.hairColor || undefined,
-        hairStyle:
-          [data.hairLength, data.hairTexture].filter(Boolean).join(", ") ||
-          undefined,
-        bodyType: data.bodyType || undefined,
-        fashionStyle: (data.fashionStyles ?? []).join(", ") || undefined,
-      },
-      isNsfw: data.isNsfw,
-      baseImageUrl: selectedImageUrl || undefined,
-      avatarUrl: selectedImageUrl || undefined,
-      appearanceVariations: data.appearanceVariations,
-      appearanceFingerprint: data.appearanceFingerprint,
-      socialAccounts: socialAccounts.length > 0 ? socialAccounts : undefined,
-    });
+    createMutation.mutate(payload);
   };
 
   // Pretend follower count: deterministic per name so the demo "feels real"
@@ -153,6 +175,17 @@ export function WizardStepSummary({ onPrev }: { onPrev: () => void }) {
       .replace(/[^a-z0-9_.]/g, "");
     return slug || "your_handle";
   }, [data.name, data.instagramUsername]);
+
+  if (identityPackWait) {
+    return (
+      <WizardIdentityPackWait
+        influencerId={identityPackWait.id}
+        influencerName={identityPackWait.name}
+        portraitUrl={identityPackWait.portraitUrl}
+        onComplete={() => finishWizardAndRedirect(identityPackWait.id, identityPackWait.name)}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -350,6 +383,10 @@ export function WizardStepSummary({ onPrev }: { onPrev: () => void }) {
         </details>
       )}
 
+      <div className="mx-auto max-w-md">
+        <WizardAiHelper step={4} showBioCards />
+      </div>
+
       {/* Sprint 14 — duplicate appearance warning (soft, non-blocking).
           Tells the user how many other creators share the same visual
           fingerprint and offers a "back to step 2" CTA to re-roll. */}
@@ -363,15 +400,15 @@ export function WizardStepSummary({ onPrev }: { onPrev: () => void }) {
         <button
           type="button"
           onClick={handleCreate}
-          disabled={createMutation.isPending}
+          disabled={createMutation.isPending || updateMutation.isPending}
           className="group relative flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-gradient-to-r from-violet-500 via-indigo-500 to-violet-500 bg-[length:200%_100%] px-6 py-4 text-base font-semibold text-white shadow-lg shadow-violet-500/25 transition-all hover:scale-[1.02] hover:shadow-xl hover:shadow-violet-500/30 disabled:opacity-60 disabled:hover:scale-100"
           style={{
-            animation: createMutation.isPending
+            animation: createMutation.isPending || updateMutation.isPending
               ? undefined
               : "gradient-shift 3s ease infinite",
           }}
         >
-          {createMutation.isPending ? (
+          {createMutation.isPending || updateMutation.isPending ? (
             <>
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
               {t("creating")}

@@ -15,6 +15,7 @@ describe("photo-studio-agent", () => {
       {
         locale: "fr",
         gender: "female",
+        contentMode: "SFW",
         userMessage: "gym mirror selfie",
         assistantTurnCount: 0,
         history: [{ role: "user", content: "gym mirror selfie" }],
@@ -31,6 +32,7 @@ describe("photo-studio-agent", () => {
       {
         locale: "en",
         gender: "female",
+        contentMode: "SFW",
         selectedLookId: "cafe-aesthetic",
         assistantTurnCount: 1,
         history: [],
@@ -46,6 +48,7 @@ describe("photo-studio-agent", () => {
       {
         locale: "fr",
         gender: "female",
+        contentMode: "SFW",
         selectedLookId: "cafe-aesthetic",
         selectedOutfit: "pull beige",
         assistantTurnCount: 2,

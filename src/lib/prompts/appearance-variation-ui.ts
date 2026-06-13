@@ -127,6 +127,14 @@ export type WizardStyleForFingerprint = {
   hairTexture?: string;
   bodyType?: string;
   fashionStyles?: string[];
+  skinTone?: string;
+  height?: string;
+  bustLevel?: number;
+  hipsLevel?: number;
+  shouldersLevel?: number;
+  tattoos?: string[];
+  makeupLevel?: string;
+  bodyGenerationMode?: string;
 };
 
 /** Recompute fingerprint when expert chips change (matches server on generate). */
@@ -148,6 +156,14 @@ export function fingerprintFromWizard(
       fashionStyle: style.fashionStyles?.length
         ? style.fashionStyles.join(", ")
         : "casual",
+      skinTone: style.skinTone,
+      height: style.height,
+      bustLevel: style.bustLevel,
+      hipsLevel: style.hipsLevel,
+      shouldersLevel: style.shouldersLevel,
+      tattoos: style.tattoos,
+      makeupLevel: style.makeupLevel,
+      bodyGenerationMode: style.bodyGenerationMode,
     },
     age,
     variations

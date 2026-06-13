@@ -22,12 +22,15 @@ export function WizardAppearanceGenerationProgress({
     [t]
   );
   const [messageIndex, setMessageIndex] = useState(0);
+  const [wasActive, setWasActive] = useState(active);
+
+  if (active !== wasActive) {
+    setWasActive(active);
+    if (!active) setMessageIndex(0);
+  }
 
   useEffect(() => {
-    if (!active) {
-      setMessageIndex(0);
-      return;
-    }
+    if (!active) return;
     const timer = setInterval(() => {
       setMessageIndex((i) => (i + 1) % messages.length);
     }, 2000);

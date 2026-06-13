@@ -28,6 +28,11 @@ export interface PhotoParams {
   sceneFirst: boolean;
   contentMode: "SFW" | "NSFW";
   nsfwLevel: string;
+  /** Optional scraped trend metadata for server-side prompt enrichment. */
+  trendContext?: {
+    title?: string;
+    hashtags?: string[];
+  };
 }
 
 /**
@@ -50,6 +55,10 @@ export interface PhotoCreatorSeed {
   /** Optional hook copied into the caption textarea. */
   caption?: string;
   hashtags?: string[];
+  trendContext?: {
+    title?: string;
+    hashtags?: string[];
+  };
 }
 
 interface PhotoCreatorState {
@@ -107,6 +116,7 @@ const defaultParams: PhotoParams = {
   sceneFirst: false,
   contentMode: "SFW",
   nsfwLevel: "suggestive",
+  trendContext: undefined,
 };
 
 export const usePhotoCreator = create<PhotoCreatorState>()((set) => ({

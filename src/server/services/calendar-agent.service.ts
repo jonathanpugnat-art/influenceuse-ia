@@ -112,15 +112,17 @@ export async function runCalendarAgentTurn(
 
   let influencerName: string | undefined;
   let influencerNiche: string | undefined;
+  let influencerBrief: string | undefined;
 
   if (influencerId) {
     const influencer = await db.influencer.findFirst({
       where: { id: influencerId, userId },
-      select: { name: true, niche: true },
+      select: { name: true, niche: true, brief: true },
     });
     if (influencer) {
       influencerName = influencer.name;
       influencerNiche = influencer.niche;
+      influencerBrief = influencer.brief ?? undefined;
     }
   }
 
@@ -147,6 +149,7 @@ export async function runCalendarAgentTurn(
     influencerId,
     influencerName,
     influencerNiche,
+    influencerBrief,
     conversation,
   });
 
