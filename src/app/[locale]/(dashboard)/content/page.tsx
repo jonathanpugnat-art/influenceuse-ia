@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InstagramIcon, TikTokIcon } from "@/components/ui/social-icons";
 import { trpc } from "@/lib/trpc";
+import { useInfluencers } from "@/hooks/use-influencers";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ContentLibraryDetailModal } from "@/components/content/content-library-detail-modal";
@@ -55,7 +56,7 @@ export default function ContentLibraryPage() {
   const [page, setPage] = useState(1);
   const [selectedContentId, setSelectedContentId] = useState<string | null>(null);
 
-  const { data: influencersData } = trpc.influencer.getAll.useQuery({ limit: 50 });
+  const { data: influencersData } = useInfluencers();
   const influencers = influencersData?.influencers ?? [];
 
   const { data, isLoading } = trpc.content.getAll.useQuery(
@@ -94,23 +95,17 @@ export default function ContentLibraryPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Bibliothèque de contenu</h1>
-          <p className="mt-1 text-sm text-slate-400">
+          <h1 className="text-2xl font-bold text-foreground">Bibliothèque de contenu</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             {data ? `${data.total} contenu${data.total > 1 ? "s" : ""}` : "Chargement..."}
           </p>
         </div>
         <div className="flex gap-2">
-          <Link
-            href="/content/photo"
-            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-4 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
-          >
+          <Link href="/content/photo" className="dash-cta">
             <ImagePlus className="h-4 w-4" />
             Photo
           </Link>
-          <Link
-            href="/content/reel"
-            className="flex items-center gap-2 rounded-xl border border-violet-500/50 bg-violet-500/10 px-4 py-2.5 text-sm font-medium text-violet-400 transition-colors hover:bg-violet-500/20"
-          >
+          <Link href="/content/reel" className="dash-cta-outline">
             <Video className="h-4 w-4" />
             Reel
           </Link>
@@ -120,13 +115,13 @@ export default function ContentLibraryPage() {
       {/* Filters */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <Select value={influencerFilter} onValueChange={(v) => { setInfluencerFilter(v); setPage(1); }}>
-          <SelectTrigger className="h-10 w-full border-slate-800/50 bg-slate-900/50 text-white sm:w-44 [&>span]:text-slate-400">
+          <SelectTrigger className="h-10 w-full dash-filter sm:w-44 [&>span]:text-muted-foreground">
             <SelectValue placeholder="Influenceuse" />
           </SelectTrigger>
-          <SelectContent className="border-slate-800 bg-slate-900">
-            <SelectItem value="ALL" className="text-slate-300 focus:bg-slate-800 focus:text-white">Toutes</SelectItem>
+          <SelectContent className="border-border bg-popover">
+            <SelectItem value="ALL" className="text-foreground focus:bg-accent">Toutes</SelectItem>
             {influencers.map((inf) => (
-              <SelectItem key={inf.id} value={inf.id} className="text-slate-300 focus:bg-slate-800 focus:text-white">
+              <SelectItem key={inf.id} value={inf.id} className="text-foreground focus:bg-accent">
                 {inf.name}
               </SelectItem>
             ))}
@@ -134,28 +129,28 @@ export default function ContentLibraryPage() {
         </Select>
 
         <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v); setPage(1); }}>
-          <SelectTrigger className="h-10 w-full border-slate-800/50 bg-slate-900/50 text-white sm:w-32 [&>span]:text-slate-400">
+          <SelectTrigger className="h-10 w-full dash-filter sm:w-32 [&>span]:text-muted-foreground">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent className="border-slate-800 bg-slate-900">
-            <SelectItem value="ALL" className="text-slate-300 focus:bg-slate-800 focus:text-white">Tous types</SelectItem>
-            <SelectItem value="PHOTO" className="text-slate-300 focus:bg-slate-800 focus:text-white">Photos</SelectItem>
-            <SelectItem value="REEL" className="text-slate-300 focus:bg-slate-800 focus:text-white">Reels</SelectItem>
-            <SelectItem value="CAROUSEL" className="text-slate-300 focus:bg-slate-800 focus:text-white">Carousel</SelectItem>
+          <SelectContent className="border-border bg-popover">
+            <SelectItem value="ALL" className="text-foreground focus:bg-accent">Tous types</SelectItem>
+            <SelectItem value="PHOTO" className="text-foreground focus:bg-accent">Photos</SelectItem>
+            <SelectItem value="REEL" className="text-foreground focus:bg-accent">Reels</SelectItem>
+            <SelectItem value="CAROUSEL" className="text-foreground focus:bg-accent">Carousel</SelectItem>
           </SelectContent>
         </Select>
 
         <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
-          <SelectTrigger className="h-10 w-full border-slate-800/50 bg-slate-900/50 text-white sm:w-36 [&>span]:text-slate-400">
+          <SelectTrigger className="h-10 w-full dash-filter sm:w-36 [&>span]:text-muted-foreground">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent className="border-slate-800 bg-slate-900">
-            <SelectItem value="ALL" className="text-slate-300 focus:bg-slate-800 focus:text-white">Tous statuts</SelectItem>
-            <SelectItem value="READY" className="text-slate-300 focus:bg-slate-800 focus:text-white">Prêts</SelectItem>
-            <SelectItem value="PUBLISHED" className="text-slate-300 focus:bg-slate-800 focus:text-white">Publiés</SelectItem>
-            <SelectItem value="SCHEDULED" className="text-slate-300 focus:bg-slate-800 focus:text-white">Programmés</SelectItem>
-            <SelectItem value="DRAFT" className="text-slate-300 focus:bg-slate-800 focus:text-white">Brouillons</SelectItem>
-            <SelectItem value="GENERATING" className="text-slate-300 focus:bg-slate-800 focus:text-white">En cours</SelectItem>
+          <SelectContent className="border-border bg-popover">
+            <SelectItem value="ALL" className="text-foreground focus:bg-accent">Tous statuts</SelectItem>
+            <SelectItem value="READY" className="text-foreground focus:bg-accent">Prêts</SelectItem>
+            <SelectItem value="PUBLISHED" className="text-foreground focus:bg-accent">Publiés</SelectItem>
+            <SelectItem value="SCHEDULED" className="text-foreground focus:bg-accent">Programmés</SelectItem>
+            <SelectItem value="DRAFT" className="text-foreground focus:bg-accent">Brouillons</SelectItem>
+            <SelectItem value="GENERATING" className="text-foreground focus:bg-accent">En cours</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -164,7 +159,7 @@ export default function ContentLibraryPage() {
       {isLoading ? (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
           {Array.from({ length: 12 }).map((_, i) => (
-            <Skeleton key={i} className="aspect-square rounded-xl bg-slate-800/50" />
+            <Skeleton key={i} className="aspect-square rounded-xl bg-muted" />
           ))}
         </div>
       ) : contents.length === 0 ? (
@@ -186,7 +181,7 @@ export default function ContentLibraryPage() {
                 variants={itemVariants}
                 whileHover={{ scale: 1.02, boxShadow: "0 20px 25px -5px rgb(0 0 0 / 0.2), 0 0 0 1px rgb(139 92 246 / 0.1)" }}
                 transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                className="group relative aspect-square cursor-pointer overflow-hidden rounded-xl border border-slate-800/50 bg-slate-800/30 transition-colors hover:border-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+                className="group relative aspect-square cursor-pointer overflow-hidden rounded-xl border border-border bg-card transition-colors hover:border-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => setSelectedContentId(content.id)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
@@ -331,7 +326,7 @@ function EmptyState() {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
-      className="flex flex-col items-center justify-center rounded-2xl border border-slate-800/50 bg-slate-900/50 py-16 text-center backdrop-blur-xl"
+      className="flex flex-col items-center justify-center surface py-16 text-center"
     >
       <ImagePlus className="mb-4 h-16 w-16 text-slate-400/30" aria-hidden />
       <h3 className="text-lg font-semibold text-white">Aucun contenu pour l&apos;instant</h3>
@@ -341,14 +336,14 @@ function EmptyState() {
       <div className="mt-4 flex flex-wrap justify-center gap-3">
         <Link
           href="/content/photo"
-          className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-4 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
+          className="dash-cta focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           <ImagePlus className="h-4 w-4" />
           Créer une photo
         </Link>
         <Link
           href="/content/reel"
-          className="inline-flex items-center gap-2 rounded-xl border border-slate-700 px-4 py-2.5 text-sm text-slate-300 transition-colors hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
+          className="dash-cta-outline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           <Video className="h-4 w-4" />
           Créer un reel

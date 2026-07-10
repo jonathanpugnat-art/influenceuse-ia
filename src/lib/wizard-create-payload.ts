@@ -1,4 +1,6 @@
 import type { WizardData } from "@/hooks/use-influencer-wizard";
+import { ensureWizardMinimumFields } from "@/lib/wizard-quick-defaults";
+import type { NicheProfile } from "@/lib/niche-profile";
 
 type WizardCreateInput = {
   name: string;
@@ -16,6 +18,7 @@ type WizardCreateInput = {
     | "ADULT"
     | "FOOD";
   age: number;
+  nicheProfile?: NicheProfile;
   style: {
     ethnicity?: string;
     hairColor?: string;
@@ -30,6 +33,7 @@ type WizardCreateInput = {
     tattoos?: string[];
     makeupLevel?: string;
     bodyGenerationMode?: "standard" | "extended";
+    morphologyNotes?: string;
   };
   isNsfw: boolean;
   baseImageUrl?: string;
@@ -69,36 +73,39 @@ export function buildWizardCreateInput(
   data: WizardData,
   selectedImageUrl: string | null | undefined
 ): WizardCreateInput {
+  const filled = ensureWizardMinimumFields(data);
   return {
-    name: data.name,
-    gender: data.gender,
-    bio: data.bio,
-    personality: data.personality,
-    brief: data.brief?.trim() || undefined,
-    niche: data.niche as WizardCreateInput["niche"],
-    age: data.age,
+    name: filled.name,
+    gender: filled.gender,
+    bio: filled.bio,
+    personality: filled.personality,
+    brief: filled.brief?.trim() || undefined,
+    niche: filled.niche as WizardCreateInput["niche"],
+    age: filled.age,
+    nicheProfile: filled.nicheProfile,
     style: {
-      ethnicity: data.ethnicity || undefined,
-      hairColor: data.hairColor || undefined,
+      ethnicity: filled.ethnicity || undefined,
+      hairColor: filled.hairColor || undefined,
       hairStyle:
-        [data.hairLength, data.hairTexture].filter(Boolean).join(", ") ||
+        [filled.hairLength, filled.hairTexture].filter(Boolean).join(", ") ||
         undefined,
-      bodyType: data.bodyType || undefined,
-      fashionStyle: (data.fashionStyles ?? []).join(", ") || undefined,
-      skinTone: data.skinTone || undefined,
-      height: data.height || undefined,
-      bustLevel: data.bustLevel,
-      hipsLevel: data.hipsLevel,
-      shouldersLevel: data.shouldersLevel,
-      tattoos: data.tattoos?.length ? data.tattoos : undefined,
-      makeupLevel: data.makeupLevel || undefined,
-      bodyGenerationMode: data.bodyGenerationMode,
+      bodyType: filled.bodyType || undefined,
+      fashionStyle: (filled.fashionStyles ?? []).join(", ") || undefined,
+      skinTone: filled.skinTone || undefined,
+      height: filled.height || undefined,
+      bustLevel: filled.bustLevel,
+      hipsLevel: filled.hipsLevel,
+      shouldersLevel: filled.shouldersLevel,
+      tattoos: filled.tattoos?.length ? filled.tattoos : undefined,
+      makeupLevel: filled.makeupLevel || undefined,
+      bodyGenerationMode: filled.bodyGenerationMode,
+      morphologyNotes: filled.morphologyNotes?.trim() || undefined,
     },
-    isNsfw: data.isNsfw,
+    isNsfw: filled.isNsfw,
     baseImageUrl: selectedImageUrl || undefined,
     avatarUrl: selectedImageUrl || undefined,
-    appearanceVariations: data.appearanceVariations,
-    appearanceFingerprint: data.appearanceFingerprint,
-    socialAccounts: buildSocialAccounts(data),
+    appearanceVariations: filled.appearanceVariations,
+    appearanceFingerprint: filled.appearanceFingerprint,
+    socialAccounts: buildSocialAccounts(filled),
   };
 }

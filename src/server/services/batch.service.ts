@@ -31,6 +31,7 @@ export interface BatchSliceResult {
 interface DraftToProcess {
   id: string;
   scene: string;
+  sceneDescription?: string;
   pose: string;
   outfit: string;
   expression: string;
@@ -129,6 +130,13 @@ export async function processNextBatchSlice(opts?: {
     const draftParams: DraftToProcess = {
       id: draft.id,
       scene: pickStringParam(params, "scene", "studio"),
+      sceneDescription:
+        typeof params.sceneDescription === "string" &&
+        params.sceneDescription.trim().length > 0
+          ? params.sceneDescription.trim()
+          : typeof params.concept === "string" && params.concept.trim().length > 0
+            ? params.concept.trim()
+            : undefined,
       pose: pickStringParam(params, "pose", "portrait"),
       outfit: pickStringParam(params, "outfit", ""),
       expression: pickStringParam(params, "expression", "natural"),
@@ -171,6 +179,7 @@ export async function processNextBatchSlice(opts?: {
           baseImageUrl: referenceImageUrl,
           useReferenceFace: true,
           scene: draftParams.scene,
+          sceneDescription: draftParams.sceneDescription,
           pose: draftParams.pose,
           outfit: draftParams.outfit,
           expression: draftParams.expression,

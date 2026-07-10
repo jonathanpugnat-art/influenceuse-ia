@@ -86,6 +86,13 @@ enum JobStatus {
   FAILED
 }
 
+enum LoraStatus {
+  NONE
+  TRAINING
+  READY
+  FAILED
+}
+
 // ──────────────────────────────────────────────
 // MODELS
 // ──────────────────────────────────────────────
@@ -136,6 +143,10 @@ model Influencer {
   /// décrit le positionnement, la personnalité, le but et la vision contenu.
   /// Utilisé comme contexte dans tous les agents en aval.
   brief        String?          @db.Text
+  /// Profil de niche structuré produit par l'agent "cerveau de niche"
+  /// (voir NicheProfile dans src/lib/niche-profile.ts). Pilote le rendu
+  /// réaliste spécifique à la niche dans la génération photo/contenu.
+  nicheProfile Json?
   personality  String           @db.Text
   gender       String           @default("female")
   niche        Niche
@@ -156,6 +167,16 @@ model Influencer {
   appearanceFingerprint String?
   /// Multi-angle 2D reference stills (see `IdentityPackRecord` in identity-pack.ts).
   identityPack          Json?
+  /// Character LoRA weights URL (FLUX) when training succeeded.
+  loraUrl               String?
+  loraStatus            LoraStatus @default(NONE)
+  /// Trigger token baked into prompts when LoRA is active (e.g. AURA_x7k2m9).
+  loraTriggerWord       String?
+  loraTrainedAt         DateTime?
+  /// Async training job id (FAL / Replicate) while status = TRAINING.
+  loraTrainingJobId     String?
+  /// Dataset metadata: { status, imageUrls[], zipUrl?, error? }
+  loraDataset           Json?
 
   user           User                 @relation(fields: [userId], references: [id])
   socialAccounts SocialAccount[]
@@ -698,6 +719,10 @@ model TrendItem {
   /// Public media URLs from top scraped posts (images / video posters). Never
   /// sent to image models as identity reference — only analyzed for format.
   mediaUrls       String[] @default([])
+  /// Persisted copy of the source trend MP4 (R2) for motion-control reels.
+  sourceVideoUrl  String?
+  /// Keyframe stills extracted from sourceVideoUrl for vision analysis.
+  videoFrameUrls  String[] @default([])
   /// image | video | carousel | hashtag_signal (TikTok hashtag stats only).
   mediaKind       String?
   /// Vision/text-derived format inspiration (scene, reel storyboard, etc.).

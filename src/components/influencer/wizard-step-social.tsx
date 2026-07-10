@@ -15,13 +15,20 @@ import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { useInfluencerWizard } from "@/hooks/use-influencer-wizard";
 import { buildWizardCreateInput } from "@/lib/wizard-create-payload";
+import { ensureOfSocialDefaults } from "@/lib/wizard-of-flow";
 import { buildWizardInstagramReturnPath } from "@/lib/instagram-oauth-return";
 import {
   isAppearanceStepComplete,
   isIdentityStepComplete,
 } from "@/lib/wizard-validation";
 import { trpc } from "@/lib/trpc";
+import { useCurrentPlan } from "@/hooks/use-current-plan";
 import { cn } from "@/lib/utils";
+import {
+  wizardInputClass,
+  wizardPrimaryButtonClass,
+  wizardSecondaryButtonClass,
+} from "@/components/influencer/wizard-ui";
 
 type InstagramConnectProps = {
   enabled: boolean;
@@ -185,7 +192,7 @@ function SocialCard({
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-2xl border border-slate-800/50 bg-slate-900/50 p-5 backdrop-blur-xl transition-all",
+        "relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02] p-5 backdrop-blur-xl transition-all",
         disabled && "opacity-50"
       )}
     >
@@ -235,7 +242,7 @@ function SocialCard({
                   value={username}
                   onChange={(e) => onUsernameChange(e.target.value)}
                   placeholder={`@${name.toLowerCase().replace(" ", "")}`}
-                  className="h-9 border-slate-800/50 bg-slate-800/30 text-white placeholder:text-slate-600"
+                  className={cn(wizardInputClass, "h-9 text-sm")}
                 />
               </div>
 
@@ -280,10 +287,16 @@ export function WizardStepSocial({
     selectedImageIndex,
     setCreatedInfluencerId,
   } = useInfluencerWizard();
-  const { data: plan } = trpc.billing.getCurrentPlan.useQuery();
+  const { data: plan } = useCurrentPlan();
   const allowNsfw = plan?.features.hasNsfw ?? false;
   const showOnlyFans = allowNsfw && data.isNsfw;
   const ensureStartedRef = useRef(false);
+
+  useEffect(() => {
+    const patch = ensureOfSocialDefaults(data);
+    if (patch) updateData(patch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync once on mount
+  }, []);
 
   const selectedImageUrl =
     data.baseImageUrl || generatedImages[selectedImageIndex] || null;
@@ -330,8 +343,15 @@ export function WizardStepSocial({
       (!ensureCreateMut.isError && !ensureCreateMut.isSuccess));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-md:pb-[var(--mobile-nav-height)]">
       <div className="space-y-4">
+        {data.isNsfw && (
+          <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-100">
+            <p className="font-medium">{t("ofSocialBannerTitle")}</p>
+            <p className="mt-1 text-xs text-blue-200/80">{t("ofSocialBannerHint")}</p>
+          </div>
+        )}
+
         <SocialCard
           icon={<InstagramIcon className="h-5 w-5 text-white" />}
           name="Instagram"
@@ -386,14 +406,14 @@ export function WizardStepSocial({
         <button
           type="button"
           onClick={onPrev}
-          className="rounded-xl border border-slate-700 px-6 py-2.5 text-sm text-slate-300 transition-colors hover:bg-slate-800 hover:text-white"
+          className={wizardSecondaryButtonClass}
         >
           ← {t("back")}
         </button>
         <button
           type="button"
           onClick={onNext}
-          className="rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-6 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
+          className={wizardPrimaryButtonClass}
         >
           {data.instagramEnabled || data.tiktokEnabled || data.onlyfansEnabled
             ? `${t("next")} →`

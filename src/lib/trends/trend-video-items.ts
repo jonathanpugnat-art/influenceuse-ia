@@ -88,15 +88,17 @@ export function pickVisionUrlsFromTrend(input: {
   thumbnailUrl?: string | null;
   thumbnailUrlAlt?: string | null;
   mediaUrls?: string[] | null;
+  videoFrameUrls?: string[] | null;
 }): string[] {
   const candidates = [
+    ...(input.videoFrameUrls ?? []),
     input.thumbnailUrl,
     input.thumbnailUrlAlt,
     ...(input.mediaUrls ?? []),
   ].filter((u): u is string => Boolean(u?.startsWith("http")));
 
   const images = candidates.filter((u) => IMAGE_URL_RE.test(u) || !/\.mp4(\?|$)/i.test(u));
-  return [...new Set(images)].slice(0, 4);
+  return [...new Set(images)].slice(0, 6);
 }
 
 export function isVideoTrendItem(mediaKind?: string | null): boolean {

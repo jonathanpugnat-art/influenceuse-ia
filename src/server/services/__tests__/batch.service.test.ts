@@ -78,6 +78,14 @@ describe("batch.service", () => {
     const result = await processNextBatchSlice({ sliceSize: 5 });
 
     expect(mockGenerateContentImage).toHaveBeenCalledTimes(2);
+    expect(mockGenerateContentImage).toHaveBeenCalledWith(
+      "u1",
+      25,
+      expect.any(Object),
+      expect.objectContaining({
+        sceneDescription: undefined,
+      })
+    );
     expect(result.generated).toBe(2);
     expect(result.failed).toBe(0);
     // Each draft is updated twice: once GENERATING, once SCHEDULED.
@@ -86,6 +94,40 @@ describe("batch.service", () => {
     );
     expect(statuses).toContain("GENERATING");
     expect(statuses).toContain("SCHEDULED");
+  });
+
+  it("passes sceneDescription from content plan params to image generation", async () => {
+    mockDb.content.findMany.mockResolvedValue([
+      makeDraft({
+        generationParams: {
+          scene: "cafe",
+          sceneDescription: "Parisian café terrace, golden hour, latte on table",
+          pose: "candid",
+          outfit: "linen blazer",
+          expression: "natural",
+          photoStyle: "editorial",
+          timeOfDay: "golden_hour",
+        },
+      }),
+    ]);
+    mockGenerateContentImage.mockResolvedValue({
+      imageUrls: ["https://r2/u/1.jpg"],
+      promptUsed: "p",
+      negativePrompt: "n",
+      parameters: {},
+    });
+
+    await processNextBatchSlice({ sliceSize: 1 });
+
+    expect(mockGenerateContentImage).toHaveBeenCalledWith(
+      "u1",
+      25,
+      expect.any(Object),
+      expect.objectContaining({
+        scene: "cafe",
+        sceneDescription: "Parisian café terrace, golden hour, latte on table",
+      })
+    );
   });
 
   it("marks the draft FAILED if image generation throws but keeps processing the next one", async () => {

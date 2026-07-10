@@ -48,17 +48,17 @@ export function WizardProgress({
                     label: step.label,
                   })}
                   className={cn(
-                    "relative flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold transition-all",
-                    isCompleted && "bg-emerald-500 text-white",
+                    "relative flex h-9 w-9 items-center justify-center rounded-full text-sm font-medium transition-all",
+                    isCompleted && "border border-white/20 bg-white/10 text-white",
                     isActive &&
-                      "bg-violet-500 text-white shadow-lg shadow-violet-500/30 ring-4 ring-violet-500/20",
+                      "border border-white bg-white text-neutral-950 shadow-lg shadow-white/5",
                     isFuture &&
                       isReachable &&
-                      "border-2 border-violet-500/50 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20",
+                      "border border-white/15 bg-white/[0.03] text-slate-300 hover:border-white/25 hover:bg-white/[0.06]",
                     isFuture &&
                       !isReachable &&
-                      "cursor-not-allowed border-2 border-slate-700 bg-transparent text-slate-500",
-                    canClick && "cursor-pointer hover:scale-105",
+                      "cursor-not-allowed border border-white/10 bg-transparent text-slate-600",
+                    canClick && "cursor-pointer",
                     !canClick && !isActive && !isCompleted && "cursor-default"
                   )}
                 >
@@ -67,17 +67,14 @@ export function WizardProgress({
                   ) : (
                     stepNum
                   )}
-                  {isActive && (
-                    <span className="absolute h-9 w-9 animate-ping rounded-full bg-violet-500/20" />
-                  )}
                 </button>
                 <span
                   className={cn(
                     "hidden text-[11px] font-medium sm:block",
-                    isCompleted && "text-emerald-400",
-                    isActive && "text-violet-400",
-                    isFuture && isReachable && "text-violet-400/80",
-                    isFuture && !isReachable && "text-slate-500"
+                    isCompleted && "text-slate-400",
+                    isActive && "text-white",
+                    isFuture && isReachable && "text-slate-400",
+                    isFuture && !isReachable && "text-slate-600"
                   )}
                 >
                   {step.label}
@@ -86,14 +83,14 @@ export function WizardProgress({
 
               {i < steps.length - 1 && (
                 <div
-                  className="relative mx-2 h-0.5 flex-1 overflow-hidden rounded-full bg-slate-800 sm:mx-3"
+                  className="relative mx-2 h-px flex-1 overflow-hidden bg-white/10 sm:mx-3"
                   aria-hidden
                 >
                   <div
                     className={cn(
-                      "absolute inset-y-0 left-0 rounded-full transition-all duration-500",
-                      isCompleted && "w-full bg-emerald-500",
-                      isActive && "w-1/2 bg-gradient-to-r from-violet-500 to-transparent",
+                      "absolute inset-y-0 left-0 transition-all duration-500",
+                      isCompleted && "w-full bg-white/30",
+                      isActive && "w-1/2 bg-white/20",
                       isFuture && "w-0"
                     )}
                   />

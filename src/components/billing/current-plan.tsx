@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { trpc } from "@/lib/trpc";
+import { useCurrentPlan } from "@/hooks/use-current-plan";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -17,7 +18,7 @@ const planBadgeStyles: Record<string, string> = {
 };
 
 export function CurrentPlan() {
-  const { data, isLoading } = trpc.billing.getCurrentPlan.useQuery();
+  const { data, isLoading } = useCurrentPlan();
   const { data: usage } = trpc.billing.getUsage.useQuery();
   const portalMutation = trpc.billing.createPortalSession.useMutation({
     onSuccess: ({ url }) => window.open(url, "_blank"),

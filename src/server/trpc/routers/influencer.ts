@@ -5,10 +5,16 @@ import { nanoid } from "nanoid";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import { db } from "@/server/db";
 import { PLANS } from "@/lib/constants";
+import {
+  estimateLoraCreditCost,
+  LORA_MONTHLY_CAP_PER_USER,
+  parseLoraDataset,
+} from "@/lib/lora";
 import type { Plan } from "@/generated/prisma/client";
 
 import { getDbUser } from "@/server/helpers/get-db-user";
 import { parseIdentityPack } from "@/lib/identity-pack";
+import { nicheProfileSchema } from "@/lib/niche-profile";
 
 // ──────────────────────────────────────────────
 // Helpers
@@ -150,45 +156,6 @@ export const influencerRouter = createTRPCRouter({
     }),
 
   /**
-   * Sprint 12 — suggestPersona
-   * Returns 3 distinct {bio, personality} drafts so the wizard can offer a
-   * "magic" autofill button. Free of charge: we don't deduct credits to keep
-   * the friction at zero (LLM cost is negligible vs the activation gain).
-   */
-  suggestPersona: protectedProcedure
-    .input(
-      z.object({
-        name: z.string().max(50).optional(),
-        niche: z.enum(nicheValues),
-        gender: z.enum(["female", "male", "nonbinary"]).default("female"),
-        language: z.enum(["fr", "en"]).default("fr"),
-        tone: z.string().max(50).optional(),
-      })
-    )
-    .mutation(async ({ input }) => {
-      const { generatePersonaIdeas } = await import(
-        "@/server/services/ai-text.service"
-      );
-      try {
-        const ideas = await generatePersonaIdeas({
-          name: input.name,
-          niche: input.niche,
-          gender: input.gender,
-          language: input.language,
-          tone: input.tone,
-        });
-        return ideas;
-      } catch (err) {
-        console.error("[influencer.suggestPersona]", err);
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message:
-            "Impossible de générer des suggestions pour le moment. Réessaie dans quelques secondes.",
-        });
-      }
-    }),
-
-  /**
    * create – Crée une nouvelle influenceuse
    */
   create: protectedProcedure
@@ -199,6 +166,7 @@ export const influencerRouter = createTRPCRouter({
         bio: z.string().min(10).max(2000),
         personality: z.string().min(10).max(2000),
         brief: z.string().max(1000).optional(),
+        nicheProfile: nicheProfileSchema.optional(),
         niche: z.enum(nicheValues),
         age: z.number().int().min(18).max(80),
         style: styleSchema,
@@ -281,6 +249,9 @@ export const influencerRouter = createTRPCRouter({
           bio: input.bio,
           personality: input.personality,
           brief: input.brief?.trim() || undefined,
+          nicheProfile: input.nicheProfile
+            ? (input.nicheProfile as object)
+            : undefined,
           niche: input.niche,
           age: input.age,
           style: input.style as object,
@@ -425,6 +396,139 @@ export const influencerRouter = createTRPCRouter({
       return { started: true as const };
     }),
 
+  /** Poll LoRA training status for an influencer. */
+  getLoraStatus: protectedProcedure
+    .input(z.object({ influencerId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const { user, influencer } = await verifyOwnership(
+        input.influencerId,
+        ctx.userId
+      );
+
+      // Poll-on-read recovery: finalize a FAL training whose background
+      // worker died (common on serverless) so the status never gets stuck
+      // on TRAINING forever. No-op for in-process / already-finished jobs.
+      let current = influencer;
+      if (
+        influencer.loraStatus === "TRAINING" &&
+        influencer.loraTrainingJobId?.startsWith("fal:")
+      ) {
+        try {
+          const { recoverFalLoraTraining } = await import(
+            "@/server/services/lora-training.service"
+          );
+          await recoverFalLoraTraining(user.id, influencer);
+          current =
+            (await db.influencer.findUnique({
+              where: { id: input.influencerId },
+            })) ?? influencer;
+        } catch (err) {
+          console.warn(
+            "[influencer.getLoraStatus] recovery failed:",
+            err instanceof Error ? err.message : err
+          );
+        }
+      }
+
+      const dataset = parseLoraDataset(current.loraDataset);
+      const datasetReady =
+        dataset?.status === "ready" && Boolean(dataset?.zipUrl);
+      return {
+        status: current.loraStatus,
+        loraUrl: current.loraUrl,
+        triggerWord: current.loraTriggerWord,
+        trainedAt: current.loraTrainedAt,
+        datasetStatus: dataset?.status ?? null,
+        datasetImageCount: dataset?.imageUrls.length ?? 0,
+        creditCost: estimateLoraCreditCost(datasetReady),
+      };
+    }),
+
+  /** Start character LoRA dataset + training (async, long-running). */
+  trainCharacterLora: protectedProcedure
+    .input(z.object({ influencerId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const { user, influencer } = await verifyOwnership(
+        input.influencerId,
+        ctx.userId
+      );
+      if (influencer.isNsfw) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Le LoRA personnage n'est pas disponible en mode NSFW.",
+        });
+      }
+      if (!influencer.baseImageUrl?.trim()) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Ajoute d'abord un portrait de base.",
+        });
+      }
+      if (influencer.loraStatus === "TRAINING") {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "Un entraînement LoRA est déjà en cours.",
+        });
+      }
+
+      const planConfig = PLANS[user.plan as Plan];
+      if (!planConfig.hasCharacterLora) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "UPGRADE_REQUIRED:character_lora_required",
+        });
+      }
+
+      const rollingSince = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const recentTrainCount = await db.influencer.count({
+        where: {
+          userId: user.id,
+          id: { not: input.influencerId },
+          OR: [
+            { loraStatus: "TRAINING" },
+            { loraTrainedAt: { gte: rollingSince } },
+          ],
+        },
+      });
+      if (
+        recentTrainCount >= LORA_MONTHLY_CAP_PER_USER &&
+        influencer.loraStatus !== "FAILED"
+      ) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: `Limite atteinte : ${LORA_MONTHLY_CAP_PER_USER} entraînements LoRA max par mois.`,
+        });
+      }
+
+      // Verify credits UP FRONT so the user gets an immediate, explicit
+      // error instead of a silent background failure. The dataset step is
+      // skipped (and not charged) when a ready dataset already exists.
+      const existingDataset = parseLoraDataset(influencer.loraDataset);
+      const datasetReady =
+        existingDataset?.status === "ready" && Boolean(existingDataset.zipUrl);
+      const requiredCredits = estimateLoraCreditCost(datasetReady);
+
+      const { checkCredits } = await import(
+        "@/server/services/credits.service"
+      );
+      if (!(await checkCredits(user.id, requiredCredits))) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: `Crédits insuffisants : l'entraînement LoRA nécessite ${requiredCredits} crédits.`,
+        });
+      }
+
+      ctx.scheduleAfter(async () => {
+        const { scheduleLoraTraining } = await import(
+          "@/server/services/lora-training.service"
+        );
+        await scheduleLoraTraining(user.id, input.influencerId);
+      });
+
+      return { started: true as const };
+    }),
+
   /**
    * update – Met à jour une influenceuse
    */
@@ -437,10 +541,23 @@ export const influencerRouter = createTRPCRouter({
         bio: z.string().min(10).max(2000).optional(),
         personality: z.string().min(10).max(2000).optional(),
         brief: z.string().max(1000).optional().nullable(),
+        nicheProfile: nicheProfileSchema.optional(),
         niche: z.enum(nicheValues).optional(),
         age: z.number().int().min(18).max(80).optional(),
         style: styleSchema.optional(),
         isNsfw: z.boolean().optional(),
+        // Sprint — when the influencer was created early (Instagram OAuth at
+        // step 3) the wizard's step-4 "update" must still be able to attach
+        // the social handles declared after that early create.
+        socialAccounts: z
+          .array(
+            z.object({
+              platform: z.enum(["INSTAGRAM", "TIKTOK", "ONLYFANS"]),
+              username: z.string().trim().min(1).max(60),
+            })
+          )
+          .max(3)
+          .optional(),
         avatarUrl: z.string().min(1).optional().nullable(),
         baseImageUrl: z.string().min(1).optional().nullable(),
         // Sprint 13 — when the user regenerates the base image from the edit
@@ -461,9 +578,37 @@ export const influencerRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { id, appearanceVariations, ...rest } = input;
+      const { id, appearanceVariations, nicheProfile, socialAccounts, ...rest } =
+        input;
       const data = rest;
       await verifyOwnership(id, ctx.userId);
+
+      // Sync declared social handles (de-duped per platform). Done before the
+      // influencer update so the `include` below returns the fresh rows.
+      if (socialAccounts && socialAccounts.length > 0) {
+        const deduped = new Map<string, string>();
+        for (const acc of socialAccounts) {
+          const handle = acc.username.replace(/^@+/, "").trim();
+          if (handle) deduped.set(acc.platform, handle);
+        }
+        for (const [platform, username] of deduped) {
+          await db.socialAccount.upsert({
+            where: {
+              influencerId_platform: {
+                influencerId: id,
+                platform: platform as "INSTAGRAM" | "TIKTOK" | "ONLYFANS",
+              },
+            },
+            create: {
+              influencerId: id,
+              platform: platform as "INSTAGRAM" | "TIKTOK" | "ONLYFANS",
+              username,
+              isConnected: false,
+            },
+            update: { username },
+          });
+        }
+      }
 
       const influencer = await db.influencer.update({
         where: { id },
@@ -474,6 +619,9 @@ export const influencerRouter = createTRPCRouter({
             : {}),
           ...(appearanceVariations
             ? { appearanceVariations: appearanceVariations as object }
+            : {}),
+          ...(nicheProfile
+            ? { nicheProfile: nicheProfile as object }
             : {}),
         },
         include: {

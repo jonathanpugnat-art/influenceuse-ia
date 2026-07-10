@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { trpc } from "@/lib/trpc";
+import { useCurrentPlan } from "@/hooks/use-current-plan";
 import { toast } from "sonner";
 
 interface InfluencerData {
@@ -57,7 +58,7 @@ export function InfluencerSettings({
 }) {
   const router = useRouter();
   const utils = trpc.useUtils();
-  const { data: plan } = trpc.billing.getCurrentPlan.useQuery();
+  const { data: plan } = useCurrentPlan();
   const allowNsfw = plan?.features.hasNsfw ?? false;
   const [deleteOpen, setDeleteOpen] = useState(false);
 

@@ -3,6 +3,7 @@
 import { Check, X, Star, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
+import { useCurrentPlan } from "@/hooks/use-current-plan";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { PLANS } from "@/lib/constants";
@@ -115,7 +116,7 @@ const plans: PlanCard[] = [
 ];
 
 export function PricingCards() {
-  const { data: currentPlan } = trpc.billing.getCurrentPlan.useQuery();
+  const { data: currentPlan } = useCurrentPlan();
   const checkoutMutation = trpc.billing.createCheckoutSession.useMutation({
     onSuccess: ({ url }) => {
       window.location.href = url;

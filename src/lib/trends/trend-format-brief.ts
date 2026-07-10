@@ -69,9 +69,130 @@ export const trendFormatBriefSchema = z.object({
 
 export type TrendFormatBrief = z.infer<typeof trendFormatBriefSchema>;
 
+function strField(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+/** Lenient parser — fills defaults so LLM omissions never abort the batch. */
+export function coerceTrendFormatBriefFromLlm(
+  raw: unknown,
+  analyzedFrom: "vision" | "text_only"
+): TrendFormatBrief {
+  const item = (Array.isArray(raw) ? raw[0] : raw) as Record<string, unknown>;
+  const contentTypeRaw = strField(item?.contentType).toUpperCase();
+  const contentType: TrendFormatBrief["contentType"] = [
+    "PHOTO",
+    "REEL",
+    "CAROUSEL",
+    "MIXED",
+  ].includes(contentTypeRaw)
+    ? (contentTypeRaw as TrendFormatBrief["contentType"])
+    : "MIXED";
+
+  const confidenceRaw = strField(item?.confidence).toLowerCase();
+  const confidence: TrendFormatBrief["confidence"] = ["high", "medium", "low"].includes(
+    confidenceRaw
+  )
+    ? (confidenceRaw as TrendFormatBrief["confidence"])
+    : "medium";
+
+  const storyboardRaw = item?.reelStoryboard;
+  const reelStoryboard = Array.isArray(storyboardRaw)
+    ? storyboardRaw
+        .map((beat) => {
+          if (!beat || typeof beat !== "object") return null;
+          const b = beat as Record<string, unknown>;
+          const visual = strField(b.visual);
+          if (!visual) return null;
+          return {
+            startSec: typeof b.startSec === "number" ? b.startSec : 0,
+            endSec: typeof b.endSec === "number" ? b.endSec : 3,
+            visual: visual.slice(0, 300),
+          };
+        })
+        .filter((b): b is NonNullable<typeof b> => Boolean(b))
+        .slice(0, 8)
+    : undefined;
+
+  return trendFormatBriefSchema.parse({
+    contentType,
+    mood: (strField(item?.mood) || "natural candid energy").slice(0, 200),
+    sceneDescription: (
+      strField(item?.sceneDescription) ||
+      "indoor lifestyle setting, soft natural light, vertical social framing"
+    ).slice(0, 800),
+    pose: (strField(item?.pose) || "candid").slice(0, 60),
+    expression: (strField(item?.expression) || "natural").slice(0, 60),
+    outfit: (strField(item?.outfit) || "casual contemporary outfit").slice(0, 300),
+    lighting: (strField(item?.lighting) || "natural soft light").slice(0, 120),
+    cameraStyle: (
+      strField(item?.cameraStyle) || "vertical smartphone social clip"
+    ).slice(0, 200),
+    hook: (strField(item?.hook) || "").slice(0, 120),
+    customPrompt: strField(item?.customPrompt).slice(0, 400),
+    inspirationNotes: strField(item?.inspirationNotes).slice(0, 500),
+    confidence,
+    analyzedFrom,
+    videoType: strField(item?.videoType) || undefined,
+    reelScript: strField(item?.reelScript) || undefined,
+    reelEffects: strField(item?.reelEffects) || undefined,
+    reelDurationSec:
+      typeof item?.reelDurationSec === "number" ? item.reelDurationSec : undefined,
+    reelStoryboard: reelStoryboard?.length ? reelStoryboard : undefined,
+  });
+}
+
+/**
+ * Compact trend context carried all the way to the image-prompt enrichment.
+ * `brief` surfaces the richer visual fields analyzed from the real scraped
+ * post (camera, lighting, mood) so the generator stays faithful to the trend
+ * — not just its title + hashtags.
+ */
+export type TrendPromptContext = {
+  title?: string;
+  hashtags?: string[];
+  brief?: {
+    cameraStyle?: string;
+    lighting?: string;
+    mood?: string;
+    inspirationNotes?: string;
+  };
+};
+
 export function parseTrendFormatBrief(raw: unknown): TrendFormatBrief | null {
   const parsed = trendFormatBriefSchema.safeParse(raw);
   return parsed.success ? parsed.data : null;
+}
+
+/** Build the prompt-side trend context from an analyzed brief + metadata. */
+export function briefToPromptContext(
+  brief: TrendFormatBrief | null,
+  title?: string,
+  hashtags?: string[]
+): TrendPromptContext | undefined {
+  const ctx: TrendPromptContext = {};
+  const cleanTitle = title?.trim();
+  if (cleanTitle) ctx.title = cleanTitle;
+  if (hashtags && hashtags.length > 0) ctx.hashtags = hashtags;
+
+  if (brief) {
+    const briefPart = {
+      cameraStyle: brief.cameraStyle?.trim() || undefined,
+      lighting: brief.lighting?.trim() || undefined,
+      mood: brief.mood?.trim() || undefined,
+      inspirationNotes: brief.inspirationNotes?.trim() || undefined,
+    };
+    if (
+      briefPart.cameraStyle ||
+      briefPart.lighting ||
+      briefPart.mood ||
+      briefPart.inspirationNotes
+    ) {
+      ctx.brief = briefPart;
+    }
+  }
+
+  return ctx.title || ctx.hashtags || ctx.brief ? ctx : undefined;
 }
 
 /** Map analyzed videoType hints to reel creator keys. */
@@ -118,11 +239,19 @@ export function formatBriefToPhotoSeed(
 export function formatBriefToReelSeed(
   brief: TrendFormatBrief,
   influencerId: string,
-  hashtags: string[]
+  hashtags: string[],
+  opts?: {
+    soundName?: string;
+    motionSourceVideoUrl?: string;
+  }
 ) {
   const duration = (brief.reelDurationSec ?? 15) as 15 | 30 | 60;
   const clampedDuration: 15 | 30 | 60 =
     duration <= 15 ? 15 : duration <= 30 ? 30 : 60;
+
+  const music =
+    opts?.soundName?.trim() ||
+    (brief.reelEffects?.trim() ? brief.reelEffects : "");
 
   return {
     influencerId,
@@ -135,12 +264,14 @@ export function formatBriefToReelSeed(
       brief.hook,
     sceneDescription: brief.sceneDescription ?? "",
     outfit: brief.outfit ?? "",
-    music: "",
+    music,
     effects: brief.reelEffects ? [brief.reelEffects] : [],
     textOverlay: "",
     caption: brief.hook,
     hashtags,
     contentMode: "SFW" as const,
+    motionSourceVideoUrl: opts?.motionSourceVideoUrl,
+    fromTrend: Boolean(opts?.motionSourceVideoUrl),
   };
 }
 

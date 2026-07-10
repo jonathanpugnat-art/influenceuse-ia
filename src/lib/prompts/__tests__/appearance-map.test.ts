@@ -71,6 +71,42 @@ describe("appearance-map", () => {
     expect(mapTattoos(["Bras", "Dos"])).toContain("arm");
   });
 
+  it("grades proportions across the full -3..+3 scale", () => {
+    expect(mapProportionLevels({ bustLevel: 3 })).toContain(
+      "extra full voluptuous bust"
+    );
+    expect(mapProportionLevels({ bustLevel: -3 })).toContain("flat chest");
+    expect(mapProportionLevels({ hipsLevel: 2 })).toContain(
+      "very wide curvy hips"
+    );
+    // Out-of-range values clamp instead of producing empty tokens.
+    expect(mapProportionLevels({ shouldersLevel: 9 })).toBeTruthy();
+  });
+
+  it("skips the neutral baseline for content prompts (includeNeutral: false)", () => {
+    expect(
+      mapProportionLevels({ bustLevel: 0, hipsLevel: 0, shouldersLevel: 0 })
+    ).toContain("balanced");
+    expect(
+      mapProportionLevels(
+        { bustLevel: 0, hipsLevel: 2, shouldersLevel: 0 },
+        { includeNeutral: false }
+      )
+    ).toBe("very wide curvy hips");
+  });
+
+  it("maps atypical body types to English tokens", () => {
+    expect(mapAppearance(APPEARANCE_MAP.bodyType, "Sablier")).toContain(
+      "hourglass"
+    );
+    expect(mapAppearance(APPEARANCE_MAP.bodyType, "Abdos définis")).toContain(
+      "defined abs"
+    );
+    expect(mapAppearance(APPEARANCE_MAP.bodyType, "Pulpeuse")).toContain(
+      "voluptuous"
+    );
+  });
+
   it("buildBasePortraitPrompt includes v2 tokens", () => {
     const prompt = buildBasePortraitPrompt({
       age: 26,

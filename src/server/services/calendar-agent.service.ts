@@ -1,9 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { endOfMonth, format, startOfMonth } from "date-fns";
-import { type AgentTurnInput, type AgentTurnOutput } from "@/lib/agent-core";
 import {
   buildCalendarAgentUserPrompt,
-  CALENDAR_AGENT_MODEL,
   CALENDAR_AGENT_SYSTEM_PROMPT,
   type CalendarAgentTurnResult,
   validateCalendarAgentTurn,
@@ -15,77 +11,28 @@ import {
   localizeCalendarAgentTurn,
   resolveCalendarAgentLocale,
 } from "@/lib/calendar-agent";
+import { callAgentJsonLLM } from "@/server/services/ai-text.service";
+import { inferAdultLaneFromSignals } from "@/lib/text-provider-config";
+import { CALENDAR_AGENT_MODEL } from "@/lib/prompts/calendar-agent-prompts";
+import { type AgentTurnInput, type AgentTurnOutput } from "@/lib/agent-core";
 import { db } from "@/server/db";
+import { endOfMonth, format, startOfMonth } from "date-fns";
 
-function getAnthropic(): Anthropic {
-  if (!process.env.ANTHROPIC_API_KEY?.trim()) {
-    throw new Error("ANTHROPIC_API_KEY is not configured.");
-  }
-  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-}
-
-async function callCalendarHaikuJson(
-  userPrompt: string
+async function callCalendarAgentJson(
+  userPrompt: string,
+  contentLane: "sfw" | "adult"
 ): Promise<CalendarAgentTurnResult> {
-  const client = getAnthropic();
-  const tryParse = (text: string): CalendarAgentTurnResult | null => {
-    const cleaned = text
-      .trim()
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/```\s*$/i, "")
-      .trim();
-    try {
-      return validateCalendarAgentTurn(JSON.parse(cleaned));
-    } catch {
-      return null;
-    }
-  };
-
-  const baseMessages = [{ role: "user" as const, content: userPrompt }];
-
-  const first = await client.messages.create({
-    model: CALENDAR_AGENT_MODEL,
-    max_tokens: 700,
+  return callAgentJsonLLM({
+    contentLane,
+    systemPrompt: CALENDAR_AGENT_SYSTEM_PROMPT,
+    userPrompt,
+    maxTokens: 700,
     temperature: 0.35,
-    system: CALENDAR_AGENT_SYSTEM_PROMPT,
-    messages: baseMessages,
+    anthropicModel: CALENDAR_AGENT_MODEL,
+    validate: validateCalendarAgentTurn,
+    repairInstruction:
+      "Return only valid JSON matching the requested schema. No markdown.",
   });
-
-  const firstText = first.content
-    .filter((block): block is Anthropic.TextBlock => block.type === "text")
-    .map((b) => b.text)
-    .join("")
-    .trim();
-
-  const parsed = tryParse(firstText);
-  if (parsed) return parsed;
-
-  const repair = await client.messages.create({
-    model: CALENDAR_AGENT_MODEL,
-    max_tokens: 700,
-    temperature: 0.2,
-    system: CALENDAR_AGENT_SYSTEM_PROMPT,
-    messages: [
-      ...baseMessages,
-      { role: "assistant", content: firstText },
-      {
-        role: "user",
-        content:
-          "Return only valid JSON matching the requested schema. No markdown.",
-      },
-    ],
-  });
-
-  const repairText = repair.content
-    .filter((block): block is Anthropic.TextBlock => block.type === "text")
-    .map((b) => b.text)
-    .join("")
-    .trim();
-
-  const repaired = tryParse(repairText);
-  if (repaired) return repaired;
-
-  throw new Error("Calendar agent: invalid JSON from Haiku.");
 }
 
 function readContextString(
@@ -113,16 +60,22 @@ export async function runCalendarAgentTurn(
   let influencerName: string | undefined;
   let influencerNiche: string | undefined;
   let influencerBrief: string | undefined;
+  let contentLane: "sfw" | "adult" = "sfw";
 
   if (influencerId) {
     const influencer = await db.influencer.findFirst({
       where: { id: influencerId, userId },
-      select: { name: true, niche: true, brief: true },
+      select: { name: true, niche: true, brief: true, isNsfw: true },
     });
     if (influencer) {
       influencerName = influencer.name;
       influencerNiche = influencer.niche;
       influencerBrief = influencer.brief ?? undefined;
+      contentLane = inferAdultLaneFromSignals({
+        isNsfw: influencer.isNsfw,
+        niche: influencer.niche,
+        brief: influencer.brief ?? undefined,
+      });
     }
   }
 
@@ -156,11 +109,11 @@ export async function runCalendarAgentTurn(
   let parsed: CalendarAgentTurnResult;
   try {
     parsed = localizeCalendarAgentTurn(
-      await callCalendarHaikuJson(userPrompt),
+      await callCalendarAgentJson(userPrompt, contentLane),
       conversationLocale
     );
   } catch (error) {
-    console.warn("[calendar-agent] Haiku failed, using fallback:", error);
+    console.warn("[calendar-agent] LLM failed, using fallback:", error);
     parsed = buildFallbackCalendarTurn(input, uiLocale);
   }
 

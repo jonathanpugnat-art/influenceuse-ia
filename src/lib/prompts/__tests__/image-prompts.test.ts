@@ -65,7 +65,7 @@ describe("image-prompts", () => {
       expect(result).not.toMatch(/luxury menswear|well-dressed.*luxury|effortless feminine style/);
     });
 
-    it("encodes 'NOT a studio shoot' negatives directly in the positive prompt (Sprint 11.1)", () => {
+    it("encodes studio and realism negatives in the grouped negative block", () => {
       const candid = buildFullPrompt({
         gender: "female",
         scene: "cafe",
@@ -74,9 +74,9 @@ describe("image-prompts", () => {
         style: "natural",
       });
       expect(candid).toContain("authentic Instagram photo");
-      expect(candid).toContain("NOT a mirror selfie");
-      expect(candid).toContain("NOT a studio photo");
-      expect(candid).toContain("NOT AI-perfect glamour");
+      expect(candid).toContain("no studio lighting");
+      expect(candid).toContain("not a mirror selfie");
+      expect(candid).toContain("not AI-perfect glamour");
 
       const selfie = buildFullPrompt({
         gender: "female",
@@ -86,7 +86,7 @@ describe("image-prompts", () => {
         expression: "natural",
         style: "natural",
       });
-      expect(selfie).toContain("real candid iPhone photo");
+      expect(selfie).toContain("candid iPhone photo snapped by a friend");
       expect(selfie).toContain("iPhone flash");
     });
 
@@ -100,7 +100,7 @@ describe("image-prompts", () => {
       });
       expect(result).toContain("a man");
       expect(result).toContain("masculine man");
-      expect(result).toContain("NO feminine clothing");
+      expect(result).toContain("masculine clothing only");
       expect(result).toContain("leather backpack");
       // Sprint 11.1 — "editorial stare" replaced with a more candid neutral.
       expect(result).toContain("neutral expression");
@@ -163,9 +163,7 @@ describe("image-prompts", () => {
         pose: "candid",
         expression: "natural",
       });
-      expect(result).toContain(
-        "setting and environment: quiet hotel lobby"
-      );
+      expect(result).toContain("Scene: quiet hotel lobby");
       expect(result).not.toContain("real city sidewalk");
       expect(result).not.toContain("designer sunglasses");
     });
@@ -176,8 +174,10 @@ describe("image-prompts", () => {
         useReferenceFace: true,
         expression: "natural",
       });
-      expect(result).toContain("same exact person as the reference photo");
-      expect(result).toContain("identical facial identity");
+      const blocks = result.split("\n\n");
+      expect(blocks[0]).toContain("IDENTITY LOCK");
+      expect(blocks[0]).toContain("same exact person as the reference photo");
+      expect(blocks[0]).toContain("identical face shape");
     });
 
     it("does not add identity lock when useReferenceFace is false", () => {
@@ -202,8 +202,110 @@ describe("image-prompts", () => {
         customPrompt: "extra detail",
       });
       expect(result).toContain("iPhone");
-      expect(result).toContain("NOT a mirror selfie");
+      expect(result).toContain("not a mirror selfie");
       expect(result).toContain("extra detail");
+    });
+
+    it("places identity lock first when useReferenceFace is true", () => {
+      const result = buildFullPrompt({
+        gender: "female",
+        useReferenceFace: true,
+        outfit: "summer dress",
+        expression: "natural",
+      });
+      expect(result.startsWith("IDENTITY LOCK")).toBe(true);
+    });
+
+    it("groups NSFW negatives in the negative block near the end", () => {
+      const result = buildFullPrompt({
+        gender: "female",
+        isNsfw: true,
+        nsfwLevel: "suggestive",
+        expression: "natural",
+      });
+      const blocks = result.split("\n\n");
+      const negativeBlock = blocks.find((block) => block.includes("no plastic skin"));
+      expect(negativeBlock).toBeDefined();
+      expect(negativeBlock).toContain("not professional boudoir studio");
+      expect(blocks.indexOf(negativeBlock!)).toBeGreaterThanOrEqual(blocks.length - 2);
+    });
+
+    it("omits wearing clause when outfit is absent", () => {
+      const result = buildFullPrompt({
+        gender: "female",
+        scene: "cafe",
+        expression: "natural",
+      });
+      expect(result).not.toMatch(/\bwearing\b/i);
+    });
+
+    it("joins blocks with blank lines instead of comma-separated paragraphs", () => {
+      const result = buildFullPrompt({
+        gender: "female",
+        outfit: "summer dress",
+        scene: "beach",
+        expression: "natural",
+      });
+      expect(result).toContain("\n\n");
+    });
+
+    it("does not duplicate customPrompt when it matches sceneDescription", () => {
+      const scene =
+        "selfie dans sa chambre avec brassière de sport moulante";
+      const result = buildFullPrompt({
+        gender: "female",
+        sceneDescription: scene,
+        customPrompt: scene,
+        expression: "natural",
+      });
+      const escaped = scene.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const occurrences = (result.match(new RegExp(escaped, "g")) ?? []).length;
+      expect(occurrences).toBe(1);
+      expect(result).toContain(`Scene: ${scene}`);
+    });
+
+    it("injects trend brief mood and inspiration notes into the scene block", () => {
+      const result = buildFullPrompt({
+        gender: "female",
+        sceneDescription: "mirror selfie in gym locker room",
+        trendContext: {
+          title: "GRWM fitness",
+          hashtags: ["grwm", "fitness"],
+          brief: {
+            mood: "energetic morning",
+            lighting: "fluorescent overhead",
+            cameraStyle: "iPhone front camera",
+            inspirationNotes: "borrow the mirror pacing from the source format",
+          },
+        },
+        expression: "natural",
+      });
+      expect(result).toContain("mood: energetic morning");
+      expect(result).toContain(
+        "viral format inspiration: borrow the mirror pacing from the source format"
+      );
+      expect(result).toContain("trend lighting: fluorescent overhead");
+    });
+
+    it("injects style v2 fields into subject and mood blocks", () => {
+      const result = buildFullPrompt({
+        gender: "female",
+        skinTone: "médium claire",
+        height: "grande",
+        bustLevel: 1,
+        tattoos: ["poignet"],
+        makeupLevel: "glam",
+        influencerBrief: "Influenceuse fitness parisienne, énergie positive.",
+        sceneDescription: "gym mirror shot",
+        outfit: "legging noir",
+        expression: "natural",
+      });
+      expect(result).toContain("light medium skin");
+      expect(result).toContain("tall stature");
+      expect(result).toContain("full bust");
+      expect(result).toContain("wrist tattoo");
+      expect(result).toContain("glamorous makeup");
+      expect(result).toContain("aesthetic direction:");
     });
   });
 
@@ -291,6 +393,69 @@ describe("image-prompts", () => {
         gender: "male",
       });
       expect(male).toContain("man");
+    });
+  });
+
+  describe("body lock + morphology (Alexya principle #3)", () => {
+    const bodyHeavy = {
+      gender: "female" as const,
+      bodyType: "curvy",
+      bustLevel: 2,
+      hipsLevel: 2,
+      shouldersLevel: -1,
+      height: "Grande",
+      scene: "beach",
+      expression: "natural",
+    };
+
+    it("describes body morphology in words when NOT locking (pure T2I)", () => {
+      const result = buildFullPrompt(bodyHeavy);
+      expect(result).toContain("curvy build");
+      expect(result).toContain("very full bust");
+      expect(result).toContain("very wide curvy hips");
+      expect(result).not.toContain("same body shape, proportions, figure and curves");
+    });
+
+    it("drops conflicting body words and anchors to reference when locking", () => {
+      const result = buildFullPrompt({ ...bodyHeavy, lockBodyToReference: true });
+      expect(result).toContain(
+        "exact same body shape, proportions, figure and curves as the reference image"
+      );
+      expect(result).not.toContain("curvy build");
+      expect(result).not.toContain("very full bust");
+      expect(result).not.toContain("very wide curvy hips");
+      // Height is a proportion too — it must not fight the reference either.
+      expect(result).not.toMatch(/tall stature/);
+    });
+
+    it("injects free-text morphologyNotes only when not locking", () => {
+      const open = buildFullPrompt({
+        gender: "female",
+        morphologyNotes: "toned abs and narrow waist",
+        expression: "natural",
+      });
+      expect(open).toContain("toned abs and narrow waist");
+
+      const locked = buildFullPrompt({
+        gender: "female",
+        morphologyNotes: "toned abs and narrow waist",
+        lockBodyToReference: true,
+        expression: "natural",
+      });
+      expect(locked).not.toContain("toned abs and narrow waist");
+    });
+
+    it("bakes morphologyNotes into the base portrait", () => {
+      const result = buildBasePortraitPrompt({
+        age: 24,
+        ethnicity: "caucasian",
+        hairColor: "brown",
+        hairStyle: "long",
+        bodyType: "athletic",
+        fashionStyle: "casual",
+        morphologyNotes: "visible toned abs, athletic waist",
+      });
+      expect(result).toContain("visible toned abs, athletic waist");
     });
   });
 

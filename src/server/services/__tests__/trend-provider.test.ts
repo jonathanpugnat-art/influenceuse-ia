@@ -88,6 +88,35 @@ describe("trend-provider", () => {
       });
     });
 
+    describe("normalizeTikTokHashtagRow", () => {
+      it("maps khadinakbar actor rows to scrapeengine-compatible shape", () => {
+        const normalized = __test__.normalizeTikTokHashtagRow({
+          hashtag_name: "grwm",
+          hashtag_id: "123",
+          video_views: 5_000_000,
+          post_count: 12_000,
+          industry_name: "Apparel & Beauty",
+          rank_diff: 3,
+        });
+        expect(normalized).toEqual({
+          hashtag_id: "123",
+          hashtag_name: "grwm",
+          industry_info: { label: "Apparel & Beauty" },
+          video_views: 5_000_000,
+          publish_cnt: 12_000,
+          analytics: { rank_change_readable: "Up 3" },
+        });
+      });
+      it("passes through scrapeengine rows unchanged", () => {
+        const row = {
+          hashtag_name: "fyp",
+          industry_info: { label: "Entertainment" },
+          video_views: 1,
+        };
+        expect(__test__.normalizeTikTokHashtagRow(row)).toEqual(row);
+      });
+    });
+
     describe("mapTikTokVideoRow", () => {
       it("maps a TikTok post to a video trend item", () => {
         const r = __test__.mapTikTokVideoRow({

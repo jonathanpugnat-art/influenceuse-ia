@@ -4,6 +4,8 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { WIZARD_PERSIST_STORAGE_KEY } from "@/lib/wizard-draft";
 import { defaultWizardAppearanceV2 } from "@/lib/appearance-v2";
+import type { NicheProfile } from "@/lib/niche-profile";
+import type { NicheShotIdea } from "@/lib/niche-shot-ideas";
 
 export interface WizardData {
   // Step 1 — Identity
@@ -13,6 +15,15 @@ export interface WizardData {
   personality: string;
   /** Creative director brief from wizard agent step 1. */
   brief?: string;
+  /**
+   * Structured niche understanding from the "niche brain" agent. Not a form
+   * field the user edits directly — it captures the agent's comprehension and
+   * drives niche-specific realistic content generation downstream.
+   */
+  nicheProfile?: NicheProfile;
+  /** Shot idea picked in the niche brain panel — applied to photo studio after create. */
+  pendingNicheShotId?: string;
+  pendingNicheShot?: NicheShotIdea;
   niche: string;
   age: number;
   isNsfw: boolean;
@@ -31,6 +42,8 @@ export interface WizardData {
   tattoos: string[];
   makeupLevel: string;
   bodyGenerationMode: "standard" | "extended";
+  /** Free-text morphology direction baked into the base portrait. */
+  morphologyNotes: string;
   /** URL de l'image de base sélectionnée (parmi les 4 variantes générées) */
   baseImageUrl: string;
   /**
@@ -57,29 +70,21 @@ export interface WizardData {
   onlyfansUsername: string;
 }
 
-/** How the user entered the wizard. "unset" shows the Guided/Express choice. */
-export type WizardEntryMode = "unset" | "guided" | "express";
-
 interface WizardState {
   step: number;
   data: WizardData;
   generatedImages: string[];
   selectedImageIndex: number;
   isGenerating: boolean;
-  expressMode: boolean;
-  /** Entry-point choice (Guided conversation vs Express ~30s). */
-  entryMode: WizardEntryMode;
   /** Set after draft create on step 3 (OAuth) or final create on step 4. */
   createdInfluencerId: string | null;
   setStep: (step: number) => void;
-  setEntryMode: (mode: WizardEntryMode) => void;
   nextStep: () => void;
   prevStep: () => void;
   updateData: (partial: Partial<WizardData>) => void;
   setGeneratedImages: (images: string[]) => void;
   setSelectedImageIndex: (index: number) => void;
   setIsGenerating: (val: boolean) => void;
-  setExpressMode: (val: boolean) => void;
   setCreatedInfluencerId: (id: string | null) => void;
   reset: () => void;
 }
@@ -126,11 +131,8 @@ export const useInfluencerWizard = create<WizardState>()(
       generatedImages: [],
       selectedImageIndex: 0,
       isGenerating: false,
-      expressMode: false,
-      entryMode: "unset",
       createdInfluencerId: null,
       setStep: (step) => set({ step }),
-      setEntryMode: (mode) => set({ entryMode: mode }),
       nextStep: () => set((s) => ({ step: Math.min(s.step + 1, 4) })),
       prevStep: () => set((s) => ({ step: Math.max(s.step - 1, 1) })),
       updateData: (partial) =>
@@ -138,7 +140,6 @@ export const useInfluencerWizard = create<WizardState>()(
       setGeneratedImages: (images) => set({ generatedImages: images }),
       setSelectedImageIndex: (index) => set({ selectedImageIndex: index }),
       setIsGenerating: (val) => set({ isGenerating: val }),
-      setExpressMode: (val) => set({ expressMode: val }),
       setCreatedInfluencerId: (id) => set({ createdInfluencerId: id }),
       reset: () =>
         set({
@@ -147,8 +148,6 @@ export const useInfluencerWizard = create<WizardState>()(
           generatedImages: [],
           selectedImageIndex: 0,
           isGenerating: false,
-          expressMode: false,
-          entryMode: "unset",
           createdInfluencerId: null,
         }),
     }),
@@ -161,22 +160,23 @@ export const useInfluencerWizard = create<WizardState>()(
         data: s.data,
         generatedImages: s.generatedImages,
         selectedImageIndex: s.selectedImageIndex,
-        entryMode: s.entryMode,
         createdInfluencerId: s.createdInfluencerId,
       }),
-      version: 4,
+      version: 5,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as {
           data?: Partial<WizardData>;
-          entryMode?: WizardEntryMode;
+          entryMode?: unknown;
+          expressMode?: unknown;
         };
         if (version < 3 && state.data) {
           state.data = { ...initialData, ...state.data, ...defaultWizardAppearanceV2() };
         }
-        // v4 — existing drafts predate the Guided/Express choice screen; keep
-        // them in the guided flow so a resumed draft never lands on the picker.
-        if (version < 4 && state.entryMode == null) {
-          state.entryMode = "guided";
+        // v5 — the Guided/Express choice + express mode were removed in favour
+        // of a single linear flow. Drop the stale fields from older drafts.
+        if (version < 5) {
+          delete state.entryMode;
+          delete state.expressMode;
         }
         return persisted as typeof persisted;
       },

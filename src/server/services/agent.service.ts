@@ -13,6 +13,10 @@ import {
   type PhotoAgentTurnInput,
 } from "@/lib/photo-studio-agent";
 import { db } from "@/server/db";
+import { getDbUser } from "@/server/helpers/get-db-user";
+import { analyzeTrendsForInfluencer, mapTrendItemsForAnalysis } from "@/server/services/trends-agent.service";
+import { getFeedForInfluencer, getTopTrendsForInfluencer, resolveTrendCreatorTarget } from "@/server/services/trends.service";
+import type { Plan } from "@/generated/prisma/client";
 
 const PLACEHOLDER_MESSAGES: Record<
   Extract<AgentTurnInput["domain"], "trends">,
@@ -20,7 +24,7 @@ const PLACEHOLDER_MESSAGES: Record<
 > = {
   trends: {
     message:
-      "Agent trends — bientôt disponible. Je t'aiderai à adapter les tendances TikTok et Instagram.",
+      "Sélectionne une influenceuse pour analyser les tendances qui lui correspondent.",
     quickReplies: [
       "Top trends fitness",
       "Formats qui montent",
@@ -60,6 +64,8 @@ function parsePhotoAgentContext(
     assistantTurnCount:
       typeof ctx.assistantTurnCount === "number" ? ctx.assistantTurnCount : 0,
     contentMode: ctx.contentMode === "NSFW" ? "NSFW" : "SFW",
+    selectedTrendId:
+      typeof ctx.selectedTrendId === "string" ? ctx.selectedTrendId : undefined,
     history: input.messages.slice(0, -1).slice(-12),
   });
 
@@ -104,11 +110,109 @@ async function runPhotoAgentTurn(
     ? await fetchInfluencerBrief(influencerId, userId)
     : undefined;
 
-  const result = await runPhotoStudioAgentTurn(photoInput, influencerBrief);
+  let topTrends: Awaited<ReturnType<typeof getTopTrendsForInfluencer>> = [];
+  if (influencerId) {
+    const influencer = await db.influencer.findFirst({
+      where: { id: influencerId, userId },
+      select: { id: true, niche: true, isNsfw: true },
+    });
+    if (influencer) {
+      topTrends = await getTopTrendsForInfluencer(influencer, { limit: 3 });
+    }
+  }
+
+  const result = await runPhotoStudioAgentTurn(photoInput, {
+    influencerBrief,
+    topTrends,
+  });
   return {
     message: result.message,
     readyToExecute: result.showBrief,
     photoAgentResult: result,
+  };
+}
+
+async function runTrendsAgentTurn(
+  input: AgentTurnInput,
+  userId: string
+): Promise<AgentTurnOutput> {
+  const influencerId = readContextString(input.context, "influencerId");
+  const locale = readContextString(input.context, "locale") === "en" ? "en" : "fr";
+
+  if (!influencerId) {
+    return buildPlaceholderTurn("trends");
+  }
+
+  const user = await getDbUser(userId);
+  const influencer = await db.influencer.findFirst({
+    where: { id: influencerId, userId: user.id },
+  });
+
+  if (!influencer) {
+    return buildPlaceholderTurn("trends");
+  }
+
+  const lastUser = [...input.messages].reverse().find((m) => m.role === "user");
+  const searchQuery = lastUser?.content.trim() || undefined;
+
+  const { items } = await getFeedForInfluencer(influencer, {
+    limit: 10,
+    userPlan: user.plan as Plan,
+    userLocale: user.locale,
+  });
+
+  if (items.length === 0) {
+    return {
+      message:
+        locale === "fr"
+          ? "Aucune tendance disponible pour le moment — reviens plus tard ou rafraîchis le feed."
+          : "No trends available right now — check back later or refresh the feed.",
+      quickReplies: locale === "fr" ? ["Rafraîchir"] : ["Refresh"],
+      readyToExecute: false,
+    };
+  }
+
+  const picks = await analyzeTrendsForInfluencer(
+    influencer,
+    mapTrendItemsForAnalysis(items),
+    {
+      language: locale,
+      searchQuery,
+    }
+  );
+
+  const lines = picks.map(
+    (pick, i) =>
+      `${i + 1}. **${items.find((t) => t.id === pick.trendId)?.title ?? pick.trendId}** (${pick.confidence})\n${pick.whyItWorks}\n→ ${pick.suggestedAngle}`
+  );
+
+  const trendStudioActions = picks.map((pick) => {
+    const trend = items.find((t) => t.id === pick.trendId);
+    const title = trend?.title ?? pick.trendId;
+    const short = title.replace(/\s+/g, " ").trim().slice(0, 48);
+    const studio = trend ? resolveTrendCreatorTarget(trend) : "photo";
+    return {
+      trendId: pick.trendId,
+      studio,
+      label:
+        locale === "fr"
+          ? `${studio === "reel" ? "Ouvrir reel" : "Ouvrir photo"} · ${short}`
+          : `${studio === "reel" ? "Open reel" : "Open photo"} · ${short}`,
+    };
+  });
+
+  return {
+    message:
+      locale === "fr"
+        ? `Voici ${picks.length} tendances adaptées à ${influencer.name} :\n\n${lines.join("\n\n")}`
+        : `Here are ${picks.length} trends tailored for ${influencer.name}:\n\n${lines.join("\n\n")}`,
+    choices: trendStudioActions.map((a) => a.label),
+    trendStudioActions,
+    quickReplies:
+      locale === "fr"
+        ? ["Autres angles", "Formats Reels", "Tendances OF"]
+        : ["Other angles", "Reel formats", "Rising trends"],
+    readyToExecute: false,
   };
 }
 
@@ -124,7 +228,7 @@ export async function runAgentTurn(
     case "photo":
       return runPhotoAgentTurn(input, userId);
     case "trends":
-      return buildPlaceholderTurn(input.domain);
+      return runTrendsAgentTurn(input, userId);
     default: {
       const _exhaustive: never = input.domain;
       return _exhaustive;
@@ -132,4 +236,4 @@ export async function runAgentTurn(
   }
 }
 
-export { suggestWizardLook };
+export { suggestWizardLook, suggestWizardPersonas } from "@/server/services/wizard-agent.service";

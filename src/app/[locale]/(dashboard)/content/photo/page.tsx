@@ -12,12 +12,12 @@ import {
 import { PhotoPreview } from "@/components/content/photo-preview";
 import { PhotoPublish } from "@/components/content/photo-publish";
 import { PhotoWelcomeBanner } from "@/components/content/photo-welcome-banner";
-import { PhotoStudioAgentPanel } from "@/components/content/photo-studio-agent-panel";
+import { PhotoPromptStudio } from "@/components/content/photo-prompt-studio";
 import { PhotoFeedGridStrip } from "@/components/content/photo-feed-grid-strip";
 import { usePhotoCreator } from "@/hooks/use-photo-creator";
-import { applyStudioLook } from "@/lib/photo-studio-looks";
-import { type InfluencerGender } from "@/lib/photo-niche-defaults";
+import { consumeWizardWelcomePhotoSeed } from "@/lib/wizard-photo-seed";
 import { trpc } from "@/lib/trpc";
+import { useInfluencers } from "@/hooks/use-influencers";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -25,21 +25,21 @@ import { toast } from "sonner";
 export default function PhotoCreatorPage() {
   const t = useTranslations("content");
   const searchParams = useSearchParams();
-  const { generatedUrls, isGenerating, params, updateParams } =
+  const { generatedUrls, isGenerating, params, updateParams, applySeed, applyViralBrief } =
     usePhotoCreator();
   const showPublish = generatedUrls.length > 0 && !isGenerating;
   const [mobileConfigOpen, setMobileConfigOpen] = useState(false);
   const [welcomeDismissed, setWelcomeDismissed] = useState(false);
   const seededRef = useRef(false);
+  const trendSeededRef = useRef(false);
 
   const influencerIdFromUrl = searchParams.get("influencer");
+  const trendItemIdFromUrl = searchParams.get("trendItemId");
+  const recommendationIdFromUrl = searchParams.get("recommendationId");
   const isWelcomeFlow =
     searchParams.get("welcome") === "1" && !welcomeDismissed;
 
-  const { data: influencersData } = trpc.influencer.getAll.useQuery(
-    { limit: 50 },
-    { placeholderData: (prev) => prev }
-  );
+  const { data: influencersData } = useInfluencers({ limit: 50 }, { placeholderData: (prev) => prev });
   const influencers = influencersData?.influencers ?? [];
   const welcomeInfluencer = influencerIdFromUrl
     ? influencers.find((i) => i.id === influencerIdFromUrl)
@@ -64,6 +64,20 @@ export default function PhotoCreatorPage() {
   const showIdentityPackBanner =
     identityPackStatus === "generating" || identityPackStatus === "pending";
   const prevIdentityPackStatusRef = useRef<string | null>(null);
+
+  const trendSeedQuery = trpc.trends.getPhotoSeed.useQuery(
+    {
+      influencerId: influencerIdFromUrl!,
+      trendItemId: trendItemIdFromUrl ?? undefined,
+      recommendationId: recommendationIdFromUrl ?? undefined,
+    },
+    {
+      enabled:
+        Boolean(influencerIdFromUrl) &&
+        Boolean(trendItemIdFromUrl || recommendationIdFromUrl) &&
+        !trendSeededRef.current,
+    }
+  );
 
   useEffect(() => {
     const current = identityPackStatus;
@@ -90,15 +104,31 @@ export default function PhotoCreatorPage() {
   useEffect(() => {
     if (!isWelcomeFlow || !welcomeInfluencer || seededRef.current) return;
     seededRef.current = true;
-    const gender =
-      (welcomeInfluencer.gender as InfluencerGender | undefined) ?? "female";
-    updateParams({
-      influencerId: welcomeInfluencer.id,
-      sceneFirst: false,
-      ...applyStudioLook("cafe-aesthetic", gender),
-    });
+    updateParams({ influencerId: welcomeInfluencer.id });
+
+    const wizardSeed = consumeWizardWelcomePhotoSeed();
+    if (wizardSeed) {
+      applySeed({ ...wizardSeed, influencerId: welcomeInfluencer.id });
+    }
+
     setMobileConfigOpen(true);
-  }, [isWelcomeFlow, welcomeInfluencer, updateParams]);
+  }, [applySeed, isWelcomeFlow, updateParams, welcomeInfluencer]);
+
+  useEffect(() => {
+    const infId = influencerIdFromUrl;
+    if (!infId || trendSeededRef.current) return;
+    if (!trendItemIdFromUrl && !recommendationIdFromUrl) return;
+    if (!trendSeedQuery.data?.brief) return;
+    trendSeededRef.current = true;
+    applyViralBrief(trendSeedQuery.data.brief, infId);
+    setMobileConfigOpen(true);
+  }, [
+    applyViralBrief,
+    influencerIdFromUrl,
+    recommendationIdFromUrl,
+    trendItemIdFromUrl,
+    trendSeedQuery.data?.brief,
+  ]);
 
   const portraitUrl =
     welcomeInfluencer?.baseImageUrl?.trim() ||
@@ -111,6 +141,7 @@ export default function PhotoCreatorPage() {
         <PhotoWelcomeBanner
           influencerName={welcomeInfluencer.name}
           portraitUrl={portraitUrl}
+          isPremium={welcomeInfluencer.isNsfw}
           onDismiss={() => setWelcomeDismissed(true)}
         />
       )}
@@ -133,12 +164,12 @@ export default function PhotoCreatorPage() {
           >
             <span className="flex items-center gap-2">
               <Settings2 className="h-4 w-4" />
-              {t("studioMobileConfig")}
+              {t("promptStudioMobileConfig")}
             </span>
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="h-[min(55vh,100dvh)] border-t border-slate-800/50">
-              <PhotoStudioAgentPanel />
+              <PhotoPromptStudio />
             </div>
           </CollapsibleContent>
         </Collapsible>
@@ -147,7 +178,7 @@ export default function PhotoCreatorPage() {
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* Left — 40% config */}
         <div className="hidden h-full w-full max-w-[400px] shrink-0 lg:flex lg:w-[38%] lg:max-w-[420px]">
-          <PhotoStudioAgentPanel />
+          <PhotoPromptStudio />
         </div>
 
         {/* Right — 60% canvas + publish */}

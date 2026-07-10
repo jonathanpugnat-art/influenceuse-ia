@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import {
   PROPORTION_LABELS,
   WIZARD_BODY_TYPES_V2,
@@ -12,6 +13,7 @@ import {
   WIZARD_SKIN_TONES,
   WIZARD_TATTOO_OPTIONS,
   type AppearanceV2PanelFields,
+  type ProportionLabelKey,
 } from "@/lib/appearance-v2";
 import { cn } from "@/lib/utils";
 
@@ -43,9 +45,11 @@ function Chip({
 type Props = {
   data: AppearanceV2PanelFields;
   onChange: (partial: Partial<AppearanceV2PanelFields>) => void;
+  /** OF flow — keep extended body generation on. */
+  forceExtendedBody?: boolean;
 };
 
-export function WizardAppearanceV2Panel({ data, onChange }: Props) {
+export function WizardAppearanceV2Panel({ data, onChange, forceExtendedBody }: Props) {
   const t = useTranslations("wizard");
 
   const toggleTattoo = (option: string) => {
@@ -104,11 +108,11 @@ export function WizardAppearanceV2Panel({ data, onChange }: Props) {
             <div key={axis} className="space-y-1.5">
               <div className="flex justify-between text-[11px] text-slate-500">
                 <span>{t(`proportionAxis.${axis}`)}</span>
-                <span>{labels[String(value) as "-1" | "0" | "1"]}</span>
+                <span>{labels[String(value) as ProportionLabelKey]}</span>
               </div>
               <Slider
-                min={-1}
-                max={1}
+                min={-3}
+                max={3}
                 step={1}
                 value={[value]}
                 onValueChange={([v]) => {
@@ -140,6 +144,19 @@ export function WizardAppearanceV2Panel({ data, onChange }: Props) {
             />
           ))}
         </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-slate-300">{t("morphologyNotes")}</Label>
+        <Textarea
+          value={data.morphologyNotes ?? ""}
+          onChange={(e) => onChange({ morphologyNotes: e.target.value })}
+          placeholder={t("morphologyNotesPlaceholder")}
+          maxLength={400}
+          rows={2}
+          className="min-h-[64px] resize-none border-slate-700 bg-slate-800/30 text-sm text-slate-200 placeholder:text-slate-600"
+        />
+        <p className="text-[11px] text-slate-500">{t("morphologyNotesHint")}</p>
       </div>
 
       <div className="space-y-2">
@@ -177,10 +194,13 @@ export function WizardAppearanceV2Panel({ data, onChange }: Props) {
       <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
         <div>
           <Label className="text-xs text-amber-200/90">{t("extendedBodyLabel")}</Label>
-          <p className="mt-0.5 text-[11px] text-slate-500">{t("extendedBodyHint")}</p>
+          <p className="mt-0.5 text-[11px] text-slate-500">
+            {forceExtendedBody ? t("ofExtendedBodyHint") : t("extendedBodyHint")}
+          </p>
         </div>
         <Switch
-          checked={data.bodyGenerationMode === "extended"}
+          checked={forceExtendedBody || data.bodyGenerationMode === "extended"}
+          disabled={forceExtendedBody}
           onCheckedChange={(v) =>
             onChange({ bodyGenerationMode: v ? "extended" : "standard" })
           }

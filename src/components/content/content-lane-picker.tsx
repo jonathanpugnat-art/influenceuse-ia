@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { Lock } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -13,6 +14,8 @@ import {
 import { usePhotoCreator } from "@/hooks/use-photo-creator";
 import { PLANS } from "@/lib/constants";
 import { trpc } from "@/lib/trpc";
+import { useInfluencers } from "@/hooks/use-influencers";
+import { useCurrentPlan } from "@/hooks/use-current-plan";
 import { cn } from "@/lib/utils";
 
 function LaneChip({
@@ -64,16 +67,13 @@ export function ContentLanePicker({
 }: ContentLanePickerProps) {
   const t = useTranslations("content");
   const { params, updateParams } = usePhotoCreator();
-  const planQuery = trpc.billing.getCurrentPlan.useQuery();
+  const planQuery = useCurrentPlan();
   const canSceneFirst = planQuery.data
     ? PLANS[planQuery.data.plan as keyof typeof PLANS].hasSceneFirstPipeline
     : false;
   const allowNsfw = planQuery.data?.features.hasNsfw ?? false;
 
-  const { data: influencersData } = trpc.influencer.getAll.useQuery(
-    { limit: 50 },
-    { placeholderData: (prev) => prev }
-  );
+  const { data: influencersData } = useInfluencers({ limit: 50 }, { placeholderData: (prev) => prev });
   const influencers = influencersData?.influencers ?? [];
   const selectedInfluencer = influencers.find((i) => i.id === params.influencerId);
 
@@ -140,6 +140,11 @@ export function ContentLanePicker({
               selected={params.nsfwLevel === "soft"}
               onClick={() => updateParams({ nsfwLevel: "soft" })}
             />
+            <LaneChip
+              label={t("nsfwExplicit")}
+              selected={params.nsfwLevel === "explicit"}
+              onClick={() => updateParams({ nsfwLevel: "explicit" })}
+            />
           </div>
           <p className="text-[11px] text-slate-500">{t("premiumIntensityHint")}</p>
         </div>
@@ -176,23 +181,16 @@ export function ContentLanePicker({
                 {t("faceReferenceHint")}
               </p>
             </div>
-            <Switch
-              checked={params.useFaceReference}
-              disabled={
-                isPremium ||
-                !(
-                  Boolean(selectedInfluencer?.baseImageUrl?.trim()) ||
-                  Boolean(selectedInfluencer?.avatarUrl?.trim())
-                )
-              }
-              onCheckedChange={(v) =>
-                updateParams({
-                  useFaceReference: v,
-                  sceneFirst: v ? params.sceneFirst : false,
-                })
-              }
-              className="shrink-0"
-            />
+            {isPremium ? (
+              <span className="shrink-0 text-[11px] text-amber-500/90">
+                {t("faceReferencePremiumShort")}
+              </span>
+            ) : (
+              <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-violet-300">
+                <Lock className="h-3 w-3" />
+                {t("faceReferenceAlwaysOn")}
+              </span>
+            )}
           </div>
           {isPremium ? (
             <p className="text-xs text-amber-500/90">{t("faceReferencePremiumNote")}</p>

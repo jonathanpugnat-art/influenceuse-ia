@@ -136,15 +136,12 @@ export function InfluencerList() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">{t("title")}</h1>
-          <p className="mt-1 text-sm text-slate-400">
+          <h1 className="text-2xl font-bold text-foreground">{t("title")}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             {data ? t("influencerCount", { count: data.total }) : tCommon("loading")}
           </p>
         </div>
-        <Link
-          href="/influencers/new"
-          className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-4 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
-        >
+        <Link href="/influencers/new" className="dash-cta">
           <Plus className="h-4 w-4" />
           {t("newInfluencerCta")}
         </Link>
@@ -153,25 +150,25 @@ export function InfluencerList() {
       {/* Filters */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder={tCommon("search")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="h-10 border-slate-800/50 bg-slate-900/50 pl-10 text-white placeholder:text-slate-500 focus:border-violet-500"
+            className="h-10 dash-filter pl-10 placeholder:text-muted-foreground focus:border-primary/50"
           />
         </div>
 
         <Select value={niche} onValueChange={setNiche}>
-          <SelectTrigger className="h-10 w-full border-slate-800/50 bg-slate-900/50 text-white sm:w-44 [&>span]:text-slate-400">
+          <SelectTrigger className="h-10 w-full dash-filter sm:w-44 [&>span]:text-muted-foreground">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent className="border-slate-800 bg-slate-900">
+          <SelectContent className="border-border bg-popover">
             {NICHES.map((n) => (
               <SelectItem
                 key={n.value}
                 value={n.value}
-                className="text-slate-300 focus:bg-slate-800 focus:text-white"
+                className="text-foreground focus:bg-accent"
               >
                 {n.label}
               </SelectItem>
@@ -180,15 +177,15 @@ export function InfluencerList() {
         </Select>
 
         <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="h-10 w-full border-slate-800/50 bg-slate-900/50 text-white sm:w-40 [&>span]:text-slate-400">
+          <SelectTrigger className="h-10 w-full dash-filter sm:w-40 [&>span]:text-muted-foreground">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent className="border-slate-800 bg-slate-900">
+          <SelectContent className="border-border bg-popover">
             {STATUSES.map((s) => (
               <SelectItem
                 key={s.value}
                 value={s.value}
-                className="text-slate-300 focus:bg-slate-800 focus:text-white"
+                className="text-foreground focus:bg-accent"
               >
                 {s.label}
               </SelectItem>
@@ -197,14 +194,14 @@ export function InfluencerList() {
         </Select>
 
         {/* View toggle */}
-        <div className="flex rounded-xl border border-slate-800/50 bg-slate-900/50 p-1">
+        <div className="flex rounded-full border border-border/50 bg-card/60 p-1 backdrop-blur-sm">
           <button
             onClick={() => toggleView("grid")}
             className={cn(
-              "flex h-8 w-8 items-center justify-center rounded-lg transition-colors",
+              "flex h-8 w-8 items-center justify-center rounded-md transition-colors",
               view === "grid"
-                ? "bg-violet-500/20 text-violet-400"
-                : "text-slate-500 hover:text-white"
+                ? "bg-accent text-primary"
+                : "text-muted-foreground hover:text-foreground"
             )}
           >
             <LayoutGrid className="h-4 w-4" />
@@ -212,10 +209,10 @@ export function InfluencerList() {
           <button
             onClick={() => toggleView("list")}
             className={cn(
-              "flex h-8 w-8 items-center justify-center rounded-lg transition-colors",
+              "flex h-8 w-8 items-center justify-center rounded-md transition-colors",
               view === "list"
-                ? "bg-violet-500/20 text-violet-400"
-                : "text-slate-500 hover:text-white"
+                ? "bg-accent text-primary"
+                : "text-muted-foreground hover:text-foreground"
             )}
           >
             <List className="h-4 w-4" />

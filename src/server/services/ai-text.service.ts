@@ -20,6 +20,18 @@ import {
 } from "@/server/services/personality-memory.service";
 import { CREDIT_COSTS } from "@/lib/constants";
 import { WIZARD_AGENT_MODEL } from "@/lib/prompts/wizard-prompts";
+import { PHOTO_AGENT_MODEL } from "@/lib/photo-studio-agent";
+import {
+  assertAuraTextAllowed,
+  looksLikeProviderRefusal,
+  type AuraContentLane,
+} from "@/lib/content-safety/aura-content-policy";
+import {
+  resolveAdultTextModel,
+  resolveAgentTextBackend,
+} from "@/lib/text-provider-config";
+
+export type { AuraContentLane };
 
 // ──────────────────────────────────────────────
 // Types
@@ -106,6 +118,214 @@ export function resolveTextProvider(): TextProvider {
 interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
+}
+
+async function callDeepSeekWithModel(
+  messages: ChatMessage[],
+  model: string,
+  maxTokens: number,
+  temperature: number
+): Promise<string> {
+  if (!process.env.DEEPSEEK_API_KEY) {
+    throw new Error(
+      "DEEPSEEK_API_KEY is not configured. Set it in your .env file."
+    );
+  }
+
+  try {
+    const response = await getOpenAI().chat.completions.create({
+      model,
+      messages,
+      max_tokens: maxTokens,
+      temperature,
+    });
+
+    const content = response.choices?.[0]?.message?.content;
+    if (!content) {
+      throw new Error("DeepSeek returned empty response");
+    }
+
+    return content.trim();
+  } catch (error) {
+    if (error instanceof OpenAI.APIError) {
+      console.error("[ai-text] DeepSeek API error:", error.message);
+      throw new Error(`DeepSeek API error: ${error.message}`);
+    }
+    throw error;
+  }
+}
+
+async function callOpenRouter(
+  messages: ChatMessage[],
+  model: string,
+  maxTokens: number,
+  temperature: number
+): Promise<string> {
+  const apiKey = process.env.OPENROUTER_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("OPENROUTER_API_KEY is not configured.");
+  }
+
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+      "X-Title": "Aura Influencer IA",
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      max_tokens: maxTokens,
+      temperature,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`OpenRouter error (${res.status}): ${text.slice(0, 200)}`);
+  }
+
+  const json = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  const content = json.choices?.[0]?.message?.content?.trim();
+  if (!content) {
+    throw new Error("OpenRouter returned empty response");
+  }
+  return content;
+}
+
+async function callAgentCompletion(
+  messages: ChatMessage[],
+  opts: {
+    contentLane: AuraContentLane;
+    maxTokens: number;
+    temperature: number;
+    anthropicModel?: string;
+    cacheSystemPrompt?: boolean;
+  }
+): Promise<string> {
+  const backend = resolveAgentTextBackend(opts.contentLane);
+
+  if (backend === "openrouter") {
+    return callOpenRouter(
+      messages,
+      resolveAdultTextModel(),
+      opts.maxTokens,
+      opts.temperature
+    );
+  }
+
+  if (backend === "deepseek") {
+    const model =
+      opts.contentLane === "adult"
+        ? resolveAdultTextModel()
+        : DEEPSEEK_MODEL;
+    return callDeepSeekWithModel(
+      messages,
+      model,
+      opts.maxTokens,
+      opts.temperature
+    );
+  }
+
+  return callAnthropicWithModel(
+    messages,
+    opts.anthropicModel ?? ANTHROPIC_MODEL,
+    opts.maxTokens,
+    opts.temperature,
+    opts.cacheSystemPrompt ?? false
+  );
+}
+
+/**
+ * Unified agent JSON LLM — routes adult/OF content to uncensored backend (DeepSeek/OpenRouter),
+ * SFW to Claude when available. Applies Aura content policy before calling providers.
+ */
+export async function callAgentJsonLLM<T>(opts: {
+  contentLane?: AuraContentLane;
+  systemPrompt: string;
+  userPrompt: string;
+  maxTokens?: number;
+  temperature?: number;
+  cacheSystemPrompt?: boolean;
+  anthropicModel?: string;
+  validate: (raw: unknown) => T;
+  repairInstruction?: string;
+}): Promise<T> {
+  const contentLane = opts.contentLane ?? "sfw";
+  assertAuraTextAllowed(opts.userPrompt, { lane: contentLane });
+
+  const { systemPrompt, userPrompt, validate } = opts;
+  const maxTokens = opts.maxTokens ?? 400;
+  const temperature = opts.temperature ?? 0.4;
+  const baseMessages: ChatMessage[] = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userPrompt },
+  ];
+
+  const tryParse = (text: string): T | null => {
+    if (looksLikeProviderRefusal(text)) return null;
+    const cleaned = text
+      .trim()
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/```\s*$/i, "")
+      .trim();
+    try {
+      return validate(JSON.parse(cleaned));
+    } catch {
+      return null;
+    }
+  };
+
+  const runPass = async (repair?: ChatMessage[]) => {
+    const messages = repair ?? baseMessages;
+    const text = await callAgentCompletion(messages, {
+      contentLane,
+      maxTokens,
+      temperature: repair ? Math.min(temperature, 0.35) : temperature,
+      anthropicModel: opts.anthropicModel,
+      cacheSystemPrompt: opts.cacheSystemPrompt,
+    });
+    return tryParse(text) ?? text;
+  };
+
+  const first = await runPass();
+  if (first !== null && typeof first !== "string") return first;
+
+  if (typeof first === "string" && contentLane === "sfw") {
+    console.warn(
+      "[callAgentJsonLLM] SFW provider refusal detected, retrying on uncensored backend…"
+    );
+    const fallbackText = await callAgentCompletion(baseMessages, {
+      contentLane: "adult",
+      maxTokens,
+      temperature,
+    });
+    const fallbackParsed = tryParse(fallbackText);
+    if (fallbackParsed !== null) return fallbackParsed;
+  }
+
+  const repair: ChatMessage[] = [
+    ...baseMessages,
+    {
+      role: "assistant",
+      content: typeof first === "string" ? first : "",
+    },
+    {
+      role: "user",
+      content:
+        opts.repairInstruction ??
+        "Return only valid JSON matching the requested schema.",
+    },
+  ];
+
+  const second = await runPass(repair);
+  if (second !== null && typeof second !== "string") return second;
+
+  throw new Error("Agent LLM returned invalid JSON after repair pass.");
 }
 
 async function callDeepSeek(
@@ -225,6 +445,62 @@ async function callLLM(
   return callDeepSeek(messages, maxTokens, temperature);
 }
 
+const TREND_PERSONALIZATION_MODEL_DEFAULT = "claude-haiku-4-5-20251001";
+
+function resolveTrendPersonalizationAnthropicModel(): string {
+  return (
+    process.env.TREND_PERSONALIZATION_MODEL?.trim() ||
+    TREND_PERSONALIZATION_MODEL_DEFAULT
+  );
+}
+
+function resolveTrendPersonalizationLlmLabel(
+  isNsfw: boolean,
+  anthropicModel?: string
+): string {
+  if (isNsfw) {
+    const backend = resolveAgentTextBackend("adult");
+    return `${backend}:${resolveAdultTextModel()}`;
+  }
+  return `anthropic:${anthropicModel ?? resolveTrendPersonalizationAnthropicModel()}`;
+}
+
+/**
+ * Trend personalization — Haiku (SFW) or uncensored backend (NSFW accounts).
+ * Returns the model label stored on TrendRecommendation.llmModel.
+ */
+export async function callTrendPersonalizationJsonLLM<T>(opts: {
+  isNsfw: boolean;
+  systemPrompt: string;
+  userPrompt: string;
+  maxTokens?: number;
+  temperature?: number;
+  validate: (raw: unknown) => T;
+  repairInstruction?: string;
+}): Promise<{ result: T; llmModel: string }> {
+  const contentLane: AuraContentLane = opts.isNsfw ? "adult" : "sfw";
+  const anthropicModel = opts.isNsfw
+    ? undefined
+    : resolveTrendPersonalizationAnthropicModel();
+
+  const result = await callAgentJsonLLM({
+    contentLane,
+    systemPrompt: opts.systemPrompt,
+    userPrompt: opts.userPrompt,
+    maxTokens: opts.maxTokens ?? 2000,
+    temperature: opts.temperature ?? 0.55,
+    anthropicModel,
+    cacheSystemPrompt: !opts.isNsfw,
+    validate: opts.validate,
+    repairInstruction: opts.repairInstruction,
+  });
+
+  return {
+    result,
+    llmModel: resolveTrendPersonalizationLlmLabel(opts.isNsfw, anthropicModel),
+  };
+}
+
 /**
  * Photo prompt enrichment — Claude Sonnet only (no DeepSeek fallback).
  * Callers should catch failures and fall back to raw user text.
@@ -234,71 +510,25 @@ export async function callPhotoEnrichmentJsonLLM<T>(opts: {
   userPrompt: string;
   maxTokens?: number;
   temperature?: number;
+  contentLane?: AuraContentLane;
   validate: (raw: unknown) => T;
   repairInstruction?: string;
 }): Promise<T> {
-  if (!process.env.ANTHROPIC_API_KEY?.trim()) {
-    throw new Error(
-      "ANTHROPIC_API_KEY is not configured — photo prompt enrichment requires Claude."
-    );
-  }
-
-  const { systemPrompt, userPrompt, validate } = opts;
-  const maxTokens = opts.maxTokens ?? 500;
-  const temperature = opts.temperature ?? 0.25;
-  const baseMessages: ChatMessage[] = [
-    { role: "system", content: systemPrompt },
-    { role: "user", content: userPrompt },
-  ];
-
-  const tryParse = (text: string): T | null => {
-    const cleaned = text
-      .trim()
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/```\s*$/i, "")
-      .trim();
-    try {
-      return validate(JSON.parse(cleaned));
-    } catch {
-      return null;
-    }
-  };
-
-  const first = await callAnthropicWithModel(
-    baseMessages,
-    PHOTO_ENRICHMENT_MODEL,
-    maxTokens,
-    temperature,
-    true
-  );
-  const parsed = tryParse(first);
-  if (parsed !== null) return parsed;
-
-  const repair: ChatMessage[] = [
-    ...baseMessages,
-    { role: "assistant", content: first },
-    {
-      role: "user",
-      content:
-        opts.repairInstruction ??
-        "Return only valid JSON matching the requested schema.",
-    },
-  ];
-  const second = await callAnthropicWithModel(
-    repair,
-    PHOTO_ENRICHMENT_MODEL,
-    maxTokens,
-    Math.min(temperature, 0.4),
-    true
-  );
-  const repaired = tryParse(second);
-  if (repaired !== null) return repaired;
-
-  throw new Error("Photo enrichment: Claude returned invalid JSON after repair pass.");
+  return callAgentJsonLLM({
+    contentLane: opts.contentLane ?? "sfw",
+    systemPrompt: opts.systemPrompt,
+    userPrompt: opts.userPrompt,
+    maxTokens: opts.maxTokens ?? 500,
+    temperature: opts.temperature ?? 0.25,
+    anthropicModel: PHOTO_ENRICHMENT_MODEL,
+    cacheSystemPrompt: opts.contentLane !== "adult",
+    validate: opts.validate,
+    repairInstruction: opts.repairInstruction,
+  });
 }
 
 /**
- * Wizard agent JSON — Claude Sonnet with optional prompt caching on system prompt.
+ * Wizard agent JSON — routes adult lane away from Claude refusals.
  */
 export async function callWizardJsonLLM<T>(opts: {
   systemPrompt: string;
@@ -306,81 +536,21 @@ export async function callWizardJsonLLM<T>(opts: {
   maxTokens?: number;
   temperature?: number;
   cacheSystemPrompt?: boolean;
+  contentLane?: AuraContentLane;
   validate: (raw: unknown) => T;
   repairInstruction?: string;
 }): Promise<T> {
-  if (!process.env.ANTHROPIC_API_KEY?.trim()) {
-    throw new Error("ANTHROPIC_API_KEY is not configured.");
-  }
-
-  const { systemPrompt, userPrompt, validate } = opts;
-  const maxTokens = opts.maxTokens ?? 400;
-  const temperature = opts.temperature ?? 0.4;
-  const cacheSystemPrompt = opts.cacheSystemPrompt ?? false;
-  const model = WIZARD_AGENT_MODEL;
-  const baseMessages: ChatMessage[] = [
-    { role: "system", content: systemPrompt },
-    { role: "user", content: userPrompt },
-  ];
-
-  const tryParse = (text: string): T | null => {
-    const cleaned = text
-      .trim()
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/```\s*$/i, "")
-      .trim();
-    try {
-      return validate(JSON.parse(cleaned));
-    } catch (error) {
-      if (process.env.NODE_ENV !== "production") {
-        console.warn(
-          "[callWizardJsonLLM] parse/validate failed:",
-          error instanceof Error ? error.message : error,
-          "raw:",
-          cleaned.slice(0, 280)
-        );
-      }
-      return null;
-    }
-  };
-
-  const first = await callAnthropicWithModel(
-    baseMessages,
-    model,
-    maxTokens,
-    temperature,
-    cacheSystemPrompt
-  );
-  const parsed = tryParse(first);
-  if (parsed !== null) return parsed;
-
-  const repair: ChatMessage[] = [
-    ...baseMessages,
-    { role: "assistant", content: first },
-    {
-      role: "user",
-      content:
-        opts.repairInstruction ??
-        "Return only valid JSON matching the requested schema.",
-    },
-  ];
-  const second = await callAnthropicWithModel(
-    repair,
-    model,
-    maxTokens,
-    Math.min(temperature, 0.35),
-    cacheSystemPrompt
-  );
-  const repaired = tryParse(second);
-  if (repaired !== null) return repaired;
-
-  console.warn(
-    "[callWizardJsonLLM] repair pass failed. first:",
-    first.slice(0, 280),
-    "second:",
-    second.slice(0, 280)
-  );
-  throw new Error("Wizard agent: Claude returned invalid JSON after repair pass.");
+  return callAgentJsonLLM({
+    contentLane: opts.contentLane ?? "sfw",
+    systemPrompt: opts.systemPrompt,
+    userPrompt: opts.userPrompt,
+    maxTokens: opts.maxTokens ?? 400,
+    temperature: opts.temperature ?? 0.4,
+    cacheSystemPrompt: opts.cacheSystemPrompt ?? false,
+    anthropicModel: WIZARD_AGENT_MODEL,
+    validate: opts.validate,
+    repairInstruction: opts.repairInstruction,
+  });
 }
 
 /**
@@ -391,56 +561,31 @@ export async function callPhotoPromptJsonLLM<T>(opts: {
   userPrompt: string;
   maxTokens?: number;
   temperature?: number;
+  contentLane?: AuraContentLane;
+  cacheSystemPrompt?: boolean;
   validate: (raw: unknown) => T;
   repairInstruction?: string;
 }): Promise<T> {
-  const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim();
-  if (anthropicKey) {
-    const { systemPrompt, userPrompt, validate } = opts;
-    const maxTokens = opts.maxTokens ?? 500;
-    const temperature = opts.temperature ?? 0.25;
-    const baseMessages: ChatMessage[] = [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ];
+  const hasAnyKey =
+    Boolean(process.env.ANTHROPIC_API_KEY?.trim()) ||
+    Boolean(process.env.DEEPSEEK_API_KEY?.trim()) ||
+    Boolean(process.env.OPENROUTER_API_KEY?.trim());
 
-    const tryParse = (text: string): T | null => {
-      const cleaned = text
-        .trim()
-        .replace(/^```(?:json)?\s*/i, "")
-        .replace(/```\s*$/i, "")
-        .trim();
-      try {
-        return validate(JSON.parse(cleaned));
-      } catch {
-        return null;
-      }
-    };
-
+  if (hasAnyKey) {
     try {
-      const first = await callAnthropic(baseMessages, maxTokens, temperature);
-      const parsed = tryParse(first);
-      if (parsed !== null) return parsed;
-
-      const repair: ChatMessage[] = [
-        ...baseMessages,
-        { role: "assistant", content: first },
-        {
-          role: "user",
-          content:
-            opts.repairInstruction ??
-            "Return only valid JSON matching the requested schema.",
-        },
-      ];
-      const second = await callAnthropic(
-        repair,
-        maxTokens,
-        Math.min(temperature, 0.4)
-      );
-      const repaired = tryParse(second);
-      if (repaired !== null) return repaired;
+      return await callAgentJsonLLM({
+        contentLane: opts.contentLane ?? "sfw",
+        systemPrompt: opts.systemPrompt,
+        userPrompt: opts.userPrompt,
+        maxTokens: opts.maxTokens ?? 500,
+        temperature: opts.temperature ?? 0.25,
+        cacheSystemPrompt: opts.cacheSystemPrompt ?? true,
+        anthropicModel: PHOTO_AGENT_MODEL,
+        validate: opts.validate,
+        repairInstruction: opts.repairInstruction,
+      });
     } catch (error) {
-      console.warn("[ai-text] callPhotoPromptJsonLLM Claude failed, fallback:", error);
+      console.warn("[ai-text] callPhotoPromptJsonLLM agent failed, fallback:", error);
     }
   }
 
@@ -750,6 +895,7 @@ const contentPlanPostSchema = z.object({
   type: CONTENT_TYPE_ENUM,
   hook: z.string().min(1).max(200),
   concept: z.string().min(1).max(500),
+  sceneDescription: z.string().min(10).max(800),
   scene: z.string().min(1).max(60),
   pose: z.string().min(1).max(60),
   expression: z.string().min(1).max(60),

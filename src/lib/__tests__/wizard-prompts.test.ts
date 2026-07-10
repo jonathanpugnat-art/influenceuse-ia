@@ -35,6 +35,7 @@ const sampleWizardData: WizardData = {
   tattoos: [],
   makeupLevel: "Naturel",
   bodyGenerationMode: "standard",
+  morphologyNotes: "",
   baseImageUrl: "https://cdn.example.com/face.jpg",
   appearanceVariations: {
     faceShape: 1,
@@ -147,6 +148,18 @@ describe("wizard-prompts", () => {
     expect(() =>
       wizardBioOptionsSchema.parse(["a", "b", "c", "d"])
     ).toThrow();
+  });
+
+  it("validateWizardStep1Turn accepts personaVariants", () => {
+    const parsed = validateWizardStep1Turn({
+      message: "Voici 3 angles pour toi.",
+      personaVariants: [
+        { bio: "Bio authentique ✨", personality: "Chaleureuse et directe." },
+        { bio: "Good vibes only 💫", personality: "Drôle et spontanée." },
+        { bio: "Premium lifestyle", personality: "Ambitieuse et soignée." },
+      ],
+    });
+    expect(parsed.personaVariants).toHaveLength(3);
   });
 
   it("validateWizardStep2Turn accepts look deltas", () => {

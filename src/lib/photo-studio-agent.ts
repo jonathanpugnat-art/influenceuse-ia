@@ -7,6 +7,8 @@ import {
 } from "@/lib/photo-studio-looks";
 import type { InfluencerGender } from "@/lib/photo-niche-defaults";
 
+export const PHOTO_AGENT_MODEL = "claude-sonnet-4-5";
+
 export type PhotoAgentPhase = "looks" | "outfits" | "ready";
 
 export type PhotoAgentChatMessage = {
@@ -23,6 +25,8 @@ export const photoAgentTurnInputSchema = z.object({
   /** Number of assistant turns already shown (0 = first assistant reply). Max 2 before ready. */
   assistantTurnCount: z.number().int().min(0).max(2),
   contentMode: z.enum(["SFW", "NSFW"]).optional().default("SFW"),
+  /** When user picks a trending format chip in the studio. */
+  selectedTrendId: z.string().optional(),
   history: z
     .array(
       z.object({
@@ -40,6 +44,7 @@ export const photoAgentTurnOutputSchema = z.object({
   phase: z.enum(["looks", "outfits", "ready"]),
   suggestedLookIds: z.array(z.string()).max(3),
   suggestedOutfits: z.array(z.string()).max(4),
+  suggestedTrendIds: z.array(z.string()).max(3).optional(),
   showBrief: z.boolean(),
 });
 
@@ -52,7 +57,11 @@ RULES:
 - NEVER list form fields, dropdowns, or technical parameters (pose, timeOfDay, etc.).
 - ALWAYS guide with visual choices — looks and outfits the user can tap.
 - Max 2 assistant replies before the shoot brief is ready (looks → outfits → done).
+- When INFLUENCER BRIEF is provided in the user prompt, every look and outfit MUST match that positioning — never suggest off-brand aesthetics.
 - Respond in the user's locale (fr or en).
+
+- When TRENDING FORMATS are listed in the user prompt, suggest up to 3 trendIds in suggestedTrendIds when they fit the influencer (first assistant turn only).
+- If the user selected a trend (selectedTrendId), pick looks/outfits that match that format's vibe.
 
 Return STRICT JSON only:
 {
@@ -60,6 +69,7 @@ Return STRICT JSON only:
   "phase": "looks" | "outfits" | "ready",
   "suggestedLookIds": ["id1","id2","id3"],
   "suggestedOutfits": ["outfit1","outfit2"],
+  "suggestedTrendIds": ["trendId1","trendId2"],
   "showBrief": false
 }
 
@@ -150,6 +160,7 @@ export function buildFallbackAgentTurn(
       phase: "ready",
       suggestedLookIds: [],
       suggestedOutfits: [],
+      suggestedTrendIds: [],
       showBrief: true,
     };
   }
@@ -163,6 +174,7 @@ export function buildFallbackAgentTurn(
       phase: "outfits",
       suggestedLookIds: [],
       suggestedOutfits: outfits,
+      suggestedTrendIds: [],
       showBrief: false,
     };
   }
@@ -180,6 +192,7 @@ export function buildFallbackAgentTurn(
     phase: "looks",
     suggestedLookIds: looks.map((l) => l.id),
     suggestedOutfits: [],
+    suggestedTrendIds: [],
     showBrief: false,
   };
 }
@@ -190,6 +203,7 @@ export function validatePhotoAgentTurn(raw: unknown): PhotoAgentTurnOutput {
   return {
     ...parsed,
     suggestedLookIds: parsed.suggestedLookIds.filter((id) => validIds.has(id)),
+    suggestedTrendIds: parsed.suggestedTrendIds ?? [],
   };
 }
 

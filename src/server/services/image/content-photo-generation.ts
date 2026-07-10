@@ -1,0 +1,431 @@
+import { nanoid } from "nanoid";
+import {
+  buildFullPrompt,
+  buildNegativePrompt,
+  DEFAULT_IMAGE_PARAMS,
+  KONTEXT_IMAGE_PARAMS,
+} from "@/lib/prompts/image-prompts";
+import {
+  shouldRouteToKontext,
+  getMatchedBorderlineKeywords,
+  type ContentImageEngine,
+} from "@/lib/prompts/nano-borderline";
+import { softenPromptForEditorial } from "@/lib/prompts/safety-soften";
+import { selectIdentityPackRefs } from "@/lib/identity-pack";
+import { resolvePromptData } from "@/server/services/prompt-data-resolver";
+import { assertPremiumPromptAllowed } from "@/lib/prompts/premium-prompt-guard";
+import { clampPremiumNsfwLevel } from "@/lib/premium-content";
+import {
+  buildPremiumNegativePromptForTier,
+  enrichPremiumPhotoPrompt,
+} from "@/lib/prompts/premium-negative";
+import { buildPremiumFaceLockPrompt } from "@/lib/prompts/premium-face-lock-prompt";
+import { isNovitaConfigured, shouldPostModeratePremiumGeneration } from "@/lib/premium-image-config";
+import { runNovitaInstantIdBatch } from "@/server/services/image-providers/novita-instantid.provider";
+import {
+  isContentSafetyFilterError,
+  throwSocialSafetyError,
+} from "@/lib/generation-errors";
+import { uploadFromUrl } from "@/server/services/storage.service";
+import { checkCredits, deductCredits } from "@/server/services/credits.service";
+import { CREDIT_COSTS } from "@/lib/constants";
+import {
+  PremiumImageModerationError,
+  assertPremiumImagesModerated,
+} from "@/server/services/image-moderation.service";
+import {
+  MODEL_SFW_KONTEXT,
+  MODEL_SFW_NANO,
+  MODEL_SFW_T2I,
+  NANO_BANANA_DEFAULTS,
+} from "./model-constants";
+import { runMultiplePredictions } from "./replicate-runner";
+import { applyPhotoPromptEnrichment } from "./photo-enrichment";
+import {
+  generatePremiumImagesWithModeration,
+  generatePremiumPulidImages,
+  selectPremiumFaceRef,
+  toPremiumFluxInput,
+} from "./premium-pipeline";
+import type {
+  ImageGenerationInput,
+  ImageGenerationOutput,
+  InfluencerStyle,
+} from "./types";
+
+export async function generateContentImage(
+  userId: string,
+  influencerAge: number,
+  influencerStyle: InfluencerStyle,
+  input: ImageGenerationInput
+): Promise<ImageGenerationOutput> {
+  const enrichedInput = await applyPhotoPromptEnrichment(input);
+  const resolvedData = await resolvePromptData(
+    enrichedInput.influencerId,
+    enrichedInput
+  );
+  const numImages = Math.min(enrichedInput.numberOfImages, 4);
+  const cost = CREDIT_COSTS.PHOTO * numImages;
+  if (!input.omitCreditBilling) {
+    const hasCredits = await checkCredits(userId, cost);
+    if (!hasCredits) {
+      throw new Error(
+        `Crédits insuffisants. Coût : ${cost} crédits. Passez à un plan supérieur.`
+      );
+    }
+  }
+
+  const sendsRefImage = resolvedData.useReferenceFace === true;
+
+  const borderlineFields = {
+    scene: enrichedInput.scene,
+    sceneDescription: enrichedInput.sceneDescription,
+    outfit: enrichedInput.outfit,
+    location: enrichedInput.location,
+    customPrompt: resolvedData.customPrompt,
+    pose: enrichedInput.pose,
+    expression: enrichedInput.expression,
+  };
+  const borderline =
+    !enrichedInput.isNsfw &&
+    (enrichedInput.isReelSceneFrame || shouldRouteToKontext(borderlineFields));
+  const matchedKeywords = borderline
+    ? getMatchedBorderlineKeywords(borderlineFields)
+    : [];
+
+  const buildPromptForEngine = (engine: ContentImageEngine) =>
+    buildFullPrompt({
+      ...resolvedData,
+      contentEngine: engine,
+    });
+
+  const primaryEngine: ContentImageEngine =
+    enrichedInput.isReelSceneFrame && !enrichedInput.isNsfw
+      ? "kontext"
+      : borderline || enrichedInput.instagramShot
+        ? "kontext"
+        : "nano";
+  let usedEngine: ContentImageEngine = primaryEngine;
+  let prompt = buildPromptForEngine(primaryEngine);
+  const gender = resolvedData.gender ?? "female";
+  const nsfwTier = input.isNsfw
+    ? clampPremiumNsfwLevel(enrichedInput.nsfwLevel)
+    : undefined;
+  const negativePrompt =
+    input.isNsfw && nsfwTier
+      ? buildPremiumNegativePromptForTier(nsfwTier, gender, { lockFace: false })
+      : buildNegativePrompt(false, gender, {
+          lockFace: resolvedData.useReferenceFace === true,
+        });
+  if (input.isNsfw && nsfwTier) {
+    prompt = enrichPremiumPhotoPrompt(prompt, nsfwTier);
+  }
+
+  if (input.isNsfw) {
+    const tier = nsfwTier ?? clampPremiumNsfwLevel(enrichedInput.nsfwLevel);
+    assertPremiumPromptAllowed(
+      {
+        scene: enrichedInput.scene,
+        sceneDescription: enrichedInput.sceneDescription,
+        outfit: enrichedInput.outfit,
+        customPrompt: resolvedData.customPrompt,
+        location: enrichedInput.location,
+      },
+      tier
+    );
+
+    const premiumFaceRef = selectPremiumFaceRef(enrichedInput);
+    if (premiumFaceRef && tier !== "explicit") {
+      try {
+        console.log(
+          `[ai-image] Premium photo — PuLID face-lock (tier: ${tier})`
+        );
+        const pulidPrompt = buildPremiumFaceLockPrompt(
+          { ...resolvedData, ...enrichedInput, isNsfw: true, nsfwLevel: tier },
+          tier
+        );
+        const pulid = await generatePremiumPulidImages(
+          premiumFaceRef,
+          pulidPrompt,
+          negativePrompt,
+          numImages
+        );
+        console.log(
+          `[ai-image] PuLID OK — ${pulid.urls.length} image(s) via ${pulid.model.split(":")[0]}`
+        );
+        if (shouldPostModeratePremiumGeneration(enrichedInput.nsfwLevel)) {
+          await assertPremiumImagesModerated(pulid.urls);
+        }
+
+        const storedUrls = await Promise.all(
+          pulid.urls.map(async (url, i) => {
+            const filename = `content-${input.influencerId}-${nanoid(6)}-${i}.webp`;
+            return uploadFromUrl(url, filename);
+          })
+        );
+
+        if (!input.omitCreditBilling) {
+          await deductCredits(userId, cost);
+        }
+
+        return {
+          imageUrls: storedUrls,
+          promptUsed: pulidPrompt,
+          negativePrompt,
+          parameters: {
+            contentEngine: "pulid",
+            premiumProvider: "replicate",
+            premiumModel: pulid.model,
+            nsfwLevel: enrichedInput.nsfwLevel,
+            imageInputCount: 1,
+          },
+        };
+      } catch (err) {
+        const reason =
+          err instanceof PremiumImageModerationError
+            ? "failed moderation"
+            : isContentSafetyFilterError(err)
+              ? "blocked by safety filter"
+              : err instanceof Error
+                ? err.message
+                : String(err);
+        console.warn(
+          `[ai-image] PuLID ${reason}, falling back to uncensored T2I router…`
+        );
+      }
+    }
+
+    if (premiumFaceRef && tier === "explicit" && isNovitaConfigured()) {
+      try {
+        console.log("[ai-image] Premium photo — Novita InstantID face-lock (explicit)");
+        const novitaPrompt = buildPremiumFaceLockPrompt(
+          { ...resolvedData, ...enrichedInput, isNsfw: true, nsfwLevel: tier },
+          tier
+        );
+        const novita = await runNovitaInstantIdBatch(
+          premiumFaceRef,
+          novitaPrompt,
+          negativePrompt,
+          numImages
+        );
+        if (shouldPostModeratePremiumGeneration(enrichedInput.nsfwLevel)) {
+          await assertPremiumImagesModerated(novita.urls);
+        }
+
+        const storedUrls = await Promise.all(
+          novita.urls.map(async (url, i) => {
+            const filename = `content-${input.influencerId}-${nanoid(6)}-${i}.jpg`;
+            return uploadFromUrl(url, filename);
+          })
+        );
+
+        if (!input.omitCreditBilling) {
+          await deductCredits(userId, cost);
+        }
+
+        return {
+          imageUrls: storedUrls,
+          promptUsed: novitaPrompt,
+          negativePrompt,
+          parameters: {
+            contentEngine: "novita-instantid",
+            premiumProvider: "novita",
+            premiumModel: novita.model,
+            nsfwLevel: enrichedInput.nsfwLevel,
+            imageInputCount: 1,
+          },
+        };
+      } catch (err) {
+        const reason =
+          err instanceof PremiumImageModerationError
+            ? "failed moderation"
+            : err instanceof Error
+              ? err.message
+              : String(err);
+        console.warn(
+          `[ai-image] Novita InstantID ${reason}, falling back to uncensored T2I router…`
+        );
+      }
+    }
+
+    try {
+      console.log("[ai-image] Premium photo — FLUX uncensored router");
+      const premium = await generatePremiumImagesWithModeration(
+        prompt,
+        negativePrompt,
+        numImages,
+        { nsfwLevel: enrichedInput.nsfwLevel }
+      );
+
+      const storedUrls = await Promise.all(
+        premium.urls.map(async (url, i) => {
+          const filename = `content-${input.influencerId}-${nanoid(6)}-${i}.jpg`;
+          return uploadFromUrl(url, filename);
+        })
+      );
+
+      if (!input.omitCreditBilling) {
+        await deductCredits(userId, cost);
+      }
+
+      return {
+        imageUrls: storedUrls,
+        promptUsed: premium.promptUsed,
+        negativePrompt,
+        parameters: {
+          ...toPremiumFluxInput(premium.promptUsed, negativePrompt),
+          contentEngine: "premium",
+          premiumProvider: premium.provider,
+          premiumModel: premium.model,
+          nsfwLevel: enrichedInput.nsfwLevel,
+        },
+      };
+    } catch (error) {
+      console.error("[ai-image] generateContentImage premium error:", error);
+      throw error;
+    }
+  }
+
+  type ModelPlan = {
+    model: string;
+    params: Record<string, unknown>;
+    fallback?: { model: string; params: Record<string, unknown> };
+  };
+
+  const refs =
+    sendsRefImage && enrichedInput.baseImageUrl?.trim()
+      ? selectIdentityPackRefs(enrichedInput.baseImageUrl.trim(), enrichedInput.identityPack, {
+          pose: enrichedInput.pose,
+          sceneDescription: enrichedInput.sceneDescription,
+        })
+      : [];
+
+  const kontextPlan: ModelPlan = {
+    model: MODEL_SFW_KONTEXT,
+    params: {
+      ...KONTEXT_IMAGE_PARAMS,
+      prompt,
+      input_image: input.baseImageUrl,
+    },
+  };
+
+  const nanoPlan: ModelPlan = {
+    model: MODEL_SFW_NANO,
+    params: {
+      ...NANO_BANANA_DEFAULTS,
+      prompt,
+      image_input: refs,
+    },
+    fallback: sendsRefImage && input.baseImageUrl ? kontextPlan : undefined,
+  };
+
+  let plan: ModelPlan;
+  if (sendsRefImage && input.baseImageUrl) {
+    plan =
+      borderline || enrichedInput.instagramShot ? kontextPlan : nanoPlan;
+  } else {
+    plan = {
+      model: MODEL_SFW_T2I,
+      params: {
+        ...DEFAULT_IMAGE_PARAMS,
+        prompt,
+        negative_prompt: negativePrompt,
+        num_outputs: numImages,
+        safety_tolerance: 5,
+      },
+    };
+  }
+
+  try {
+    console.log(
+      "[ai-image] Generating content image with",
+      plan.model,
+      sendsRefImage ? "(face-locked)" : "(no reference)",
+      borderline
+        ? `(borderline → kontext, keywords: ${matchedKeywords.join(", ") || "n/a"})`
+        : enrichedInput.instagramShot
+          ? "(instagram-shot → kontext)"
+          : "(nano-first)",
+      refs.length > 1 ? `(${refs.length} identity refs)` : ""
+    );
+
+    let outputUrls: string[];
+    let usedParams = plan.params;
+    let promptWasSoftened = false;
+    try {
+      outputUrls = await runMultiplePredictions(
+        plan.model,
+        plan.params,
+        numImages
+      );
+    } catch (err) {
+      if (plan.fallback && isContentSafetyFilterError(err)) {
+        console.warn(
+          `[ai-image] ${plan.model} blocked by safety filter, falling back to ${plan.fallback.model}…`
+        );
+        const kontextPrompt = buildPromptForEngine("kontext");
+        outputUrls = await runMultiplePredictions(
+          plan.fallback.model,
+          {
+            ...plan.fallback.params,
+            prompt: kontextPrompt,
+          },
+          numImages
+        );
+        usedParams = { ...plan.fallback.params, prompt: kontextPrompt };
+        prompt = kontextPrompt;
+        usedEngine = "kontext";
+      } else if (
+        isContentSafetyFilterError(err) &&
+        plan.model === MODEL_SFW_KONTEXT
+      ) {
+        console.warn(
+          "[ai-image] Kontext blocked by safety filter, retrying with editorial-softened prompt…"
+        );
+        const softPrompt = softenPromptForEditorial(
+          buildPromptForEngine("kontext")
+        );
+        outputUrls = await runMultiplePredictions(
+          MODEL_SFW_KONTEXT,
+          { ...kontextPlan.params, prompt: softPrompt },
+          numImages
+        );
+        usedParams = { ...kontextPlan.params, prompt: softPrompt };
+        prompt = softPrompt;
+        usedEngine = "kontext";
+        promptWasSoftened = true;
+      } else {
+        if (isContentSafetyFilterError(err)) {
+          throwSocialSafetyError();
+        }
+        throw err;
+      }
+    }
+
+    const storedUrls = await Promise.all(
+      outputUrls.map(async (url, i) => {
+        const filename = `content-${input.influencerId}-${nanoid(6)}-${i}.jpg`;
+        return uploadFromUrl(url, filename);
+      })
+    );
+
+    if (!input.omitCreditBilling) {
+      await deductCredits(userId, cost);
+    }
+
+    return {
+      imageUrls: storedUrls,
+      promptUsed: prompt,
+      negativePrompt,
+      promptWasSoftened,
+      parameters: {
+        ...usedParams,
+        contentEngine: usedEngine,
+        borderlineKeywords: matchedKeywords,
+      },
+    };
+  } catch (error) {
+    console.error("[ai-image] generateContentImage error:", error);
+    throw error;
+  }
+}

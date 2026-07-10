@@ -1,6 +1,7 @@
 import { type AgentTurnInput, type AgentTurnOutput } from "@/lib/agent-core";
 import {
   buildWizardStep1UserPrompt,
+  buildWizardStep1PersonaVariantsUserPrompt,
   buildWizardStep4UserPrompt,
   buildWizardStep2LookUserPrompt,
   buildWizardStep2UserPrompt,
@@ -10,10 +11,15 @@ import {
   validateWizardStep2Turn,
   WIZARD_STEP1_REPAIR_INSTRUCTION,
   WIZARD_STEP2_REPAIR_INSTRUCTION,
+  WIZARD_STEP4_REPAIR_INSTRUCTION,
   WIZARD_AGENT_SYSTEM_PROMPT,
   type WizardStep2LookResult,
+  type WizardPersonaVariant,
 } from "@/lib/prompts/wizard-prompts";
 import { callWizardJsonLLM } from "@/server/services/ai-text.service";
+import type { AuraContentLane } from "@/lib/content-safety/aura-content-policy";
+import { inferAdultLaneFromSignals } from "@/lib/text-provider-config";
+import { coerceNicheCategory, parseNicheProfile } from "@/lib/niche-profile";
 
 function readContextNumber(
   context: AgentTurnInput["context"],
@@ -54,12 +60,20 @@ function formatConversation(messages: AgentTurnInput["messages"]): string {
 function fallbackStep1Turn(locale: "fr" | "en"): AgentTurnOutput {
   return locale === "fr"
     ? {
-        message: "Décris ton influenceuse idéale.",
-        quickReplies: ["Femme fitness 25 ans", "Homme mode streetwear", "Lifestyle cozy"],
+        message: "Parle-moi de son but — je t'aide à construire sa vision.",
+        quickReplies: [
+          "Influenceuse OF premium",
+          "Coach fitness authentique",
+          "Propose 3 bios différentes",
+        ],
       }
     : {
-        message: "Describe your ideal influencer.",
-        quickReplies: ["Female fitness 25", "Male streetwear", "Cozy lifestyle"],
+        message: "Tell me her purpose — I'll help shape her vision.",
+        quickReplies: [
+          "Premium OF influencer",
+          "Authentic fitness coach",
+          "Suggest 3 different bios",
+        ],
       };
 }
 
@@ -98,17 +112,31 @@ function fallbackStep2Turn(locale: "fr" | "en"): AgentTurnOutput {
       };
 }
 
+function resolveWizardContentLane(input: AgentTurnInput): AuraContentLane {
+  const ctx = input.context ?? {};
+  return inferAdultLaneFromSignals({
+    isNsfw: ctx.isNsfw === true,
+    niche:
+      typeof ctx.niche === "string"
+        ? ctx.niche
+        : readContextRecord(ctx, "filledFields")?.niche?.toString(),
+    brief: readContextString(ctx, "brief"),
+  });
+}
+
 export async function runWizardAgentTurn(
   input: AgentTurnInput
 ): Promise<AgentTurnOutput> {
   const step = readContextNumber(input.context, "step") ?? 1;
   const locale = readContextString(input.context, "locale") === "en" ? "en" : "fr";
   const conversation = formatConversation(input.messages);
+  const contentLane = resolveWizardContentLane(input);
 
   if (step === 4) {
     const profile = readContextRecord(input.context, "profile");
     const appearance = readContextRecord(input.context, "appearance");
     const currentBio = readContextString(input.context, "currentBio") ?? "";
+    const brief = readContextString(input.context, "brief");
 
     const userPrompt = buildWizardStep4UserPrompt({
       locale,
@@ -130,6 +158,7 @@ export async function runWizardAgentTurn(
         fashionStyles: readStringArray(appearance?.fashionStyles),
       },
       currentBio,
+      brief,
       conversation,
     });
 
@@ -141,6 +170,8 @@ export async function runWizardAgentTurn(
         temperature: 0.4,
         cacheSystemPrompt: true,
         validate: validateWizardStep4Turn,
+        repairInstruction: WIZARD_STEP4_REPAIR_INSTRUCTION,
+        contentLane,
       });
 
       return {
@@ -157,6 +188,7 @@ export async function runWizardAgentTurn(
   if (step === 2) {
     const profile = readContextRecord(input.context, "profile");
     const appearance = readContextRecord(input.context, "appearance");
+    const brief = readContextString(input.context, "brief");
 
     const userPrompt = buildWizardStep2UserPrompt({
       locale,
@@ -169,6 +201,7 @@ export async function runWizardAgentTurn(
         gender: typeof profile?.gender === "string" ? profile.gender : "female",
       },
       appearance: appearance ?? {},
+      brief,
       conversation,
     });
 
@@ -181,6 +214,7 @@ export async function runWizardAgentTurn(
         cacheSystemPrompt: true,
         validate: validateWizardStep2Turn,
         repairInstruction: WIZARD_STEP2_REPAIR_INSTRUCTION,
+        contentLane,
       });
 
       return {
@@ -219,6 +253,7 @@ export async function runWizardAgentTurn(
       cacheSystemPrompt: true,
       validate: validateWizardStep1Turn,
       repairInstruction: WIZARD_STEP1_REPAIR_INSTRUCTION,
+      contentLane,
     });
 
     const wizardStep1Suggestions = result.suggestions
@@ -230,16 +265,102 @@ export async function runWizardAgentTurn(
         ? { brief: result.brief.trim() }
         : undefined;
 
+    const fallbackNiche =
+      coerceNicheCategory(filledFields.niche) ??
+      coerceNicheCategory(result.suggestions?.niche);
+    const nicheProfile =
+      parseNicheProfile(result.nicheProfile, fallbackNiche) ?? undefined;
+
     return {
       message: result.message,
       quickReplies: result.quickReplies,
       choices: result.choices,
       wizardStep1Suggestions,
+      personaVariants: result.personaVariants,
+      nicheProfile,
     };
   } catch (error) {
     console.warn("[wizard-agent] step 1 failed:", error);
     return fallbackStep1Turn(locale);
   }
+}
+
+export async function suggestWizardPersonas(input: {
+  locale: "fr" | "en";
+  niche: string;
+  gender: "female" | "male" | "nonbinary";
+  name?: string;
+  brief?: string;
+  isNsfw?: boolean;
+}): Promise<WizardPersonaVariant[]> {
+  const contentLane = inferAdultLaneFromSignals({
+    isNsfw: input.isNsfw,
+    niche: input.niche,
+    brief: input.brief,
+  });
+  const userPrompt = buildWizardStep1PersonaVariantsUserPrompt({
+    locale: input.locale,
+    profile: {
+      name: input.name,
+      niche: input.niche,
+      gender: input.gender,
+      brief: input.brief,
+    },
+  });
+
+  try {
+    const result = await callWizardJsonLLM({
+      systemPrompt: WIZARD_AGENT_SYSTEM_PROMPT,
+      userPrompt,
+      maxTokens: 900,
+      temperature: 0.55,
+      cacheSystemPrompt: true,
+      validate: validateWizardStep1Turn,
+      repairInstruction: WIZARD_STEP1_REPAIR_INSTRUCTION,
+      contentLane,
+    });
+    if (result.personaVariants?.length) {
+      return result.personaVariants;
+    }
+  } catch (error) {
+    console.warn("[wizard-agent] suggestPersonas failed:", error);
+  }
+
+  return input.locale === "fr"
+    ? [
+        {
+          bio: "Créatrice authentique · partage sans filtre ✨",
+          personality:
+            "Chaleureuse et directe, elle raconte ses vraies galères autant que ses wins. Son audience se sent comprise, jamais jugée.",
+        },
+        {
+          bio: "Ta dose quotidienne de good vibes 💫",
+          personality:
+            "Drôle et spontanée, elle transforme le quotidien en contenu léger. Beaucoup d'humour, peu de prise de tête.",
+        },
+        {
+          bio: "Premium only · lifestyle & ambition",
+          personality:
+            "Ambitieuse et soignée, elle projette une image aspirante. Chaque post respire le luxe accessible et la confiance.",
+        },
+      ]
+    : [
+        {
+          bio: "Authentic creator · no filter needed ✨",
+          personality:
+            "Warm and direct, she shares real struggles as much as wins. Her audience feels understood, never judged.",
+        },
+        {
+          bio: "Your daily dose of good vibes 💫",
+          personality:
+            "Playful and spontaneous, she turns everyday life into light content. Lots of humor, zero pretension.",
+        },
+        {
+          bio: "Premium only · lifestyle & ambition",
+          personality:
+            "Ambitious and polished, she projects an aspirational image. Every post breathes accessible luxury and confidence.",
+        },
+      ];
 }
 
 export async function suggestWizardLook(input: {
@@ -252,11 +373,19 @@ export async function suggestWizardLook(input: {
     gender?: string;
   };
   appearance?: Record<string, unknown>;
+  brief?: string;
+  isNsfw?: boolean;
 }): Promise<WizardStep2LookResult> {
+  const contentLane = inferAdultLaneFromSignals({
+    isNsfw: input.isNsfw,
+    brief: input.brief,
+    niche: input.profile.niche,
+  });
   const userPrompt = buildWizardStep2LookUserPrompt({
     locale: input.locale,
     profile: input.profile,
     appearance: input.appearance,
+    brief: input.brief,
   });
 
   try {
@@ -267,6 +396,7 @@ export async function suggestWizardLook(input: {
       temperature: 0.4,
       cacheSystemPrompt: false,
       validate: validateWizardStep2Look,
+      contentLane,
     });
   } catch (error) {
     console.warn("[wizard-agent] suggestLook failed:", error);

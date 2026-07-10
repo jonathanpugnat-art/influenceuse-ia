@@ -1,6 +1,5 @@
 /**
- * OnlyFans / Premium lane — suggestive & soft boudoir only (no explicit porn).
- * Scoped for a single-influencer workflow; multi-tenant rules can extend later.
+ * OnlyFans / Premium lane — tiered NSFW with Aura content policy (not provider filters).
  */
 
 import { getSceneInspirationText } from "@/lib/prompts/image-prompts";
@@ -9,10 +8,11 @@ import { pickDefaultPoseForScene } from "@/lib/photo-scene-pose";
 export type ContentLane = "social" | "premium";
 
 /** Allowed backend nsfwLevel values for the Premium lane. */
-export const PREMIUM_NSFW_LEVELS = ["suggestive", "soft"] as const;
+export const PREMIUM_NSFW_LEVELS = ["suggestive", "soft", "explicit"] as const;
 export type PremiumNsfwLevel = (typeof PREMIUM_NSFW_LEVELS)[number];
 
 export function clampPremiumNsfwLevel(level: string | undefined): PremiumNsfwLevel {
+  if (level === "explicit") return "explicit";
   if (level === "soft") return "soft";
   return "suggestive";
 }

@@ -60,6 +60,8 @@ export const billingRouter = createTRPCRouter({
         hasBatchGeneration:
           "hasBatchGeneration" in planConfig ? planConfig.hasBatchGeneration : false,
         hasWebhooks: "hasWebhooks" in planConfig ? planConfig.hasWebhooks : false,
+        hasCharacterLora:
+          "hasCharacterLora" in planConfig ? planConfig.hasCharacterLora : false,
       },
     };
   }),

@@ -1,32 +1,36 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertTriangle, Sparkles, Loader2, Wand2 } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
-import { toast } from "sonner";
+import { AlertTriangle, Sparkles, Check, Pencil } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
 import { useInfluencerWizard } from "@/hooks/use-influencer-wizard";
 import { TemplatePicker } from "@/components/influencer/template-picker";
+import {
+  Eyebrow,
+  nicheDotClass,
+  wizardInputClass,
+  wizardPrimaryButtonClass,
+  wizardSegmentClass,
+  wizardTextareaClass,
+} from "@/components/influencer/wizard-ui";
 import { WizardIdentityPreview } from "@/components/influencer/wizard-identity-preview";
 import { WizardVisionCard } from "@/components/influencer/wizard-vision-card";
-import { WizardAiHelper } from "@/components/influencer/wizard-ai-helper";
 import { pickRandomInfluencerName } from "@/lib/influencer-name-suggestions";
+import {
+  clearNsfwWizardDefaults,
+  getNsfwWizardDefaults,
+} from "@/lib/wizard-of-flow";
 import { trpc } from "@/lib/trpc";
+import { useCurrentPlan } from "@/hooks/use-current-plan";
 import { cn } from "@/lib/utils";
 const NICHE_KEYS: Record<string, string> = {
   FASHION: "nicheFashion",
@@ -61,11 +65,18 @@ const nicheEmojis: Record<string, string> = {
   ADULT: "🔥",
 };
 
+type NicheOption = {
+  value: string;
+  emoji: string;
+  label: string;
+  color: string;
+};
+
 export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
   const t = useTranslations("wizard");
   const tInfluencer = useTranslations("influencer");
   const { data, updateData } = useInfluencerWizard();
-  const { data: plan } = trpc.billing.getCurrentPlan.useQuery();
+  const { data: plan } = useCurrentPlan();
   const allowNsfw = plan?.features.hasNsfw ?? false;
 
   // Sprint 14 — rotate the name placeholder per mount so we don't all end
@@ -152,7 +163,6 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
       isNsfw: data.isNsfw,
     });
     void trigger();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     data.name,
     data.bio,
@@ -170,56 +180,6 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
   const selectedNiche = watch("niche");
   const isNsfw = watch("isNsfw");
   const age = watch("age");
-  const currentName = watch("name");
-  const currentGender = watch("gender");
-
-  // Sprint 12 — AI persona suggestions ──────────────────────────────────────
-  const locale = useLocale();
-  const [suggestOpen, setSuggestOpen] = useState(false);
-  const [suggestions, setSuggestions] = useState<
-    Array<{ bio: string; personality: string }>
-  >([]);
-
-  const suggestMutation = trpc.influencer.suggestPersona.useMutation({
-    onSuccess: (ideas) => {
-      setSuggestions(ideas);
-      setSuggestOpen(true);
-    },
-    onError: (err) => {
-      toast.error(err.message);
-    },
-  });
-
-  const handleSuggest = () => {
-    if (!selectedNiche) {
-      toast.info(t("suggestNeedsNiche"));
-      return;
-    }
-    suggestMutation.mutate({
-      name: currentName?.trim() || undefined,
-      niche: selectedNiche as
-        | "FASHION"
-        | "FITNESS"
-        | "LIFESTYLE"
-        | "TRAVEL"
-        | "TECH"
-        | "GAMING"
-        | "ADULT"
-        | "FOOD",
-      gender: currentGender,
-      language: locale === "en" ? "en" : "fr",
-    });
-  };
-
-  const applySuggestion = (idx: number) => {
-    const s = suggestions[idx];
-    if (!s) return;
-    setValue("bio", s.bio, { shouldValidate: true });
-    setValue("personality", s.personality, { shouldValidate: true });
-    updateData({ bio: s.bio, personality: s.personality });
-    setSuggestOpen(false);
-    toast.success(t("suggestApplied"));
-  };
 
   const onSubmit = (formData: FormData) => {
     updateData(formData);
@@ -227,16 +187,12 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      className="space-y-6 max-md:pb-[var(--mobile-nav-height)]"
+    >
       {/* Sprint 7 — pre-baked persona templates */}
       <TemplatePicker />
-
-      <WizardAiHelper
-        step={1}
-        setValue={(field, value, options) =>
-          setValue(field, value as never, options)
-        }
-      />
 
       <WizardVisionCard />
 
@@ -244,12 +200,12 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
 
       {/* Name */}
       <div className="space-y-2">
-        <Label className="text-slate-300">{t("influencerName")}</Label>
+        <Eyebrow>{t("influencerName")}</Eyebrow>
         <Input
           id="wizard-identity-name"
           {...register("name")}
           placeholder={t("namePlaceholderRotating", { name: namePlaceholder })}
-          className="h-11 border-slate-800/50 bg-slate-800/30 text-white placeholder:text-slate-500 focus:border-violet-500"
+          className={wizardInputClass}
         />
         {errors.name && (
           <p className="text-xs text-red-400">{errors.name.message}</p>
@@ -258,20 +214,15 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
 
       {/* Gender */}
       <div className="space-y-2">
-        <Label className="text-slate-300">{t("gender")}</Label>
-        <div className="grid grid-cols-3 gap-2">
+        <Eyebrow>{t("gender")}</Eyebrow>
+        <div className="grid grid-cols-3 gap-1.5">
           {(["female", "male", "nonbinary"] as const).map((g) => (
             <button
               key={g}
               type="button"
               aria-pressed={watch("gender") === g}
               onClick={() => setValue("gender", g, { shouldValidate: true })}
-              className={cn(
-                "rounded-xl border-2 px-3 py-2.5 text-sm font-medium transition-all",
-                watch("gender") === g
-                  ? "border-violet-500 bg-violet-500/20 text-violet-300"
-                  : "border-slate-800 bg-slate-800/30 text-slate-400 hover:border-slate-700"
-              )}
+              className={wizardSegmentClass(watch("gender") === g)}
             >
               {g === "female" && t("genderFemale")}
               {g === "male" && t("genderMale")}
@@ -284,33 +235,11 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
       {/* Bio */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Label className="text-slate-300">{tInfluencer("bio")}</Label>
-            {/* Sprint 12 — AI magic suggest */}
-            <button
-              type="button"
-              onClick={handleSuggest}
-              disabled={suggestMutation.isPending || !selectedNiche}
-              className={cn(
-                "flex items-center gap-1 rounded-full border border-violet-500/40 bg-violet-500/10 px-2.5 py-0.5 text-[11px] font-medium text-violet-300 transition-colors hover:bg-violet-500/20 disabled:cursor-not-allowed disabled:opacity-40",
-                !selectedNiche && "opacity-50"
-              )}
-              title={
-                !selectedNiche ? t("suggestNeedsNiche") : t("suggestTooltip")
-              }
-            >
-              {suggestMutation.isPending ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <Wand2 className="h-3 w-3" />
-              )}
-              {t("suggest")}
-            </button>
-          </div>
+          <Eyebrow>{tInfluencer("bio")}</Eyebrow>
           <span
             className={cn(
-              "text-xs",
-              (bio?.length ?? 0) > 300 ? "text-red-400" : "text-slate-500"
+              "text-xs tabular-nums",
+              (bio?.length ?? 0) > 300 ? "text-red-400" : "text-slate-600"
             )}
           >
             {bio?.length ?? 0}/300
@@ -320,45 +249,30 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
           {...register("bio")}
           placeholder={t("bioPlaceholder")}
           rows={3}
-          className="border-slate-800/50 bg-slate-800/30 text-white placeholder:text-slate-500 focus:border-violet-500"
+          className={wizardTextareaClass}
         />
         {errors.bio && (
           <p className="text-xs text-red-400">{errors.bio.message}</p>
         )}
       </div>
 
-      {/* Niche */}
-      <div className="space-y-2">
-        <Label className="text-slate-300">{tInfluencer("niche")}</Label>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {niches.map((n) => (
-            <button
-              key={n.value}
-              type="button"
-              aria-pressed={selectedNiche === n.value}
-              onClick={() => setValue("niche", n.value, { shouldValidate: true })}
-              className={cn(
-                "flex items-center gap-2 rounded-xl border-2 px-3 py-3 text-sm font-medium transition-all",
-                selectedNiche === n.value
-                  ? n.color
-                  : "border-slate-800/50 bg-slate-800/20 text-slate-400 hover:border-slate-700"
-              )}
-            >
-              <span className="text-lg">{n.emoji}</span>
-              {n.label}
-            </button>
-          ))}
-        </div>
-        {errors.niche && (
-          <p className="text-xs text-red-400">{errors.niche.message}</p>
+      {/* Niche — demoted: the agent detects it, the user confirms/overrides. */}
+      <NicheField
+        niches={niches}
+        selected={selectedNiche}
+        detected={Boolean(
+          data.nicheProfile?.nicheCategory &&
+            data.nicheProfile.nicheCategory === selectedNiche
         )}
-      </div>
+        onSelect={(value) => setValue("niche", value, { shouldValidate: true })}
+        error={errors.niche?.message}
+      />
 
       {/* Age */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <Label className="text-slate-300">{t("age")}</Label>
-          <Badge className="border-violet-500/30 bg-violet-500/10 text-violet-400">
+          <Eyebrow>{t("age")}</Eyebrow>
+          <Badge className="border-violet-500/30 bg-violet-500/10 text-violet-300">
             {age} {t("years")}
           </Badge>
         </div>
@@ -381,11 +295,11 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
       {/* Personality */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <Label className="text-slate-300">{t("personality")}</Label>
+          <Eyebrow>{t("personality")}</Eyebrow>
           <span
             className={cn(
-              "text-xs",
-              (personality?.length ?? 0) > 500 ? "text-red-400" : "text-slate-500"
+              "text-xs tabular-nums",
+              (personality?.length ?? 0) > 500 ? "text-red-400" : "text-slate-600"
             )}
           >
             {personality?.length ?? 0}/500
@@ -395,7 +309,7 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
           {...register("personality")}
           placeholder={t("personalityPlaceholder")}
           rows={3}
-          className="border-slate-800/50 bg-slate-800/30 text-white placeholder:text-slate-500 focus:border-violet-500"
+          className={wizardTextareaClass}
         />
         {errors.personality && (
           <p className="text-xs text-red-400">{errors.personality.message}</p>
@@ -417,14 +331,21 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
                   checked={field.value}
                   onCheckedChange={(checked) => {
                     field.onChange(checked);
+                    const name = watch("name");
+                    const niche = watch("niche");
+                    const onlyfansUsername = data.onlyfansUsername;
                     if (checked) {
-                      updateData({ isNsfw: true });
-                    } else {
-                      updateData({
-                        isNsfw: false,
-                        onlyfansEnabled: false,
-                        onlyfansUsername: "",
+                      const patch = getNsfwWizardDefaults({
+                        name,
+                        niche,
+                        onlyfansUsername,
                       });
+                      updateData(patch);
+                      if (patch.niche && patch.niche !== niche) {
+                        setValue("niche", patch.niche, { shouldValidate: true });
+                      }
+                    } else {
+                      updateData(clearNsfwWizardDefaults());
                     }
                   }}
                 />
@@ -447,64 +368,130 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
         <button
           type="submit"
           disabled={!isValid}
-          className="rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-6 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+          className={wizardPrimaryButtonClass}
         >
-          {t("next")} →
+          {t("next")}
+          <span className="transition-transform group-hover:translate-x-0.5">
+            →
+          </span>
         </button>
       </div>
-
-      {/* Sprint 12 — AI persona suggestions dialog */}
-      <Dialog open={suggestOpen} onOpenChange={setSuggestOpen}>
-        <DialogContent className="max-w-2xl border-slate-800 bg-slate-900 text-white">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-white">
-              <Sparkles className="h-5 w-5 text-violet-400" />
-              {t("suggestDialogTitle")}
-            </DialogTitle>
-            <DialogDescription className="text-slate-400">
-              {t("suggestDialogDescription")}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            {suggestions.map((s, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => applySuggestion(i)}
-                className="group w-full rounded-xl border border-slate-700 bg-slate-800/30 p-4 text-left transition-all hover:border-violet-500 hover:bg-violet-500/10"
-              >
-                <div className="mb-2 flex items-center gap-2">
-                  <span className="rounded-full bg-violet-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-300">
-                    {i === 0
-                      ? t("suggestVariant0")
-                      : i === 1
-                        ? t("suggestVariant1")
-                        : t("suggestVariant2")}
-                  </span>
-                </div>
-                <p className="text-sm font-medium text-white">{s.bio}</p>
-                <p className="mt-2 text-xs leading-relaxed text-slate-400">
-                  {s.personality}
-                </p>
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={handleSuggest}
-              disabled={suggestMutation.isPending}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-700 py-2 text-xs text-slate-400 transition-colors hover:bg-slate-800 hover:text-white disabled:opacity-40"
-            >
-              {suggestMutation.isPending ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <Wand2 className="h-3 w-3" />
-              )}
-              {t("suggestRegenerate")}
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </form>
+  );
+}
+
+/**
+ * Demoted niche field. Per the product decision, the niche is a technical
+ * category the agent infers — not a manual gate. When a niche is set we show
+ * a confirmable chip (flagged "detected" when it came from the agent); the
+ * full selector stays one click away for override.
+ */
+function NicheField({
+  niches,
+  selected,
+  detected,
+  onSelect,
+  error,
+}: {
+  niches: NicheOption[];
+  selected: string;
+  detected: boolean;
+  onSelect: (value: string) => void;
+  error?: string;
+}) {
+  const t = useTranslations("wizard");
+  const tInfluencer = useTranslations("influencer");
+  const [editing, setEditing] = useState(!selected);
+
+  // Collapse back to the confirm chip when niche is set externally (template/agent).
+  useEffect(() => {
+    if (selected) setEditing(false);
+  }, [selected]);
+
+  const current = niches.find((n) => n.value === selected);
+  const showGrid = editing || !current;
+
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-center justify-between">
+        <Eyebrow>{tInfluencer("niche")}</Eyebrow>
+        {current && !showGrid ? (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 transition-colors hover:text-violet-300"
+          >
+            <Pencil className="h-3 w-3" />
+            {t("nicheChange")}
+          </button>
+        ) : null}
+      </div>
+
+      {current && !showGrid ? (
+        <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3.5">
+          <span className="flex items-center gap-2.5">
+            <span
+              className={cn(
+                "h-2.5 w-2.5 rounded-full",
+                nicheDotClass[current.value] ?? "bg-violet-400"
+              )}
+            />
+            <span className="text-sm font-medium text-white">
+              {current.label}
+            </span>
+          </span>
+          {detected ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-violet-400/30 bg-violet-500/10 px-2.5 py-1 text-[10px] font-medium text-violet-200">
+              <Sparkles className="h-3 w-3" />
+              {t("nicheDetected")}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-300/90">
+              <Check className="h-3 w-3" />
+              {t("nicheConfirmed")}
+            </span>
+          )}
+        </div>
+      ) : (
+        <>
+          <p className="text-[11px] leading-relaxed text-slate-500">
+            {t("nicheAutoHint")}
+          </p>
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+            {niches.map((n) => {
+              const active = selected === n.value;
+              return (
+                <button
+                  key={n.value}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => {
+                    onSelect(n.value);
+                    setEditing(false);
+                  }}
+                  className={cn(
+                    "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all",
+                    active
+                      ? "border-violet-400/50 bg-violet-500/10 text-white"
+                      : "border-white/10 bg-white/[0.02] text-slate-400 hover:border-white/20 hover:text-slate-200"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "h-2 w-2 rounded-full",
+                      nicheDotClass[n.value] ?? "bg-violet-400"
+                    )}
+                  />
+                  {n.label}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {error && <p className="text-xs text-red-400">{error}</p>}
+    </div>
   );
 }
 

@@ -10,14 +10,18 @@ export type PhotoIntentIssue = {
   suggestedLane?: "premium" | "social";
 };
 
-const SUGGESTIVE_TERMS =
-  /\b(lingerie|boudoir|dentelle|lace lingerie|sexy|sensuel|séduis|seductive|provocat|nu\b|nude|topless|bikini|underwear|sous-vêtement)\b/i;
+export const SUGGESTIVE_PHOTO_TERMS =
+  /\b(lingerie|boudoir|dentelle|lace lingerie|sexy|sensuel|séduis|seductive|provocat|nu\b|nude|topless|bikini|underwear|sous-vêtement|onlyfans|of\b)\b/i;
+
+const SUGGESTIVE_TERMS = SUGGESTIVE_PHOTO_TERMS;
 
 const SOCIAL_SCENES =
   /\b(café|cafe|coffee|restaurant|street|rue|gym|sport|plage|beach|airport|aéroport|office|bureau|park|parc)\b/i;
 
-const PREMIUM_SCENES =
+export const PREMIUM_PHOTO_SCENES =
   /\b(bedroom|chambre|boudoir|intimate|intime|silk sheets|draps|mirror selfie miroir chambre)\b/i;
+
+const PREMIUM_SCENES = PREMIUM_PHOTO_SCENES;
 
 const PREMIUM_OUTFITS =
   /\b(lingerie|body satin|dentelle|lace|robe de chambre|bustier|bra and panties|ensemble boudoir)\b/i;
@@ -102,4 +106,44 @@ export function getPhotoIntentMessage(
   locale: "fr" | "en"
 ): string {
   return locale === "fr" ? issue.messageFr : issue.messageEn;
+}
+
+export type EffectivePhotoContentMode = {
+  contentMode: "SFW" | "NSFW";
+  /** True when suggestive scene was auto-routed from Social to Premium. */
+  laneEscalated: boolean;
+};
+
+/**
+ * Route suggestive scenes to Premium (FLUX uncensored) when the plan allows it.
+ * Blocks Social-only plans from generating hot prompts on censored engines.
+ */
+export function resolveEffectivePhotoContentMode(input: {
+  contentMode: "SFW" | "NSFW";
+  sceneDescription?: string;
+  outfit?: string;
+  scene?: string;
+  hasNsfwPlan: boolean;
+}): EffectivePhotoContentMode {
+  if (input.contentMode === "NSFW") {
+    return { contentMode: "NSFW", laneEscalated: false };
+  }
+
+  const issues = validatePhotoIntent({
+    contentMode: "SFW",
+    sceneDescription: input.sceneDescription,
+    outfit: input.outfit,
+    scene: input.scene,
+  });
+
+  const suggestive = issues.some((i) => i.code === "suggestive_in_social");
+  if (!suggestive) {
+    return { contentMode: "SFW", laneEscalated: false };
+  }
+
+  if (input.hasNsfwPlan) {
+    return { contentMode: "NSFW", laneEscalated: true };
+  }
+
+  return { contentMode: "SFW", laneEscalated: false };
 }

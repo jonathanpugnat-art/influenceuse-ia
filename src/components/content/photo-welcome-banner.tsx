@@ -3,10 +3,12 @@
 import { Sparkles, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Image from "next/image";
+import { cn } from "@/lib/utils";
 
 type Props = {
   influencerName: string;
   portraitUrl?: string | null;
+  isPremium?: boolean;
   onDismiss: () => void;
 };
 
@@ -14,12 +16,20 @@ type Props = {
 export function PhotoWelcomeBanner({
   influencerName,
   portraitUrl,
+  isPremium = false,
   onDismiss,
 }: Props) {
   const t = useTranslations("content");
 
   return (
-    <div className="relative flex items-start gap-4 border-b border-violet-500/30 bg-gradient-to-r from-violet-500/10 via-indigo-500/5 to-transparent px-4 py-3 md:px-6">
+    <div
+      className={cn(
+        "relative flex items-start gap-4 border-b px-4 py-3 md:px-6",
+        isPremium
+          ? "border-blue-500/30 bg-gradient-to-r from-blue-500/10 via-sky-500/5 to-transparent"
+          : "border-violet-500/30 bg-gradient-to-r from-violet-500/10 via-indigo-500/5 to-transparent"
+      )}
+    >
       {portraitUrl ? (
         <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-violet-500/30">
           <Image
@@ -40,7 +50,7 @@ export function PhotoWelcomeBanner({
           {t("welcomeBannerTitle", { name: influencerName })}
         </p>
         <p className="mt-0.5 text-xs leading-relaxed text-slate-400">
-          {t("welcomeBannerSubtitle")}
+          {t("welcomeBannerSubtitleSimple")}
         </p>
       </div>
       <button

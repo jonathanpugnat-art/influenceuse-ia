@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
+import { useInfluencers } from "@/hooks/use-influencers";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
@@ -82,7 +83,7 @@ export default function AnalyticsPage() {
   const effectiveInfluencerId = influencerId === "all" ? undefined : influencerId;
 
   const { data: influencers, isLoading: loadingInfluencers } =
-    trpc.influencer.getAll.useQuery({ limit: 50 });
+    useInfluencers();
   const firstInfluencerId = influencers?.influencers?.[0]?.id;
 
   const { data: overview, isLoading: loadingOverview } =

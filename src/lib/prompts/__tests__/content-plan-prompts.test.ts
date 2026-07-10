@@ -31,6 +31,21 @@ describe("content-plan-prompts", () => {
       expect(p).toContain("growth");
     });
 
+    it("requires sceneDescription in JSON schema", () => {
+      const p = buildContentPlanSystemPrompt({
+        influencerName: "Lina",
+        influencerGender: "female",
+        niche: "FASHION",
+        personality: "playful",
+        bio: "bio",
+        language: "en",
+        platforms: ["INSTAGRAM"],
+        days: 3,
+        postsPerDay: 1,
+      });
+      expect(p).toContain('"sceneDescription"');
+    });
+
     it("enforces masculine outfits warning", () => {
       const p = buildContentPlanSystemPrompt({
         influencerName: "Marc",

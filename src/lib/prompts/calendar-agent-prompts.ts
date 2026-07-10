@@ -47,6 +47,7 @@ RULES:
 - Dates must be ISO YYYY-MM-DD. For "ce mois" / "this month", use the current calendar month boundaries.
 - Default platforms to ["INSTAGRAM"] if the user mentions posting but no platform.
 - Map vibe into "goals" when no explicit goal is given (e.g. goals: "summer vibe, fitness content").
+- When INFLUENCER BRIEF is provided, infer vibe and goals from it — align content tone with positioning (premium OF, fitness coach, streetwear creator, etc.).
 - platforms values MUST be exactly: INSTAGRAM, TIKTOK, or ONLYFANS.
 
 Return STRICT JSON only:

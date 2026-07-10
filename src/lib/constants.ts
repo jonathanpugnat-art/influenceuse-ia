@@ -43,6 +43,7 @@ export const PLANS = {
     /** v0.12 — trend feed visible? FREE gets a 3-card teaser only. */
     hasTrends: false,
     trendsMaxFeed: 3,
+    hasCharacterLora: false,
   },
   STARTER: {
     name: "Creator",
@@ -59,6 +60,7 @@ export const PLANS = {
     hasWebhooks: false,
     hasTrends: true,
     trendsMaxFeed: 15,
+    hasCharacterLora: false,
   },
   PRO: {
     name: "Pro",
@@ -76,6 +78,7 @@ export const PLANS = {
     hasWebhooks: true,
     hasTrends: true,
     trendsMaxFeed: 50,
+    hasCharacterLora: true,
   },
   ENTERPRISE: {
     name: "Agency",
@@ -92,6 +95,7 @@ export const PLANS = {
     hasWebhooks: true,
     hasTrends: true,
     trendsMaxFeed: 200,
+    hasCharacterLora: true,
   },
 } as const;
 
@@ -122,8 +126,26 @@ export const CREDIT_COSTS = {
   REEL_NARRATION: 0,
   CAPTION: 0.5,
   BASE_IMAGE: 2,
+  /**
+   * Wizard step-2 preview. Same Nano-Banana model as the final 4 variants,
+   * but a single reusable image — so the preview faithfully matches the
+   * result instead of the old cheap-but-different FLUX Schnell render. Priced
+   * below BASE_IMAGE since it produces one image the user can keep as their
+   * portrait.
+   */
+  WIZARD_PREVIEW: 1,
   /** 3 extra Kontext angles from the chosen wizard portrait (profile, 3/4, full body). */
   IDENTITY_PACK: 3,
+  /**
+   * LoRA dataset (~12 Kontext angles) from base portrait.
+   * Calibrated vs ~$0.48 API (18× Kontext) — see unit economics.
+   */
+  LORA_DATASET: 10,
+  /**
+   * LoRA training job (FAL fast trainer, ~500 steps, ~20-60 min).
+   * Calibrated vs ~$2 API — full train ≈ 40 cr total with dataset.
+   */
+  LORA_TRAINING: 30,
   HASHTAGS: 0.25,
   /** Per-post cost when generating a multi-day editorial plan. */
   CONTENT_PLAN_PER_POST: 0.5,

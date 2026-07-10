@@ -73,4 +73,33 @@ describe("trend-prompts", () => {
     expect(userPrompt).toContain("GRWM running");
     expect(userPrompt).toContain('"trendId": "t1"');
   });
+
+  it("requires a concrete viral angle in hooks and uses formatBrief visual fields", () => {
+    const { systemPrompt, userPrompt } = buildTrendPersonalizationPrompt(
+      baseInfluencer,
+      [
+        {
+          ...baseTrends[0]!,
+          formatBrief: {
+            contentType: "PHOTO",
+            sceneDescription: "mirror selfie in a bright gym locker room",
+            pose: "selfie",
+            expression: "playful",
+            outfit: "sports bra and leggings",
+            mood: "energetic morning",
+            hook: "POV: post-leg-day glow",
+            lighting: "fluorescent overhead",
+            cameraStyle: "iPhone front camera",
+            inspirationNotes: "borrow the mirror pacing from the source format",
+            confidence: "high",
+            analyzedFrom: "vision",
+          },
+        },
+      ]
+    );
+    expect(systemPrompt).toMatch(/viral angle/i);
+    expect(systemPrompt).toMatch(/lighting|cameraStyle|inspirationNotes/i);
+    expect(userPrompt).toMatch(/mirror selfie in a bright gym locker room/);
+    expect(userPrompt).toMatch(/fluorescent overhead/);
+  });
 });

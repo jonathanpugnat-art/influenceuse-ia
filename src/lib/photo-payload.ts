@@ -20,5 +20,7 @@ export function buildPhotoPayload(params: PhotoParams) {
     lookId: params.lookId ?? undefined,
     instagramShot: params.instagramShot,
     trendContext: params.trendContext,
+    trendItemId: params.trendItemId,
+    recommendationId: params.recommendationId,
   };
 }

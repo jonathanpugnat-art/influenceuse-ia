@@ -39,6 +39,7 @@ const PLAN_JSON_SCHEMA_DESCRIPTION = `Return STRICT JSON. Schema:
       "type": "PHOTO" | "REEL" | "CAROUSEL",
       "hook": string,            // first sentence that stops the scroll, max 90 chars
       "concept": string,         // 1-2 sentences describing the visual content
+      "sceneDescription": string, // 1-3 English sentences: concrete setting, lighting, mood, props
       "scene": string,           // one of: studio, beach, urban, gym, bedroom, restaurant, nature, cafe, rooftop, pool
       "pose": string,            // one of: portrait, fullBody, selfie, action, candid, sitting, profile
       "expression": string,      // one of: smile, seductive, serious, playful, mysterious, natural, laughing, surprised
@@ -88,6 +89,7 @@ export function buildContentPlanSystemPrompt(ctx: ContentPlanContext): string {
     "- WEEKLY RHYTHM: Distribute formats and moods across dayIndex — e.g. lighter/relatable mid-week, aspirational on weekends, value carousel early week, reel peak engagement days.",
     "- PLATFORM FIT: TikTok → prefer REEL; Instagram → mix PHOTO/CAROUSEL/REEL; OnlyFans → intimate opt-in tone (still SFW unless asked).",
     "- VISUAL VARIETY: Vary scenes, poses, expressions, and outfits across the week — no copy-paste setups.",
+    "- sceneDescription: write concrete English visual direction (setting, lighting, mood, props) used by the image generator. Must align with concept, scene, outfit, and pose — never a generic preset.",
     "- VOICE: Captions must sound like one consistent person. Match personality in word choice, humor, and CTA style.",
     "- SAFETY: Stay SFW. Outfits MUST match the influencer gender. NEVER suggest dresses/skirts/heels/makeup for male influencers.",
     "",

@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runTrendsFetch } from "@/server/services/trends.service";
+import {
+  analyzeTopTrendsFormat,
+  refreshTrendItemsFeedTtl,
+  runTrendsFetch,
+} from "@/server/services/trends.service";
 
 /**
  * v0.12 — Daily cron that refreshes the trends cache.
@@ -44,10 +48,33 @@ export async function GET(req: NextRequest) {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    console.error("[cron/fetch-trends] Error:", error);
-    return NextResponse.json(
-      { ok: false, error: String(error) },
-      { status: 500 }
-    );
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[cron/fetch-trends] Provider error, trying TTL refresh:", message);
+
+    // P0 — Apify quota / transient failures: keep the product usable by
+    // re-publishing existing TrendItems into the 72h feed window.
+    try {
+      const ttl = await refreshTrendItemsFeedTtl({ limit: 120 });
+      let formatsAnalyzed = 0;
+      if (ttl.itemsRefreshed > 0) {
+        formatsAnalyzed = await analyzeTopTrendsFormat(6);
+      }
+      return NextResponse.json({
+        ok: true,
+        provider: process.env.TRENDS_PROVIDER ?? "unknown",
+        snapshotsCreated: 0,
+        itemsCreated: 0,
+        itemsRefreshed: ttl.itemsRefreshed,
+        formatsAnalyzed,
+        skipped: `provider-error-ttl-fallback: ${message}`,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (fallbackError) {
+      console.error("[cron/fetch-trends] TTL fallback failed:", fallbackError);
+      return NextResponse.json(
+        { ok: false, error: message },
+        { status: 500 }
+      );
+    }
   }
 }

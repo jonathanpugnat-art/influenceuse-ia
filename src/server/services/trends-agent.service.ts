@@ -1,5 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
 import type { Influencer, TrendItem } from "@/generated/prisma/client";
+import type { TrendFormatBrief } from "@/lib/trends/trend-format-brief";
 import {
   buildTrendsAgentUserPrompt,
   TRENDS_AGENT_MODEL,
@@ -7,6 +7,9 @@ import {
   type TrendAnalysisPick,
   validateTrendsAgentAnalysis,
 } from "@/lib/prompts/trends-agent-prompts";
+import { callAgentJsonLLM } from "@/server/services/ai-text.service";
+import { inferAdultLaneFromSignals } from "@/lib/text-provider-config";
+import { getTrendFormatBrief } from "@/server/services/trend-media-analysis.service";
 
 export type TrendAnalysisInput = Pick<
   TrendItem,
@@ -17,13 +20,47 @@ export type TrendAnalysisInput = Pick<
   | "growthScore"
   | "platform"
   | "nicheTags"
->;
+> & {
+  formatBrief?: Pick<
+    TrendFormatBrief,
+    | "contentType"
+    | "sceneDescription"
+    | "mood"
+    | "hook"
+    | "lighting"
+    | "cameraStyle"
+    | "inspirationNotes"
+    | "confidence"
+  >;
+};
 
-function getAnthropic(): Anthropic {
-  if (!process.env.ANTHROPIC_API_KEY?.trim()) {
-    throw new Error("ANTHROPIC_API_KEY is not configured.");
-  }
-  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+export function mapTrendItemsForAnalysis(
+  items: TrendItem[]
+): TrendAnalysisInput[] {
+  return items.map((t) => {
+    const brief = getTrendFormatBrief(t);
+    return {
+      id: t.id,
+      title: t.title,
+      description: t.description,
+      platform: t.platform,
+      growthScore: t.growthScore,
+      nicheTags: t.nicheTags,
+      hashtags: t.hashtags,
+      formatBrief: brief
+        ? {
+            contentType: brief.contentType,
+            sceneDescription: brief.sceneDescription,
+            mood: brief.mood,
+            hook: brief.hook,
+            lighting: brief.lighting,
+            cameraStyle: brief.cameraStyle,
+            inspirationNotes: brief.inspirationNotes,
+            confidence: brief.confidence,
+          }
+        : undefined,
+    };
+  });
 }
 
 function buildFallbackPicks(
@@ -86,71 +123,27 @@ function buildFallbackPicks(
   });
 }
 
-async function callTrendsHaikuJson(
-  userPrompt: string
+async function callTrendsAgentJson(
+  userPrompt: string,
+  contentLane: "sfw" | "adult"
 ): Promise<TrendAnalysisPick[]> {
-  const client = getAnthropic();
-  const tryParse = (text: string): TrendAnalysisPick[] | null => {
-    const cleaned = text
-      .trim()
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/```\s*$/i, "")
-      .trim();
-    try {
-      return validateTrendsAgentAnalysis(JSON.parse(cleaned)).picks;
-    } catch {
-      return null;
-    }
-  };
-
-  const response = await client.messages.create({
-    model: TRENDS_AGENT_MODEL,
-    max_tokens: 900,
+  const result = await callAgentJsonLLM({
+    contentLane,
+    systemPrompt: TRENDS_AGENT_SYSTEM_PROMPT,
+    userPrompt,
+    maxTokens: 900,
     temperature: 0.35,
-    system: TRENDS_AGENT_SYSTEM_PROMPT,
-    messages: [{ role: "user", content: userPrompt }],
+    anthropicModel: TRENDS_AGENT_MODEL,
+    validate: validateTrendsAgentAnalysis,
+    repairInstruction: "Return only valid JSON matching the schema.",
   });
-
-  const text = response.content
-    .filter((block): block is Anthropic.TextBlock => block.type === "text")
-    .map((b) => b.text)
-    .join("")
-    .trim();
-
-  const parsed = tryParse(text);
-  if (parsed) return parsed;
-
-  const repair = await client.messages.create({
-    model: TRENDS_AGENT_MODEL,
-    max_tokens: 900,
-    temperature: 0.2,
-    system: TRENDS_AGENT_SYSTEM_PROMPT,
-    messages: [
-      { role: "user", content: userPrompt },
-      { role: "assistant", content: text },
-      {
-        role: "user",
-        content: "Return only valid JSON matching the schema.",
-      },
-    ],
-  });
-
-  const repairText = repair.content
-    .filter((block): block is Anthropic.TextBlock => block.type === "text")
-    .map((b) => b.text)
-    .join("")
-    .trim();
-
-  const repaired = tryParse(repairText);
-  if (repaired) return repaired;
-
-  throw new Error("Trends agent: invalid JSON from Haiku.");
+  return result.picks;
 }
 
 export async function analyzeTrendsForInfluencer(
   influencer: Pick<
     Influencer,
-    "id" | "name" | "niche" | "personality" | "bio"
+    "id" | "name" | "niche" | "personality" | "bio" | "brief" | "isNsfw"
   >,
   trends: TrendAnalysisInput[],
   opts?: { language?: "fr" | "en"; searchQuery?: string }
@@ -160,23 +153,30 @@ export async function analyzeTrendsForInfluencer(
 
   if (pool.length === 0) return [];
 
+  const contentLane = inferAdultLaneFromSignals({
+    isNsfw: influencer.isNsfw,
+    niche: influencer.niche,
+    brief: influencer.brief ?? undefined,
+  });
+
   const userPrompt = buildTrendsAgentUserPrompt({
     influencerName: influencer.name,
     niche: influencer.niche,
     personality: influencer.personality,
     bio: influencer.bio,
+    brief: influencer.brief ?? undefined,
     language,
     trends: pool,
     searchQuery: opts?.searchQuery,
   });
 
   try {
-    const picks = await callTrendsHaikuJson(userPrompt);
+    const picks = await callTrendsAgentJson(userPrompt, contentLane);
     const validIds = new Set(pool.map((t) => t.id));
     const filtered = picks.filter((p) => validIds.has(p.trendId)).slice(0, 3);
     if (filtered.length >= 1) return filtered;
   } catch (error) {
-    console.warn("[trends-agent] Haiku failed, using fallback:", error);
+    console.warn("[trends-agent] LLM failed, using fallback:", error);
   }
 
   return buildFallbackPicks(influencer, pool, language);

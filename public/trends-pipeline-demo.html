@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pipeline Trends — Démo visuelle</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --panel: #12121a;
+      --border: #2a2a3a;
+      --text: #f4f4f5;
+      --muted: #a1a1aa;
+      --accent: #c084fc;
+      --vision: #34d399;
+      --text-only: #fbbf24;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 32px 20px 64px; }
+    h1 { font-size: 1.75rem; font-weight: 700; margin: 0 0 8px; }
+    .sub { color: var(--muted); margin: 0 0 28px; max-width: 720px; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+    .stat {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .stat strong { display: block; font-size: 1.5rem; color: var(--accent); }
+    .stat span { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    .flow {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+      margin-bottom: 32px; font-size: 0.85rem; color: var(--muted);
+    }
+    .flow span {
+      background: var(--panel); border: 1px solid var(--border);
+      padding: 6px 12px; border-radius: 999px;
+    }
+    .flow .arrow { background: none; border: none; padding: 0; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 20px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+    .card-media { position: relative; aspect-ratio: 9/12; background: #1a1a24; }
+    .card-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .placeholder {
+      height: 100%; display: flex; align-items: center; justify-content: center;
+      color: var(--muted); font-size: 0.9rem;
+    }
+    .card-badges {
+      position: absolute; top: 10px; left: 10px; right: 10px;
+      display: flex; flex-wrap: wrap; gap: 6px;
+    }
+    .badge {
+      font-size: 0.7rem; font-weight: 600; padding: 4px 8px;
+      border-radius: 6px; background: rgba(0,0,0,.55); backdrop-filter: blur(4px);
+    }
+    .badge.platform { color: #f0abfc; }
+    .badge.vision { color: var(--vision); }
+    .badge.text { color: var(--text-only); }
+    .badge.score { margin-left: auto; color: #fff; }
+    .card-body { padding: 16px; }
+    .card-body h3 { margin: 0 0 8px; font-size: 0.95rem; line-height: 1.35; }
+    .meta { margin: 0 0 12px; font-size: 0.8rem; color: var(--muted); }
+    .brief { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 4px; }
+    .brief h4 { margin: 0 0 10px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); }
+    dl { margin: 0; font-size: 0.8rem; }
+    dt { color: var(--muted); margin-top: 8px; }
+    dd { margin: 2px 0 0; }
+    ul { margin: 4px 0 0; padding-left: 18px; }
+    .seed {
+      margin-top: 12px; padding: 10px; border-radius: 8px;
+      background: #0d0d14; border: 1px solid var(--border);
+      font-size: 0.7rem; overflow-x: auto; white-space: pre-wrap;
+    }
+    .muted { color: var(--muted); font-size: 0.85rem; }
+    footer { margin-top: 40px; font-size: 0.75rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Pipeline Trends — rendu concret</h1>
+    <p class="sub">
+      Données live depuis ta DB : scrape Apify → mirror covers R2 → analyse Claude (vision ou texte)
+      → <code>formatBrief</code> injecté dans le studio photo/reel.
+    </p>
+
+    <div class="stats">
+      <div class="stat"><strong>0</strong><span>Covers mirroirées</span></div>
+      <div class="stat"><strong>6</strong><span>Analysés ce run</span></div>
+      <div class="stat"><strong>0</strong><span>Vidéos + thumb</span></div>
+      <div class="stat"><strong>0</strong><span>Vision</span></div>
+      <div class="stat"><strong>69</strong><span>Texte seul</span></div>
+      <div class="stat"><strong>216</strong><span>Items 72h</span></div>
+    </div>
+
+    <div class="flow">
+      <span>Apify scrape</span><span class="arrow">→</span>
+      <span>RawTrendItem</span><span class="arrow">→</span>
+      <span>Mirror CDN → R2</span><span class="arrow">→</span>
+      <span>Claude formatBrief</span><span class="arrow">→</span>
+      <span>Studio photo / reel</span>
+    </div>
+
+    <div class="grid">
+      <article class="card">
+        <div class="card-media">
+          <div class="placeholder"><span>Pas de cover</span></div>
+          <div class="card-badges">
+            <span class="badge platform">TIKTOK</span>
+            <span class="badge text">Texte seul</span>
+            <span class="badge score">95.5</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <h3>there’s alot of emotions in this video 😂 #fyp #gym #fitness</h3>
+          <p class="meta">#fyp #gym #fitness</p>
+          
+          <div class="brief">
+            <h4>formatBrief → Studio</h4>
+            <dl>
+              <dt>Type</dt><dd>REEL · gym_vlog</dd>
+              <dt>Hook</dt><dd>« Emotional rollercoaster gym session captured in quick cuts »</dd>
+              <dt>Scène</dt><dd>Gym interior with bright overhead fluorescent lighting and mirrored walls. Camera is handheld iPhone in selfie mode, capturing workout progression with emotional reactions. Multiple outfit changes or sweat progression visible across the sequence. Energetic, relatable fitness journey vibe with exaggerated facial expressions showing struggle, determination, and humor.</dd>
+              <dt>Tenue</dt><dd>Athletic wear: sports bra or fitted tank top with high-waisted leggings in solid colors. Hair pulled back in ponytail or bun. Minimal makeup that shows natural gym glow and sweat.</dd>
+              <dt>Mood / lumière</dt><dd>natural candid energy · natural soft light</dd>
+              <dt>Caméra</dt><dd>vertical smartphone social clip</dd>
+              
+            </dl>
+          </div>
+          <pre class="seed"><strong>Seed Reel</strong>
+{
+  &quot;videoType&quot;: &quot;workout&quot;,
+  &quot;duration&quot;: 15,
+  &quot;script&quot;: &quot;Emotional rollercoaster gym session captured in quick cuts&quot;,
+  &quot;sceneDescription&quot;: &quot;Gym interior with bright overhead fluorescent lighting and mirrored walls. Camera is handheld iPhone in selfie mode, capturing workout progression with emotiona&quot;,
+  &quot;music&quot;: &quot;without me&quot;
+}</pre>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-media">
+          <div class="placeholder"><span>Pas de cover</span></div>
+          <div class="card-badges">
+            <span class="badge platform">TIKTOK</span>
+            <span class="badge text">Texte seul</span>
+            <span class="badge score">95.5</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <h3>there’s alot of emotions in this video 😂 #fyp #gym #fitness</h3>
+          <p class="meta">#fyp #gym #fitness</p>
+          
+          <div class="brief">
+            <h4>formatBrief → Studio</h4>
+            <dl>
+              <dt>Type</dt><dd>REEL · gym_reaction</dd>
+              <dt>Hook</dt><dd>« Exaggerated emotional journey during a gym workout session »</dd>
+              <dt>Scène</dt><dd>Gym setting with bright overhead fluorescent lighting. Camera is handheld iPhone, likely front-facing for selfie angle. Multiple emotional reactions captured in sequence while working out - transitions from determined focus to exhaustion to comedic frustration. Athletic wear visible, hair tied back. Background shows typical gym equipment like weights or machines.</dd>
+              <dt>Tenue</dt><dd>Athletic gym wear - sports bra or fitted tank top with leggings, hair in ponytail or bun</dd>
+              <dt>Mood / lumière</dt><dd>natural candid energy · natural soft light</dd>
+              <dt>Caméra</dt><dd>vertical smartphone social clip</dd>
+              
+            </dl>
+          </div>
+          <pre class="seed"><strong>Seed Reel</strong>
+{
+  &quot;videoType&quot;: &quot;workout&quot;,
+  &quot;duration&quot;: 15,
+  &quot;script&quot;: &quot;Exaggerated emotional journey during a gym workout session&quot;,
+  &quot;sceneDescription&quot;: &quot;Gym setting with bright overhead fluorescent lighting. Camera is handheld iPhone, likely front-facing for selfie angle. Multiple emotional reactions captured in&quot;,
+  &quot;music&quot;: &quot;without me&quot;
+}</pre>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-media">
+          <div class="placeholder"><span>Pas de cover</span></div>
+          <div class="card-badges">
+            <span class="badge platform">TIKTOK</span>
+            <span class="badge text">Texte seul</span>
+            <span class="badge score">95.5</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <h3>there’s alot of emotions in this video 😂 #fyp #gym #fitness</h3>
+          <p class="meta">#fyp #gym #fitness</p>
+          
+          <div class="brief">
+            <h4>formatBrief → Studio</h4>
+            <dl>
+              <dt>Type</dt><dd>REEL · gym_transformation</dd>
+              <dt>Hook</dt><dd>« Emotional rollercoaster during a gym session with exaggerated reactions »</dd>
+              <dt>Scène</dt><dd>Gym interior with bright overhead fluorescent lighting and mirrored walls. Subject performs workout movements showing emotional range from determined to exhausted to triumphant. Camera is handheld iPhone positioned at mid-distance capturing full body in gym attire. Multiple cuts between different exercises and facial reactions create dynamic pacing.</dd>
+              <dt>Tenue</dt><dd>athletic wear, fitted gym top and leggings in coordinating colors</dd>
+              <dt>Mood / lumière</dt><dd>natural candid energy · natural soft light</dd>
+              <dt>Caméra</dt><dd>vertical smartphone social clip</dd>
+              
+            </dl>
+          </div>
+          <pre class="seed"><strong>Seed Reel</strong>
+{
+  &quot;videoType&quot;: &quot;workout&quot;,
+  &quot;duration&quot;: 15,
+  &quot;script&quot;: &quot;Emotional rollercoaster during a gym session with exaggerated reactions&quot;,
+  &quot;sceneDescription&quot;: &quot;Gym interior with bright overhead fluorescent lighting and mirrored walls. Subject performs workout movements showing emotional range from determined to exhaust&quot;,
+  &quot;music&quot;: &quot;without me&quot;
+}</pre>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-media">
+          <div class="placeholder"><span>Pas de cover</span></div>
+          <div class="card-badges">
+            <span class="badge platform">TIKTOK</span>
+            <span class="badge text">Texte seul</span>
+            <span class="badge score">95.5</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <h3>there’s alot of emotions in this video 😂 #fyp #gym #fitness</h3>
+          <p class="meta">#fyp #gym #fitness</p>
+          
+          <div class="brief">
+            <h4>formatBrief → Studio</h4>
+            <dl>
+              <dt>Type</dt><dd>REEL · —</dd>
+              <dt>Hook</dt><dd>« Emotional roller coaster gym moment captured with dramatic music »</dd>
+              <dt>Scène</dt><dd>Gym interior with bright overhead lighting and equipment visible in background. Camera is handheld iPhone style, following subject through workout space. Multiple emotional expressions and reactions captured in sequence as subject moves between exercises or poses. Athletic wear appropriate for fitness content. High energy pacing with quick cuts between moments.</dd>
+              <dt>Tenue</dt><dd>Athletic wear: sports bra or fitted tank top with high-waisted leggings in solid colors, hair pulled back in ponytail or bun, minimal jewelry, sneakers</dd>
+              <dt>Mood / lumière</dt><dd>natural candid energy · natural soft light</dd>
+              <dt>Caméra</dt><dd>vertical smartphone social clip</dd>
+              
+            </dl>
+          </div>
+          <pre class="seed"><strong>Seed Reel</strong>
+{
+  &quot;videoType&quot;: &quot;talking_head&quot;,
+  &quot;duration&quot;: 15,
+  &quot;script&quot;: &quot;Emotional roller coaster gym moment captured with dramatic music&quot;,
+  &quot;sceneDescription&quot;: &quot;Gym interior with bright overhead lighting and equipment visible in background. Camera is handheld iPhone style, following subject through workout space. Multip&quot;,
+  &quot;music&quot;: &quot;without me&quot;
+}</pre>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-media">
+          <div class="placeholder"><span>Pas de cover</span></div>
+          <div class="card-badges">
+            <span class="badge platform">TIKTOK</span>
+            <span class="badge text">Texte seul</span>
+            <span class="badge score">94.3</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <h3>muscles do not = masculine (fake body) #strongisbeautiful #gymtok #powerlifting</h3>
+          <p class="meta">#strongisbeautiful #gymtok #powerlifting #bodybuilding #gym #lifting #gymlife #fitness #girlswholift #fyp</p>
+          
+          <div class="brief">
+            <h4>formatBrief → Studio</h4>
+            <dl>
+              <dt>Type</dt><dd>REEL · talking_head</dd>
+              <dt>Hook</dt><dd>« Empowering gym content challenging the idea that muscles equal masculinity, shot in typical gym mirror selfie style with »</dd>
+              <dt>Scène</dt><dd>Gym interior with bright overhead fluorescent lighting and mirror backdrop. A fit woman in athletic wear (sports bra and high-waisted leggings) stands confidently showing muscular physique, possibly flexing or posing to demonstrate strength. Camera is handheld iPhone style, medium close-up framing from waist up. The vibe is empowering and educational, challenging stereotypes about femininity and muscle.</dd>
+              <dt>Tenue</dt><dd>Athletic gym wear: sports bra and high-waisted workout leggings in solid colors, minimal accessories, hair pulled back in practical style</dd>
+              <dt>Mood / lumière</dt><dd>natural candid energy · natural soft light</dd>
+              <dt>Caméra</dt><dd>vertical smartphone social clip</dd>
+              
+            </dl>
+          </div>
+          <pre class="seed"><strong>Seed Reel</strong>
+{
+  &quot;videoType&quot;: &quot;talking_head&quot;,
+  &quot;duration&quot;: 15,
+  &quot;script&quot;: &quot;Empowering gym content challenging the idea that muscles equal masculinity, shot in typical gym mirror selfie style with&quot;,
+  &quot;sceneDescription&quot;: &quot;Gym interior with bright overhead fluorescent lighting and mirror backdrop. A fit woman in athletic wear (sports bra and high-waisted leggings) stands confident&quot;,
+  &quot;music&quot;: &quot;original sound&quot;
+}</pre>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-media">
+          <div class="placeholder"><span>Pas de cover</span></div>
+          <div class="card-badges">
+            <span class="badge platform">TIKTOK</span>
+            <span class="badge text">Texte seul</span>
+            <span class="badge score">94.3</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <h3>muscles do not = masculine (fake body) #strongisbeautiful #gymtok #powerlifting</h3>
+          <p class="meta">#strongisbeautiful #gymtok #powerlifting #bodybuilding #gym #lifting #gymlife #fitness #girlswholift #fyp</p>
+          
+          <div class="brief">
+            <h4>formatBrief → Studio</h4>
+            <dl>
+              <dt>Type</dt><dd>REEL · talking_head</dd>
+              <dt>Hook</dt><dd>« Challenging gender norms around muscularity and femininity in fitness culture »</dd>
+              <dt>Scène</dt><dd>Gym interior with bright overhead fluorescent lighting and mirrored walls. A woman in athletic wear (sports bra and high-waisted leggings) stands confidently in front of gym equipment, flexing or showing muscular physique. Camera is handheld iPhone style, medium shot framing from waist up. The vibe is empowering and unapologetic, celebrating strength and muscle definition without traditional femininity constraints.</dd>
+              <dt>Tenue</dt><dd>Fitted athletic wear: sports bra and high-waisted gym leggings in solid colors, minimal jewelry, hair pulled back in practical style</dd>
+              <dt>Mood / lumière</dt><dd>natural candid energy · natural soft light</dd>
+              <dt>Caméra</dt><dd>vertical smartphone social clip</dd>
+              
+            </dl>
+          </div>
+          <pre class="seed"><strong>Seed Reel</strong>
+{
+  &quot;videoType&quot;: &quot;talking_head&quot;,
+  &quot;duration&quot;: 15,
+  &quot;script&quot;: &quot;Challenging gender norms around muscularity and femininity in fitness culture&quot;,
+  &quot;sceneDescription&quot;: &quot;Gym interior with bright overhead fluorescent lighting and mirrored walls. A woman in athletic wear (sports bra and high-waisted leggings) stands confidently in&quot;,
+  &quot;music&quot;: &quot;original sound&quot;
+}</pre>
+        </div>
+      </article></div>
+
+    <footer>
+      Généré 10/07/2026 19:18:45 · Actor hashtags: khadinakbar · 0/6 cartes démo avec thumb R2/safe
+    </footer>
+  </div>
+</body>
+</html>

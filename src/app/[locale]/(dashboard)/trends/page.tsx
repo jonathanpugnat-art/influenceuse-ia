@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 
 import { trpc } from "@/lib/trpc";
+import { useInfluencers } from "@/hooks/use-influencers";
 import { useRouter, Link } from "@/i18n/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,7 +32,10 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TrendCard } from "@/components/trends/trend-card";
 import { TrendAiPickWrapper } from "@/components/trends/trend-ai-pick-wrapper";
+import { TrendsAgentPanelWrapper } from "@/components/trends/trends-agent-panel";
 import { Input } from "@/components/ui/input";
+import { useTrendsAgentStore } from "@/hooks/use-trends-agent-store";
+import { cn } from "@/lib/utils";
 import { usePhotoCreator } from "@/hooks/use-photo-creator";
 import { useReelCreator } from "@/hooks/use-reel-creator";
 
@@ -80,7 +84,7 @@ export default function TrendsPage() {
   const [searchQuery, setSearchQuery] = useState("");
 
   const config = trpc.trends.config.useQuery();
-  const influencersQuery = trpc.influencer.getAll.useQuery({ limit: 50 });
+  const influencersQuery = useInfluencers();
   const influencers = useMemo(
     () => influencersQuery.data?.influencers ?? [],
     [influencersQuery.data]
@@ -197,6 +201,8 @@ export default function TrendsPage() {
           effects: blob.effects,
           textOverlay: blob.textOverlay,
           generateSceneFrame: true,
+          motionSourceVideoUrl: blob.motionSourceVideoUrl,
+          fromTrend: blob.fromTrend,
         });
         setReelCaption(blob.hook);
         setReelHashtags(blob.hashtags);
@@ -214,6 +220,8 @@ export default function TrendsPage() {
           caption: blob.hook,
           hashtags: blob.hashtags,
           trendContext: blob.trendContext,
+          trendItemId: blob.trendItemId,
+          recommendationId: blob.recommendationId,
           sceneFirst: false,
           useFaceReference: true,
         });
@@ -226,9 +234,15 @@ export default function TrendsPage() {
         return;
       }
       if (blob.target === "reel") {
-        router.push(`/content/reel?influencer=${blob.influencerId}`);
+        const qs = new URLSearchParams({ influencer: blob.influencerId });
+        if (blob.trendItemId) qs.set("trendItemId", blob.trendItemId);
+        if (blob.recommendationId) qs.set("recommendationId", blob.recommendationId);
+        router.push(`/content/reel?${qs.toString()}`);
       } else {
-        router.push(`/content/photo?influencer=${blob.influencerId}`);
+        const qs = new URLSearchParams({ influencer: blob.influencerId });
+        if (blob.trendItemId) qs.set("trendItemId", blob.trendItemId);
+        if (blob.recommendationId) qs.set("recommendationId", blob.recommendationId);
+        router.push(`/content/photo?${qs.toString()}`);
       }
     },
     onError: (e) => toast.error(e.message),
@@ -373,8 +387,11 @@ export default function TrendsPage() {
   };
 
   const isPageLoading = feed.isLoading || globalFeed.isLoading;
+  const agentOpen = useTrendsAgentStore((s) => s.isOpen);
+  const toggleAgentPanel = useTrendsAgentStore((s) => s.toggleOpen);
 
   return (
+    <TrendsAgentPanelWrapper influencerId={selectedInfluencerId || undefined}>
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
@@ -385,18 +402,32 @@ export default function TrendsPage() {
       <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="mb-1 flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-500">
-              <TrendingUp className="h-5 w-5 text-white" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card">
+              <TrendingUp className="h-5 w-5 text-primary" />
             </div>
-            <h1 className="text-2xl font-bold text-white">{t("title")}</h1>
-            <Badge variant="outline" className="ml-1 border-emerald-500/40 text-emerald-300">
+            <h1 className="text-2xl font-bold text-foreground">{t("title")}</h1>
+            <Badge variant="outline" className="ml-1 border-border text-muted-foreground">
               {t("beta")}
             </Badge>
           </div>
-          <p className="text-sm text-slate-400">{t("subtitle")}</p>
+          <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={toggleAgentPanel}
+            aria-expanded={agentOpen}
+            className={cn(
+              agentOpen
+                ? "border-primary/40 bg-primary/10 text-foreground"
+                : "border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+            )}
+          >
+            <Sparkles className="h-4 w-4" />
+            {t("agentToggle")}
+          </Button>
           <Select
             value={selectedInfluencerId}
             onValueChange={(v) => setSelectedInfluencerId(v)}
@@ -454,11 +485,11 @@ export default function TrendsPage() {
 
       {/* Plan lock banner */}
       {planLocked && (
-        <div className="flex items-start gap-3 rounded-xl border border-violet-500/30 bg-violet-500/10 p-4 text-sm text-violet-200">
+        <div className="flex items-start gap-3 rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
           <Lock className="mt-0.5 h-5 w-5 shrink-0" />
           <div className="flex-1">
             <p className="font-medium">{t("planLockedTitle", { plan: planName })}</p>
-            <p className="text-violet-300/80">{t("planLockedHint")}</p>
+            <p className="text-muted-foreground/80">{t("planLockedHint")}</p>
           </div>
           <Button asChild size="sm" variant="outline">
             <Link href="/billing">{t("upgradeCta")}</Link>
@@ -713,5 +744,6 @@ export default function TrendsPage() {
         </>
       )}
     </motion.div>
+    </TrendsAgentPanelWrapper>
   );
 }

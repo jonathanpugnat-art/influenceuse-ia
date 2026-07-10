@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyStudioLook } from "@/lib/photo-studio-looks";
-import { validatePhotoIntent } from "@/lib/photo-intent-validation";
+import { validatePhotoIntent, resolveEffectivePhotoContentMode } from "@/lib/photo-intent-validation";
 
 describe("validatePhotoIntent", () => {
   it("warns when suggestive outfit is used in Social mode", () => {
@@ -30,6 +30,30 @@ describe("validatePhotoIntent", () => {
       outfit: "",
     });
     expect(issues.some((i) => i.code === "missing_outfit")).toBe(true);
+  });
+});
+
+describe("resolveEffectivePhotoContentMode", () => {
+  it("auto-escalates suggestive Social to Premium when plan allows", () => {
+    const result = resolveEffectivePhotoContentMode({
+      contentMode: "SFW",
+      sceneDescription: "bedroom boudoir",
+      outfit: "lingerie dentelle",
+      hasNsfwPlan: true,
+    });
+    expect(result.contentMode).toBe("NSFW");
+    expect(result.laneEscalated).toBe(true);
+  });
+
+  it("keeps Social when scene is not suggestive", () => {
+    const result = resolveEffectivePhotoContentMode({
+      contentMode: "SFW",
+      sceneDescription: "street style Paris",
+      outfit: "blazer and jeans",
+      hasNsfwPlan: true,
+    });
+    expect(result.contentMode).toBe("SFW");
+    expect(result.laneEscalated).toBe(false);
   });
 });
 

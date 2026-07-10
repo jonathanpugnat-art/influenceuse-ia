@@ -17,6 +17,7 @@ import { useAgent } from "@/hooks/use-agent";
 import { useCalendarAgentStore } from "@/hooks/use-calendar-agent-store";
 import { CREDIT_COSTS } from "@/lib/constants";
 import { trpc } from "@/lib/trpc";
+import { useInfluencers } from "@/hooks/use-influencers";
 import { cn } from "@/lib/utils";
 
 export function CalendarAgentPanelWrapper({
@@ -33,10 +34,7 @@ export function CalendarAgentPanelWrapper({
   const [influencerId, setInfluencerId] = useState("");
   const executedPlanKeyRef = useRef<string | null>(null);
 
-  const { data: influencersData } = trpc.influencer.getAll.useQuery(
-    { limit: 50 },
-    { placeholderData: (prev) => prev }
-  );
+  const { data: influencersData } = useInfluencers({ limit: 50 }, { placeholderData: (prev) => prev });
   const influencers = influencersData?.influencers ?? [];
   const activeInfluencerId = filterInfluencerId ?? influencerId;
 

@@ -31,10 +31,12 @@ import {
   lookLabel,
   type PhotoAgentTurnOutput,
 } from "@/lib/photo-studio-agent";
+import { viralBriefFromTrendPick, type TrendTopPick } from "@/lib/viral-brief";
 import { type InfluencerGender } from "@/lib/photo-niche-defaults";
 import { hasUserSceneDescription } from "@/lib/photo-scene-user";
 import { CREDIT_COSTS } from "@/lib/constants";
 import { trpc } from "@/lib/trpc";
+import { useInfluencers } from "@/hooks/use-influencers";
 import { cn } from "@/lib/utils";
 import {
   ContentLanePicker,
@@ -201,7 +203,7 @@ function UserBubble({ text }: { text: string }) {
 export function PhotoStudioAgentPanel() {
   const t = useTranslations("content");
   const locale = useLocale() as "fr" | "en";
-  const { params, updateParams, requestGenerate, isGenerating } =
+  const { params, updateParams, requestGenerate, isGenerating, applyViralBrief } =
     usePhotoCreator();
 
   const [messages, setMessages] = useState<UiMessage[]>([]);
@@ -213,10 +215,13 @@ export function PhotoStudioAgentPanel() {
 
   const chatMutation = trpc.agent.chatTurn.useMutation();
 
-  const { data: influencersData } = trpc.influencer.getAll.useQuery(
-    { limit: 50 },
-    { placeholderData: (prev) => prev }
+  const { data: topTrendsData } = trpc.trends.getTopForInfluencer.useQuery(
+    { influencerId: params.influencerId, limit: 3 },
+    { enabled: Boolean(params.influencerId) }
   );
+  const topTrends = topTrendsData?.items ?? [];
+
+  const { data: influencersData } = useInfluencers({ limit: 50 }, { placeholderData: (prev) => prev });
   const influencers = influencersData?.influencers ?? [];
   const selected = influencers.find((i) => i.id === params.influencerId);
   const gender = (selected?.gender as InfluencerGender | undefined) ?? "female";
@@ -286,6 +291,7 @@ export function PhotoStudioAgentPanel() {
       userMessage?: string;
       selectedLookId?: string;
       selectedOutfit?: string;
+      selectedTrendId?: string;
     }) => {
       if (!hasInfluencer) {
         toast.error(t("selectInfluencerFirst"));
@@ -305,6 +311,7 @@ export function PhotoStudioAgentPanel() {
             selectedOutfit: opts.selectedOutfit,
             contentMode: params.contentMode,
             userMessage: opts.userMessage,
+            selectedTrendId: opts.selectedTrendId,
           },
         });
         const photoResult = result.photoAgentResult;
@@ -344,6 +351,17 @@ export function PhotoStudioAgentPanel() {
     setMessages((prev) => [...prev, { id: newId(), role: "user", text }]);
     setInput("");
     await runAgentTurn({ userMessage: text });
+  };
+
+  const handlePickTrend = async (pick: TrendTopPick) => {
+    if (chatMutation.isPending || !params.influencerId) return;
+    const brief = viralBriefFromTrendPick(pick, "studio_agent");
+    applyViralBrief(brief, params.influencerId);
+    setMessages((prev) => [
+      ...prev,
+      { id: newId(), role: "user", text: pick.title },
+    ]);
+    await runAgentTurn({ selectedTrendId: pick.id });
   };
 
   const handlePickLook = async (lookId: string) => {
@@ -406,7 +424,7 @@ export function PhotoStudioAgentPanel() {
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden border-r border-neutral-800/60 bg-neutral-950/40">
       {/* Zone 1 — Influencer (~120px, no scroll) */}
-      <div className="flex h-[120px] shrink-0 flex-col justify-center gap-2 overflow-hidden border-b border-neutral-800/60 px-4">
+      <div className="flex min-h-[120px] shrink-0 flex-col justify-center gap-2 overflow-hidden border-b border-neutral-800/60 px-4 py-2">
         <div className="flex items-center justify-between gap-2">
           <p className="truncate text-sm font-semibold text-white">{t("studioTitle")}</p>
           <div className="flex items-center gap-2">
@@ -446,6 +464,32 @@ export function PhotoStudioAgentPanel() {
 
         {hasInfluencer ? (
           <ContentLanePicker variant="studio" showSceneFirst={false} />
+        ) : null}
+
+        {hasInfluencer && topTrends.length > 0 ? (
+          <div className="space-y-1">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-500">
+              {t("studioTrendsTitle")}
+            </p>
+            <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-thin">
+              {topTrends.map((trend) => (
+                <button
+                  key={trend.id}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void handlePickTrend(trend)}
+                  className={cn(
+                    "shrink-0 rounded-full border px-2.5 py-1 text-[10px] transition-colors",
+                    params.trendItemId === trend.id
+                      ? "border-rose-400/60 bg-rose-500/15 text-rose-100"
+                      : "border-neutral-700 bg-neutral-900/80 text-neutral-300 hover:border-rose-400/40"
+                  )}
+                >
+                  {trend.title.length > 36 ? `${trend.title.slice(0, 34)}…` : trend.title}
+                </button>
+              ))}
+            </div>
+          </div>
         ) : null}
       </div>
 
@@ -530,6 +574,11 @@ export function PhotoStudioAgentPanel() {
             <p className="text-[10px] font-medium uppercase tracking-wide text-rose-300/90">
               {t("agentBriefTitle")}
             </p>
+            {params.trendContext?.title ? (
+              <p className="mt-1 text-[10px] text-amber-200/90">
+                {t("studioTrendInspired", { title: params.trendContext.title })}
+              </p>
+            ) : null}
 
             {showBrief ? (
               <>

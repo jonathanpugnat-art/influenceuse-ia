@@ -90,6 +90,10 @@ export interface TrendForPrompt {
     outfit: string;
     mood: string;
     hook: string;
+    lighting?: string;
+    cameraStyle?: string;
+    inspirationNotes?: string;
+    customPrompt?: string;
     videoType?: string;
     reelStoryboard?: { startSec: number; endSec: number; visual: string }[];
     confidence: string;
@@ -97,11 +101,13 @@ export interface TrendForPrompt {
   };
 }
 
+export const TREND_PERSONALIZATION_MODEL_DEFAULT = "claude-haiku-4-5-20251001";
+
 const TREND_JSON_SCHEMA_DESCRIPTION = `Return STRICT JSON. The output is an array, one object per input trend, in the same order:
 [
   {
     "trendId": string,                  // must echo the input trend id
-    "hook": string,                     // <= 90 chars, scroll-stopping, in the influencer's voice
+    "hook": string,                     // <= 90 chars, scroll-stopping viral angle (pattern interrupt / POV / contrast) in the influencer's voice — not a generic caption
     "concept": string,                  // 1-2 sentences describing the visual content
     "type": "PHOTO" | "REEL" | "CAROUSEL",
     "platform": "INSTAGRAM" | "TIKTOK" | "ONLYFANS",
@@ -148,13 +154,15 @@ export function buildTrendPersonalizationPrompt(
     `6. Use ONLY values from the allowed enums for type / platform / scene / pose / expression.`,
     `7. When the trend signal is sparse (no description, no hashtags), set "confidence" to "low" and write a generic, niche-aware concept. Cite "trend.title" in citations and acknowledge in "concept" that this is a generic interpretation inspired by the trend.`,
     `8. Each citation MUST reference an input field that was actually present (e.g. you cannot cite "trend.soundName" if it was empty).`,
+    `9. The hook MUST encode a concrete viral angle: POV, before/after, "wait for it", relatable micro-moment, or a niche-specific twist — never a bland description of the scene.`,
+    `10. When \`formatBrief\` is present, weave mood, lighting, cameraStyle, and inspirationNotes into customPrompt (English). Map sceneDescription to the closest allowed scene enum.`,
     ``,
     TREND_JSON_SCHEMA_DESCRIPTION,
   ].join("\n");
 
   const userPrompt = [
     `Here are ${trends.length} trend(s). For each one, produce one recommendation object. Output the JSON array now, in the same order as the input, and nothing else.`,
-    `When \`formatBrief\` is present, treat it as the primary visual source: reuse sceneDescription in customPrompt (English), align pose/outfit/type with it. Do NOT copy real people.`,
+    `When \`formatBrief\` is present, treat it as the primary visual source: reuse sceneDescription, mood, lighting, and cameraStyle in customPrompt (English), align pose/outfit/expression/type with it. Borrow format pacing from inspirationNotes when useful. Do NOT copy real people.`,
     ``,
     `Trends:`,
     JSON.stringify(trends, null, 2),

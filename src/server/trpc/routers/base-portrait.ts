@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import { db } from "@/server/db";
+import { recommendBasePortraitIds } from "@/server/services/base-portrait-agent.service";
 
 const nicheValues = [
   "FASHION",
@@ -45,6 +46,7 @@ export const basePortraitRouter = createTRPCRouter({
         includeNsfw: z.boolean().default(false),
         /** Aura brief — used to rank/highlight the most on-brand bases. */
         brief: z.string().max(1000).optional(),
+        locale: z.enum(["fr", "en"]).optional(),
         limit: z.number().int().min(1).max(60).default(24),
       })
     )
@@ -82,12 +84,38 @@ export const basePortraitRouter = createTRPCRouter({
         b.score !== a.score ? b.score - a.score : a.index - b.index
       );
 
-      const recommendedIds = new Set(
+      let recommendedIds = new Set(
         scored
           .filter((s) => s.score > 0)
           .slice(0, RECOMMENDED_COUNT)
           .map((s) => s.row.id)
       );
+
+      let auraRationale: string | undefined;
+
+      if (input.brief?.trim() && rows.length > 0) {
+        try {
+          const llm = await recommendBasePortraitIds({
+            locale: input.locale ?? "fr",
+            niche: input.niche,
+            gender: input.gender,
+            brief: input.brief.trim(),
+            portraits: rows.map((row) => ({
+              id: row.id,
+              ethnicity: row.ethnicity,
+              bodyType: row.bodyType,
+              isNsfw: row.isNsfw,
+              tags: row.tags,
+            })),
+          });
+          if (llm.recommendedIds.length > 0) {
+            recommendedIds = new Set(llm.recommendedIds.slice(0, RECOMMENDED_COUNT));
+            auraRationale = llm.rationale;
+          }
+        } catch (error) {
+          console.warn("[basePortrait.list] LLM ranking failed:", error);
+        }
+      }
 
       return {
         portraits: scored.map(({ row }) => ({
@@ -100,6 +128,7 @@ export const basePortraitRouter = createTRPCRouter({
           tags: row.tags,
           recommended: recommendedIds.has(row.id),
         })),
+        auraRationale,
       };
     }),
 });

@@ -16,9 +16,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { trpc } from "@/lib/trpc";
+import { useCurrentPlan } from "@/hooks/use-current-plan";
 import { CREDIT_COSTS } from "@/lib/constants";
 import { defaultWizardAppearanceV2 } from "@/lib/appearance-v2";
 import { WizardAppearanceV2Panel } from "@/components/influencer/wizard-appearance-v2-panel";
+import { InfluencerLoraPanel } from "@/components/influencer/influencer-lora-panel";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -69,7 +71,7 @@ export default function EditInfluencerPage({
   >(null);
 
   const { data: influencer, isLoading } = trpc.influencer.getById.useQuery({ id });
-  const { data: creditsData } = trpc.billing.getCurrentPlan.useQuery();
+  const { data: creditsData } = useCurrentPlan();
   const utils = trpc.useUtils();
 
   const updateMutation = trpc.influencer.update.useMutation({
@@ -472,6 +474,8 @@ export default function EditInfluencerPage({
                 </Button>
               </div>
             )}
+
+            <InfluencerLoraPanel influencerId={id} isNsfw={influencer.isNsfw} />
 
             <p className="text-xs text-slate-500">
               Les réseaux sociaux se gèrent sur la fiche de l&apos;influenceuse.

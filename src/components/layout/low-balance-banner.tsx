@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { AlertTriangle, X, Zap } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { useCurrentPlan } from "@/hooks/use-current-plan";
 import { cn } from "@/lib/utils";
 import { isBetaFreeMode } from "@/lib/payments";
 
@@ -19,7 +20,7 @@ const SESSION_KEY = "low_balance_dismissed_v1";
  */
 export function LowBalanceBanner() {
   const t = useTranslations("layout.lowBalance");
-  const { data } = trpc.billing.getCurrentPlan.useQuery();
+  const { data } = useCurrentPlan();
   const [dismissed, setDismissed] = useState(() => {
     if (typeof window === "undefined") return false;
     return sessionStorage.getItem(SESSION_KEY) === "1";

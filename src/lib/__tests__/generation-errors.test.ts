@@ -4,7 +4,8 @@ import {
   isContentSafetyFilterError,
   isReplicateAccessibleImageUrl,
   LOCALHOST_REF_MESSAGE,
-  NSFW_USER_MESSAGE,
+  PREMIUM_GENERATION_USER_MESSAGE,
+  SOCIAL_SAFETY_USER_MESSAGE,
 } from "@/lib/generation-errors";
 
 describe("isContentSafetyFilterError", () => {
@@ -18,8 +19,8 @@ describe("isContentSafetyFilterError", () => {
     ).toBe(true);
   });
 
-  it("detects French user message constant", () => {
-    expect(isContentSafetyFilterError(new Error(NSFW_USER_MESSAGE))).toBe(true);
+  it("detects social safety prefix", () => {
+    expect(isContentSafetyFilterError(new Error("[social-safety]"))).toBe(true);
   });
 });
 
@@ -30,18 +31,43 @@ describe("formatGenerationErrorForUser", () => {
     );
   });
 
-  it("maps missing Replicate token", () => {
+  it("maps explicit missing token errors", () => {
     expect(
-      formatGenerationErrorForUser("REPLICATE_API_TOKEN is not configured")
-    ).toContain("Replicate");
+      formatGenerationErrorForUser("REPLICATE_API_TOKEN is not configured. Set it in your .env file.")
+    ).toContain("REPLICATE_API_TOKEN manquant");
   });
 
-  it("maps E005 to French safety message", () => {
+  it("does not claim token missing when premium model fails", () => {
     expect(
       formatGenerationErrorForUser(
-        "Prediction failed Error: flagged as sensitive (E005)"
+        "[premium-gen] Modèle Premium introuvable sur Replicate (lucataco/flux-dev-uncensored, HTTP 404).",
+        { contentMode: "NSFW" }
       )
-    ).toBe(NSFW_USER_MESSAGE);
+    ).toContain("Modèle Premium introuvable");
+  });
+
+  it("maps E005 to social safety message on SFW lane", () => {
+    expect(
+      formatGenerationErrorForUser(
+        "Prediction failed Error: flagged as sensitive (E005)",
+        { contentMode: "SFW" }
+      )
+    ).toBe(SOCIAL_SAFETY_USER_MESSAGE);
+  });
+
+  it("maps E005 to premium message on NSFW lane", () => {
+    expect(
+      formatGenerationErrorForUser(
+        "Prediction failed Error: flagged as sensitive (E005)",
+        { contentMode: "NSFW" }
+      )
+    ).toBe(PREMIUM_GENERATION_USER_MESSAGE);
+  });
+
+  it("maps premium-gen prefix", () => {
+    expect(
+      formatGenerationErrorForUser("[premium-gen] Model timeout on uncensored flux")
+    ).toContain("Model timeout");
   });
 
   it("maps rate limits", () => {

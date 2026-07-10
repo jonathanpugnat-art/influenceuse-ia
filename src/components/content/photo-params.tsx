@@ -51,6 +51,8 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { trpc } from "@/lib/trpc";
+import { useInfluencers } from "@/hooks/use-influencers";
+import { useCurrentPlan } from "@/hooks/use-current-plan";
 import { usePhotoCreator } from "@/hooks/use-photo-creator";
 import { PLANS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
@@ -103,7 +105,7 @@ export function PhotoParams({ embeddedExpert = false }: { embeddedExpert?: boole
   const { params, updateParams } = usePhotoCreator();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
-  const planQuery = trpc.billing.getCurrentPlan.useQuery();
+  const planQuery = useCurrentPlan();
   const canSceneFirst = planQuery.data
     ? PLANS[planQuery.data.plan as keyof typeof PLANS].hasSceneFirstPipeline
     : false;
@@ -165,10 +167,7 @@ export function PhotoParams({ embeddedExpert = false }: { embeddedExpert?: boole
     [t]
   );
 
-  const { data: influencersData } = trpc.influencer.getAll.useQuery(
-    { limit: 50 },
-    { placeholderData: (prev) => prev }
-  );
+  const { data: influencersData } = useInfluencers({ limit: 50 }, { placeholderData: (prev) => prev });
 
   const influencers = influencersData?.influencers ?? [];
   const selectedInfluencer = influencers.find((i) => i.id === params.influencerId);

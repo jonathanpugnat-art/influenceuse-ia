@@ -46,6 +46,7 @@ const t = initTRPC.context<Context>().create({
 });
 
 export const createTRPCRouter = t.router;
+export { mergeRouters } from "@trpc/server/unstable-core-do-not-import";
 export const createCallerFactory = t.createCallerFactory;
 export const publicProcedure = t.procedure;
 
