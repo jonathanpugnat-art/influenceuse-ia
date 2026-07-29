@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { WizardBaseGallery } from "@/components/influencer/wizard-base-gallery";
@@ -101,7 +102,7 @@ export function WizardStepAppearance({
           onClick={onPrev}
           className={wizardSecondaryButtonClass}
         >
-          ← {t("back")}
+          <ArrowLeft className="h-4 w-4" /> {t("back")}
         </button>
         <button
           type="button"
@@ -109,7 +110,8 @@ export function WizardStepAppearance({
           disabled={!selectedPortraitUrl}
           className={wizardPrimaryButtonClass}
         >
-          {t("next")} →
+          {t("next")}
+          <ArrowRight className="h-4 w-4" />
         </button>
       </div>
     </div>

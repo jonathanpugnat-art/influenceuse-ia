@@ -19,19 +19,15 @@
 //   - NSFW (Premium)                 → Together FLUX → self-host → Flux Dev Uncensored
 //                                      + Sightengine post-filter (recommended prod)
 //   - Wizard base portrait         → Nano Banana (Flux 1.1 Pro fallback)
-// Beta period (2026-05): the FREE tier is intentionally generous (500 credits
-// instead of 50) so early adopters can fully exercise the app — generate
-// multiple influencers, run several content batches — without ever hitting a
-// paywall during the closed-bêta window. The `creditsLimit` we persist on
-// `User.creditsLimit` keeps reading from this constant, so existing FREE
-// users automatically get the bump on their next sign-in (no migration).
-// Drop back to 50 when the beta ends and the paid plans are open.
+// Paid beta open: FREE is a teaser only (50 credits). Paying users start at
+// Creator (29 €) or Pro (79 €). Existing FREE users pick up the new limit on
+// next sign-in via `User.creditsLimit` sync — no migration required.
 export const PLANS = {
   FREE: {
     name: "Free",
     price: 0,
     maxInfluencers: 1,
-    credits: 500,
+    credits: 50,
     hasVideo: false,
     hasSceneFirstPipeline: false,
     hasNsfw: false,

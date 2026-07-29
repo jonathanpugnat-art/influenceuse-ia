@@ -17,13 +17,15 @@ export const generateHashtagsInputSchema = z.object({
 
 export const generateContentPlanInputSchema = z.object({
   influencerId: z.string(),
-  days: z.number().int().min(1).max(14).default(7),
+  days: z.number().int().min(1).max(30).default(7),
   postsPerDay: z.number().int().min(1).max(5).default(2),
   platforms: z.array(z.enum(platformValues)).min(1),
   language: z.enum(["fr", "en"]).default("fr"),
   goals: z.string().max(200).optional(),
   startDate: z.string().datetime().optional(),
   postingHours: z.array(z.number().int().min(0).max(23)).max(5).optional(),
+  /** Ground posts on scraped weekly formats (Mon/Wed/Fri × weeks). Default on for ≥7d. */
+  useTrendAnchors: z.boolean().optional(),
 });
 
 export const generateIdeasInputSchema = z.object({

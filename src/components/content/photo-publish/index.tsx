@@ -19,20 +19,20 @@ export function PhotoPublish({ mobileSheet = false }: { mobileSheet?: boolean })
       initial={{ x: 50, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
       className={cn(
-        "h-full overflow-y-auto bg-slate-900/30 p-4 scrollbar-thin",
-        mobileSheet ? "" : "border-l border-slate-800/50"
+        "h-full overflow-y-auto bg-card/30 p-4 scrollbar-thin",
+        mobileSheet ? "" : "border-l border-border/50"
       )}
     >
       {mobileSheet && (
         <div
-          className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-600"
+          className="mx-auto mb-3 h-1 w-10 rounded-full bg-muted-foreground/40"
           aria-hidden
         />
       )}
-      <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-slate-500">
+      <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
         {t("publishPanelTitle")}
       </h2>
-      <p className="mb-4 text-[11px] leading-snug text-slate-600">
+      <p className="mb-4 text-[11px] leading-snug text-muted-foreground/70">
         {t("publishPanelStudioHint")}
       </p>
 

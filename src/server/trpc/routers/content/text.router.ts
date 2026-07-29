@@ -11,6 +11,12 @@ import {
 import { checkCredits } from "@/server/services/credits.service";
 import { getDbUser } from "@/server/helpers/get-db-user";
 import {
+  mapTrendItemsForAnalysis,
+  proposeTrendAnchorsForPlanRange,
+} from "@/server/services/trends-agent.service";
+import { getFeedForInfluencer } from "@/server/services/trends.service";
+import type { Plan } from "@/generated/prisma/client";
+import {
   generateCaptionInputSchema,
   generateHashtagsInputSchema,
   generateContentPlanInputSchema,
@@ -80,6 +86,39 @@ export const contentTextRouter = createTRPCRouter({
         });
       }
 
+      const start = input.startDate ? new Date(input.startDate) : new Date();
+      const useTrendAnchors =
+        input.useTrendAnchors ?? input.days >= 7;
+
+      let trendAnchors:
+        | Awaited<ReturnType<typeof proposeTrendAnchorsForPlanRange>>
+        | undefined;
+      if (useTrendAnchors) {
+        try {
+          const { items } = await getFeedForInfluencer(influencer, {
+            limit: 24,
+            userPlan: user.plan as Plan,
+            userLocale: user.locale,
+          });
+          trendAnchors = await proposeTrendAnchorsForPlanRange(
+            influencer,
+            mapTrendItemsForAnalysis(items),
+            {
+              language: input.language,
+              planStart: start,
+              days: input.days,
+              maxWeeks: Math.min(5, Math.ceil(input.days / 7)),
+            }
+          );
+        } catch (err) {
+          console.warn(
+            "[content-plan] trend anchors failed, continuing without:",
+            err
+          );
+          trendAnchors = [];
+        }
+      }
+
       const plan = await genContentPlan(user.id, {
         influencerName: influencer.name,
         influencerGender:
@@ -93,22 +132,37 @@ export const contentTextRouter = createTRPCRouter({
         postsPerDay: input.postsPerDay,
         goals: input.goals,
         postingHours: input.postingHours,
+        trendAnchors: trendAnchors?.map((a) => ({
+          trendId: a.trendId,
+          dayIndex: a.dayIndex,
+          dayHint: a.dayHint,
+          date: a.date,
+          title: a.title,
+          whyItWorks: a.whyItWorks,
+          suggestedAngle: a.suggestedAngle,
+          preferredStudio: a.preferredStudio,
+        })),
       });
 
-      const start = input.startDate ? new Date(input.startDate) : new Date();
       const hours =
         input.postingHours && input.postingHours.length > 0
           ? input.postingHours
           : [10, 18, 21].slice(0, input.postsPerDay);
 
+      const anchorCount = trendAnchors?.length ?? 0;
       const batch = await db.contentBatch.create({
         data: {
           influencerId: influencer.id,
           name:
-            `${input.days}d × ${input.postsPerDay}/d — ` +
-            new Date().toISOString().slice(0, 10),
+            `${input.days}d × ${input.postsPerDay}/d` +
+            (anchorCount > 0 ? ` · ${anchorCount} trends` : "") +
+            ` — ${new Date().toISOString().slice(0, 10)}`,
         },
       });
+
+      const validTrendIds = new Set(
+        (trendAnchors ?? []).map((a) => a.trendId)
+      );
 
       const created = await Promise.all(
         plan.posts.slice(0, totalPosts).map((post) => {
@@ -118,6 +172,10 @@ export const contentTextRouter = createTRPCRouter({
           const scheduledAt = new Date(start);
           scheduledAt.setDate(scheduledAt.getDate() + day);
           scheduledAt.setHours(hour, 0, 0, 0);
+          const trendItemId =
+            post.trendId && validTrendIds.has(post.trendId)
+              ? post.trendId
+              : undefined;
 
           return db.content.create({
             data: {
@@ -144,6 +202,9 @@ export const contentTextRouter = createTRPCRouter({
                 cta: post.cta,
                 dayIndex: day,
                 slotIndex: slot,
+                trendItemId,
+                // S5: hold image generation until lot validation.
+                approvedForBatch: false,
               } as object,
             },
             select: { id: true, scheduledAt: true, type: true },
@@ -156,6 +217,7 @@ export const contentTextRouter = createTRPCRouter({
         cost,
         summary: plan.summary,
         postsCreated: created.length,
+        trendAnchorsUsed: anchorCount,
         posts: created,
       };
     }),

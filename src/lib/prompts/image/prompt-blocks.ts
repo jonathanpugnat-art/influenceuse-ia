@@ -124,7 +124,7 @@ export function buildSubjectBlock(input: PromptBuildInput): string {
   }
   parts.push(personParts.join(", "));
 
-  if (input.appearanceVariations) {
+  if (input.appearanceVariations && !input.useReferenceFace) {
     parts.push(
       `facial details: ${renderAppearanceVariations(input.appearanceVariations)}`
     );

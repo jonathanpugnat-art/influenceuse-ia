@@ -57,18 +57,18 @@ export function AppearanceAccordionSection({
         )}
       >
         <span className="flex min-w-0 items-center gap-2.5">
-          <Icon className="h-4 w-4 shrink-0 text-violet-300" />
-          <span className="text-sm font-medium text-white">{title}</span>
+          <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span className="text-sm font-medium text-foreground">{title}</span>
         </span>
         <span className="flex min-w-0 items-center gap-2">
           {summary && !open && (
-            <span className="max-w-[45vw] truncate text-xs text-slate-500 lg:max-w-[180px]">
+            <span className="max-w-[45vw] truncate text-xs text-muted-foreground lg:max-w-[180px]">
               {summary}
             </span>
           )}
           <ChevronDown
             className={cn(
-              "h-4 w-4 shrink-0 text-slate-500 transition-transform duration-200",
+              "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
               open && "rotate-180"
             )}
           />

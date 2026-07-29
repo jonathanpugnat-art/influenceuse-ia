@@ -26,6 +26,7 @@ import {
   looksLikeProviderRefusal,
   type AuraContentLane,
 } from "@/lib/content-safety/aura-content-policy";
+import { extractJsonPayload } from "@/lib/llm-json";
 import {
   resolveAdultTextModel,
   resolveAgentTextBackend,
@@ -266,54 +267,53 @@ export async function callAgentJsonLLM<T>(opts: {
     { role: "user", content: userPrompt },
   ];
 
+  let activeLane: AuraContentLane = contentLane;
+  let lastRawText = "";
+
   const tryParse = (text: string): T | null => {
     if (looksLikeProviderRefusal(text)) return null;
-    const cleaned = text
-      .trim()
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/```\s*$/i, "")
-      .trim();
+    const payload = extractJsonPayload(text);
+    if (payload === null) return null;
     try {
-      return validate(JSON.parse(cleaned));
+      return validate(payload);
     } catch {
       return null;
     }
   };
 
-  const runPass = async (repair?: ChatMessage[]) => {
-    const messages = repair ?? baseMessages;
+  const runPass = async (
+    messages: ChatMessage[],
+    lane: AuraContentLane,
+    isRepair = false
+  ): Promise<T | null> => {
     const text = await callAgentCompletion(messages, {
-      contentLane,
+      contentLane: lane,
       maxTokens,
-      temperature: repair ? Math.min(temperature, 0.35) : temperature,
-      anthropicModel: opts.anthropicModel,
-      cacheSystemPrompt: opts.cacheSystemPrompt,
+      temperature: isRepair ? Math.min(temperature, 0.35) : temperature,
+      // Adult backends ignore anthropicModel; only pass Haiku/Sonnet on SFW.
+      anthropicModel: lane === "sfw" ? opts.anthropicModel : undefined,
+      cacheSystemPrompt: lane === "sfw" ? opts.cacheSystemPrompt : false,
     });
-    return tryParse(text) ?? text;
+    lastRawText = text;
+    return tryParse(text);
   };
 
-  const first = await runPass();
-  if (first !== null && typeof first !== "string") return first;
+  const firstParsed = await runPass(baseMessages, contentLane);
+  if (firstParsed !== null) return firstParsed;
 
-  if (typeof first === "string" && contentLane === "sfw") {
+  // Refusal or bad JSON on SFW → uncensored backend, then repair stays there.
+  if (contentLane === "sfw") {
     console.warn(
-      "[callAgentJsonLLM] SFW provider refusal detected, retrying on uncensored backend…"
+      "[callAgentJsonLLM] SFW parse/refusal failed, retrying on uncensored backend…"
     );
-    const fallbackText = await callAgentCompletion(baseMessages, {
-      contentLane: "adult",
-      maxTokens,
-      temperature,
-    });
-    const fallbackParsed = tryParse(fallbackText);
+    const fallbackParsed = await runPass(baseMessages, "adult");
     if (fallbackParsed !== null) return fallbackParsed;
+    activeLane = "adult";
   }
 
   const repair: ChatMessage[] = [
     ...baseMessages,
-    {
-      role: "assistant",
-      content: typeof first === "string" ? first : "",
-    },
+    { role: "assistant", content: lastRawText },
     {
       role: "user",
       content:
@@ -322,8 +322,8 @@ export async function callAgentJsonLLM<T>(opts: {
     },
   ];
 
-  const second = await runPass(repair);
-  if (second !== null && typeof second !== "string") return second;
+  const secondParsed = await runPass(repair, activeLane, true);
+  if (secondParsed !== null) return secondParsed;
 
   throw new Error("Agent LLM returned invalid JSON after repair pass.");
 }
@@ -615,15 +615,10 @@ export async function callJsonLLM<T>(opts: {
   ];
 
   const tryParse = (text: string): T | null => {
-    const cleaned = text
-      .trim()
-      // Strip code fences if model added them despite instructions.
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/```\s*$/i, "")
-      .trim();
+    const payload = extractJsonPayload(text);
+    if (payload === null) return null;
     try {
-      const json = JSON.parse(cleaned);
-      return validate(json);
+      return validate(payload);
     } catch {
       return null;
     }
@@ -889,7 +884,7 @@ const PLATFORM_ENUM = z.enum(["INSTAGRAM", "TIKTOK", "ONLYFANS"]);
 const CONTENT_TYPE_ENUM = z.enum(["PHOTO", "REEL", "CAROUSEL"]);
 
 const contentPlanPostSchema = z.object({
-  dayIndex: z.number().int().min(0).max(13),
+  dayIndex: z.number().int().min(0).max(29),
   slotIndex: z.number().int().min(0).max(9),
   platform: PLATFORM_ENUM,
   type: CONTENT_TYPE_ENUM,
@@ -903,6 +898,8 @@ const contentPlanPostSchema = z.object({
   caption: z.string().min(1).max(2000),
   hashtags: z.array(z.string()).max(40),
   cta: z.string().min(0).max(200),
+  /** Scraped trend id when the post is grounded on a TREND ANCHOR. */
+  trendId: z.string().nullish(),
 });
 
 const contentPlanSchema = z.object({
@@ -933,6 +930,16 @@ export async function generateContentPlan(
   ctx: ContentPlanContext
 ): Promise<ContentPlan> {
   const totalPosts = ctx.days * ctx.postsPerDay;
+  // contentPlanSchema caps posts at 70 and a single LLM call can't reliably
+  // emit more (output-token ceiling → truncated JSON → hard fail after
+  // repair). Reject upfront with an actionable message instead of failing
+  // after a long, doomed generation.
+  if (totalPosts > 70) {
+    throw new Error(
+      `Plan trop grand : ${ctx.days} jours × ${ctx.postsPerDay} posts/jour = ${totalPosts} posts (maximum 70 par plan). ` +
+        `Réduis le nombre de posts par jour ou génère le plan en deux fois.`
+    );
+  }
   const cost = +(CREDIT_COSTS.CONTENT_PLAN_PER_POST * totalPosts).toFixed(2);
   const hasCredits = await checkCredits(userId, cost);
   if (!hasCredits) {
@@ -949,7 +956,8 @@ export async function generateContentPlan(
   const plan = await callJsonLLM<ContentPlan>({
     systemPrompt,
     userPrompt,
-    maxTokens: 6000,
+    // 30-day plans need more room for structured JSON posts.
+    maxTokens: totalPosts > 20 ? 14000 : totalPosts > 10 ? 10000 : 6000,
     temperature: 0.7,
     repairInstruction: JSON_REPAIR_INSTRUCTION,
     validate: (raw) => contentPlanSchema.parse(raw),
@@ -961,7 +969,12 @@ export async function generateContentPlan(
     posts: plan.posts.slice(0, totalPosts),
   };
 
-  await deductCredits(userId, cost);
+  // Bill on posts actually delivered — a lazy model that returns 40/60
+  // posts must not charge for 60.
+  const billedCost = +(
+    CREDIT_COSTS.CONTENT_PLAN_PER_POST * trimmed.posts.length
+  ).toFixed(2);
+  await deductCredits(userId, billedCost);
   return trimmed;
 }
 

@@ -185,6 +185,9 @@ export function usePhotoGeneration(locale: "fr" | "en") {
   const sceneRecap = stripScenePropsSuffix(params.sceneDescription);
   const hasScene = hasUserSceneDescription(params.sceneDescription);
   const hasOutfit = Boolean(params.outfit.trim());
+  const hasTrendSource = Boolean(
+    params.recommendationId || params.trendItemId
+  );
 
   const intentWarnings: PhotoIntentIssue[] = validatePhotoIntent({
     contentMode: params.contentMode ?? "SFW",
@@ -199,11 +202,11 @@ export function usePhotoGeneration(locale: "fr" | "en") {
       toast.error(t("selectInfluencerFirst"));
       return;
     }
-    if (!params.outfit.trim()) {
+    if (!hasTrendSource && !params.outfit.trim()) {
       toast.error(t("studioOutfitEmpty"), { duration: 5000 });
       return;
     }
-    if (!hasScene) {
+    if (!hasTrendSource && !hasScene) {
       toast.error(t("studioSceneEmpty"), { duration: 5000 });
       return;
     }
@@ -233,11 +236,11 @@ export function usePhotoGeneration(locale: "fr" | "en") {
       toast.error(t("selectInfluencerFirst"));
       return;
     }
-    if (!params.outfit.trim()) {
+    if (!hasTrendSource && !params.outfit.trim()) {
       toast.error(t("studioOutfitEmpty"), { duration: 5000 });
       return;
     }
-    if (!hasScene) {
+    if (!hasTrendSource && !hasScene) {
       toast.error(t("studioSceneEmpty"), { duration: 5000 });
       return;
     }
@@ -273,7 +276,9 @@ export function usePhotoGeneration(locale: "fr" | "en") {
 
   const composeCost = params.numberOfImages * CREDIT_COSTS.PHOTO;
   const canGenerate =
-    !!params.influencerId && hasOutfit && hasScene && !isGenerating;
+    !!params.influencerId &&
+    !isGenerating &&
+    (hasTrendSource || (hasOutfit && hasScene));
   const hasFinalImages = generatedUrls.length > 0 && !isGenerating;
   const awaitingSceneApproval =
     useSceneFirst && Boolean(scenePlateUrl) && !hasFinalImages;

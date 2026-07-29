@@ -13,6 +13,7 @@ import {
   Plus,
   Filter,
   Search,
+  Calendar,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -38,6 +39,11 @@ import { useTrendsAgentStore } from "@/hooks/use-trends-agent-store";
 import { cn } from "@/lib/utils";
 import { usePhotoCreator } from "@/hooks/use-photo-creator";
 import { useReelCreator } from "@/hooks/use-reel-creator";
+import {
+  toIsoDateUtc,
+  weeklySlotDate,
+  type WeeklyDayHint,
+} from "@/lib/prompts/weekly-formats-prompts";
 
 type PlatformFilter = "ALL" | "TIKTOK" | "INSTAGRAM";
 type SortMode = "growth" | "fresh";
@@ -118,7 +124,7 @@ export default function TrendsPage() {
     { enabled: Boolean(selectedInfluencerId) }
   );
 
-  const analyzeQuery = trpc.agent.trends.analyze.useQuery(
+  const weeklyFormatsQuery = trpc.agent.trends.weeklyFormats.useQuery(
     {
       influencerId: selectedInfluencerId,
       platform: platform === "ALL" ? undefined : platform,
@@ -141,50 +147,24 @@ export default function TrendsPage() {
       utils.trends.getFeed.invalidate();
       utils.trends.getGlobalFeed.invalidate();
       utils.billing.getCurrentPlan.invalidate();
+      void utils.agent.trends.weeklyFormats.invalidate();
     },
     onError: (e) => toast.error(e.message),
   });
 
-  const personalizeOneMut = trpc.trends.personalizeOne.useMutation({
-    onSuccess: (_r, vars) => {
-      toast.success(t("personalizeOneSuccess"));
-      utils.trends.getFeed.invalidate();
-      utils.trends.getGlobalFeed.invalidate();
-      utils.billing.getCurrentPlan.invalidate();
-      setPersonalizingTrendId(null);
-      void vars;
-    },
-    onError: (e) => {
-      toast.error(e.message);
-      setPersonalizingTrendId(null);
-    },
-  });
-
-  const triggerInitialMut = trpc.trends.triggerInitialFetch.useMutation({
-    onSuccess: (r) => {
-      if (r.itemsCreated > 0) {
-        toast.success(
-          t("initialFetchSuccess", { count: r.itemsCreated.toString() })
-        );
-      } else {
-        toast.info(t("initialFetchSkipped"));
-      }
-      utils.trends.getFeed.invalidate();
-      utils.trends.getGlobalFeed.invalidate();
-      void utils.agent.trends.analyze.invalidate();
-    },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const dismissMut = trpc.trends.dismiss.useMutation({
-    onSuccess: () => {
-      utils.trends.getFeed.invalidate();
-      utils.trends.getGlobalFeed.invalidate();
-    },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const applyDestinationRef = useRef<"creator" | "calendar">("creator");
+  const applyDestinationRef = useRef<"creator" | "calendar" | "autoGenerate">(
+    "creator"
+  );
+  /** YYYY-MM-DD when routing to calendar from weekly formats. */
+  const pendingCalendarDateRef = useRef<string | null>(null);
+  const pendingGenerateAfterPersonalizeRef = useRef(false);
+  const pendingScheduleAfterPersonalizeRef = useRef(false);
+  const applyMutRef = useRef<{
+    mutate: (input: {
+      influencerId: string;
+      recommendationId: string;
+    }) => void;
+  } | null>(null);
 
   const applyMut = trpc.trends.applyToPhotoParams.useMutation({
     onSuccess: (blob) => {
@@ -227,23 +207,108 @@ export default function TrendsPage() {
         });
       }
       if (applyDestinationRef.current === "calendar") {
-        router.push(
-          `/calendar?influencer=${blob.influencerId}&schedule=1&fromTrend=1`
+        const qs = new URLSearchParams({
+          influencer: blob.influencerId,
+          schedule: "1",
+          fromTrend: "1",
+        });
+        const date = pendingCalendarDateRef.current;
+        pendingCalendarDateRef.current = null;
+        if (date) qs.set("date", date);
+        router.push(`/calendar?${qs.toString()}`);
+        toast.success(
+          date
+            ? t("scheduleFromTrendSuccessDated", { date })
+            : t("scheduleFromTrendSuccess")
         );
-        toast.success(t("scheduleFromTrendSuccess"));
         return;
       }
+      pendingCalendarDateRef.current = null;
       if (blob.target === "reel") {
         const qs = new URLSearchParams({ influencer: blob.influencerId });
         if (blob.trendItemId) qs.set("trendItemId", blob.trendItemId);
-        if (blob.recommendationId) qs.set("recommendationId", blob.recommendationId);
+        if (blob.recommendationId)
+          qs.set("recommendationId", blob.recommendationId);
         router.push(`/content/reel?${qs.toString()}`);
       } else {
         const qs = new URLSearchParams({ influencer: blob.influencerId });
         if (blob.trendItemId) qs.set("trendItemId", blob.trendItemId);
-        if (blob.recommendationId) qs.set("recommendationId", blob.recommendationId);
+        if (blob.recommendationId)
+          qs.set("recommendationId", blob.recommendationId);
+        if (applyDestinationRef.current === "autoGenerate") {
+          qs.set("autoGenerate", "1");
+          toast.success(t("generateFromTrendStarted"));
+        }
         router.push(`/content/photo?${qs.toString()}`);
       }
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  applyMutRef.current = applyMut;
+
+  const personalizeOneMut = trpc.trends.personalizeOne.useMutation({
+    onSuccess: (r) => {
+      toast.success(t("personalizeOneSuccess"));
+      utils.trends.getFeed.invalidate();
+      utils.trends.getGlobalFeed.invalidate();
+      utils.billing.getCurrentPlan.invalidate();
+      setPersonalizingTrendId(null);
+      if (
+        pendingScheduleAfterPersonalizeRef.current &&
+        r.recommendationId &&
+        selectedInfluencerId
+      ) {
+        pendingScheduleAfterPersonalizeRef.current = false;
+        pendingGenerateAfterPersonalizeRef.current = false;
+        applyDestinationRef.current = "calendar";
+        applyMutRef.current?.mutate({
+          influencerId: selectedInfluencerId,
+          recommendationId: r.recommendationId,
+        });
+        return;
+      }
+      if (
+        pendingGenerateAfterPersonalizeRef.current &&
+        r.recommendationId &&
+        selectedInfluencerId
+      ) {
+        pendingGenerateAfterPersonalizeRef.current = false;
+        applyDestinationRef.current = "autoGenerate";
+        applyMutRef.current?.mutate({
+          influencerId: selectedInfluencerId,
+          recommendationId: r.recommendationId,
+        });
+      }
+    },
+    onError: (e) => {
+      pendingGenerateAfterPersonalizeRef.current = false;
+      pendingScheduleAfterPersonalizeRef.current = false;
+      pendingCalendarDateRef.current = null;
+      toast.error(e.message);
+      setPersonalizingTrendId(null);
+    },
+  });
+
+  const triggerInitialMut = trpc.trends.triggerInitialFetch.useMutation({
+    onSuccess: (r) => {
+      if (r.itemsCreated > 0) {
+        toast.success(
+          t("initialFetchSuccess", { count: r.itemsCreated.toString() })
+        );
+      } else {
+        toast.info(t("initialFetchSkipped"));
+      }
+      utils.trends.getFeed.invalidate();
+      utils.trends.getGlobalFeed.invalidate();
+      void utils.agent.trends.weeklyFormats.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const dismissMut = trpc.trends.dismiss.useMutation({
+    onSuccess: () => {
+      utils.trends.getFeed.invalidate();
+      utils.trends.getGlobalFeed.invalidate();
     },
     onError: (e) => toast.error(e.message),
   });
@@ -268,12 +333,70 @@ export default function TrendsPage() {
   const onApply = (recommendationId: string) => {
     if (!selectedInfluencerId) return;
     applyDestinationRef.current = "creator";
+    pendingCalendarDateRef.current = null;
     applyMut.mutate({ influencerId: selectedInfluencerId, recommendationId });
   };
-  const onSchedule = (recommendationId: string) => {
+  const onSchedule = (
+    recommendationId: string,
+    opts?: { date?: string | null }
+  ) => {
     if (!selectedInfluencerId) return;
     applyDestinationRef.current = "calendar";
+    pendingCalendarDateRef.current = opts?.date ?? null;
     applyMut.mutate({ influencerId: selectedInfluencerId, recommendationId });
+  };
+
+  const onScheduleWeekly = async (
+    trendItemId: string,
+    recommendationId: string | null,
+    dayHint: WeeklyDayHint
+  ) => {
+    if (!selectedInfluencerId) return;
+
+    const weekStart = weeklyFormatsQuery.data?.weekStart;
+    const date = weekStart
+      ? toIsoDateUtc(weeklySlotDate(weekStart, dayHint))
+      : null;
+
+    applyDestinationRef.current = "calendar";
+    pendingCalendarDateRef.current = date;
+
+    if (recommendationId) {
+      applyMut.mutate({ influencerId: selectedInfluencerId, recommendationId });
+      return;
+    }
+
+    if (planLocked) {
+      pendingCalendarDateRef.current = null;
+      toast.error(t("planLockedHint"));
+      return;
+    }
+
+    pendingScheduleAfterPersonalizeRef.current = true;
+    pendingGenerateAfterPersonalizeRef.current = false;
+    setPersonalizingTrendId(trendItemId);
+    personalizeOneMut.mutate({
+      influencerId: selectedInfluencerId,
+      trendItemId,
+    });
+  };
+
+  const onGenerate = (recommendationId: string) => {
+    if (!selectedInfluencerId) return;
+    applyDestinationRef.current = "autoGenerate";
+    pendingCalendarDateRef.current = null;
+    applyMut.mutate({ influencerId: selectedInfluencerId, recommendationId });
+  };
+  const onGenerateFromTrend = (trendItemId: string) => {
+    if (!selectedInfluencerId) return;
+    pendingGenerateAfterPersonalizeRef.current = true;
+    pendingScheduleAfterPersonalizeRef.current = false;
+    pendingCalendarDateRef.current = null;
+    setPersonalizingTrendId(trendItemId);
+    personalizeOneMut.mutate({
+      influencerId: selectedInfluencerId,
+      trendItemId,
+    });
   };
   const onDismiss = (recommendationId: string) => {
     dismissMut.mutate({ recommendationId });
@@ -292,8 +415,10 @@ export default function TrendsPage() {
   const globalAllItems = globalFeed.data?.items ?? [];
 
   const aiPicks = useMemo(() => {
-    const picks = analyzeQuery.data?.picks ?? [];
-    const byId = new Map(allItems.map((item) => [item.id, item]));
+    const picks = weeklyFormatsQuery.data?.picks ?? [];
+    const byId = new Map(
+      [...allItems, ...globalAllItems].map((item) => [item.id, item])
+    );
     return picks
       .map((pick) => {
         const trend = byId.get(pick.trendId);
@@ -301,7 +426,18 @@ export default function TrendsPage() {
         return { trend, pick };
       })
       .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
-  }, [analyzeQuery.data?.picks, allItems]);
+  }, [weeklyFormatsQuery.data?.picks, allItems, globalAllItems]);
+
+  const weekLabel = useMemo(() => {
+    const start = weeklyFormatsQuery.data?.weekStart;
+    const end = weeklyFormatsQuery.data?.weekEnd;
+    if (!start || !end) return null;
+    return t("weekRange", { start, end });
+  }, [
+    weeklyFormatsQuery.data?.weekStart,
+    weeklyFormatsQuery.data?.weekEnd,
+    t,
+  ]);
 
   const pickIds = useMemo(() => new Set(aiPicks.map((p) => p.trend.id)), [aiPicks]);
 
@@ -345,7 +481,9 @@ export default function TrendsPage() {
     recommendationId: string | null
   ) => {
     if (!selectedInfluencerId) return;
-    applyDestinationRef.current = "creator";
+    applyDestinationRef.current = "autoGenerate";
+    pendingCalendarDateRef.current = null;
+    pendingScheduleAfterPersonalizeRef.current = false;
 
     if (recommendationId) {
       applyMut.mutate({ influencerId: selectedInfluencerId, recommendationId });
@@ -377,7 +515,11 @@ export default function TrendsPage() {
   const trendCardCommon = {
     needsPersonalization: !planLocked,
     onApply,
-    onSchedule: planLocked ? undefined : onSchedule,
+    onGenerate: planLocked ? undefined : onGenerate,
+    onGenerateFromTrend: planLocked ? undefined : onGenerateFromTrend,
+    onSchedule: planLocked
+      ? undefined
+      : (recommendationId: string) => onSchedule(recommendationId),
     onDismiss,
     onPersonalize: onPersonalizeOne,
     isBusy: applyMut.isPending || dismissMut.isPending,
@@ -458,7 +600,6 @@ export default function TrendsPage() {
               refreshMut.isPending ||
               allItems.length === 0
             }
-            className="bg-violet-500 hover:bg-violet-600"
           >
             {refreshMut.isPending ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -510,7 +651,7 @@ export default function TrendsPage() {
           </TabsList>
         </Tabs>
 
-        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Filter className="h-3.5 w-3.5" />
           <Select value={niche} onValueChange={(v) => setNiche(v as NicheFilter)}>
             <SelectTrigger className="h-8 w-[150px] text-xs">
@@ -536,31 +677,6 @@ export default function TrendsPage() {
         </div>
       </div>
 
-      {/* AI analysis banner */}
-      {selectedInfluencerId && (
-        <div className="rounded-xl border border-rose-500/30 bg-gradient-to-r from-rose-500/10 via-pink-500/5 to-transparent p-4">
-          <div className="flex items-start gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-rose-500/20">
-              {analyzeQuery.isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin text-rose-300" />
-              ) : (
-                <Sparkles className="h-4 w-4 text-rose-300" />
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="font-medium text-rose-100">{t("aiAnalysisBanner")}</p>
-              <p className="text-sm text-rose-200/70">
-                {analyzeQuery.isLoading
-                  ? t("aiAnalysisLoading")
-                  : aiPicks.length > 0
-                    ? t("aiAnalysisReady", { count: aiPicks.length })
-                    : t("aiAnalysisEmpty")}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Feed */}
       {isPageLoading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -569,18 +685,18 @@ export default function TrendsPage() {
           ))}
         </div>
       ) : allItems.length === 0 && globalAllItems.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-900/30 p-12 text-center">
-          <TrendingUp className="mx-auto mb-3 h-8 w-8 text-slate-600" />
-          <p className="text-slate-300 font-medium">
+        <div className="rounded-2xl border border-dashed border-border bg-card/30 p-12 text-center">
+          <TrendingUp className="mx-auto mb-3 h-8 w-8 text-muted-foreground/50" />
+          <p className="font-medium text-foreground">
             {allItems.length === 0 ? t("emptyFeed") : t("emptyFiltered")}
           </p>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-muted-foreground">
             {allItems.length === 0 ? t("emptyFeedHint") : t("emptyFilteredHint")}
           </p>
           {allItems.length === 0 && (
             <Button
               size="sm"
-              className="mt-4 bg-emerald-500 hover:bg-emerald-600"
+              className="mt-4"
               disabled={triggerInitialMut.isPending}
               onClick={() => triggerInitialMut.mutate({ force: false })}
             >
@@ -595,51 +711,40 @@ export default function TrendsPage() {
         </div>
       ) : (
         <>
-          {/* Section 1 — Pour toi */}
+          {/* Section 1 — Formats de la semaine */}
           <section className="space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold text-white">{t("sectionForYou")}</h2>
-              <p className="text-sm text-slate-400">{t("sectionForYouSubtitle")}</p>
+            <div className="border-l-2 border-rose-400/70 pl-3">
+              <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+                <Sparkles className="h-4 w-4 text-rose-400" />
+                {t("sectionWeeklyFormats")}
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                {weekLabel
+                  ? t("sectionWeeklyFormatsSubtitleRange", { range: weekLabel })
+                  : t("sectionWeeklyFormatsSubtitle")}
+              </p>
             </div>
 
-            {analyzeQuery.isLoading ? (
+            {weeklyFormatsQuery.isLoading ? (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {Array.from({ length: 3 }).map((_, i) => (
                   <Skeleton key={`ai-${i}`} className="h-72 w-full rounded-2xl" />
                 ))}
               </div>
             ) : aiPicks.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-rose-500/20 bg-rose-500/5 p-6 text-center text-sm text-rose-200/70">
-                {t("aiAnalysisEmpty")}
+              <p className="rounded-xl border border-dashed border-border bg-card/30 p-6 text-center text-sm text-muted-foreground">
+                {t("weeklyFormatsEmpty")}
               </p>
             ) : (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {aiPicks.map(({ trend, pick }) => (
                   <div key={trend.id} className="space-y-2">
-                    {!trend.recommendation && !planLocked ? (
-                      <Button
-                        className="w-full bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700"
-                        disabled={
-                          applyMut.isPending ||
-                          personalizeOneMut.isPending ||
-                          personalizingTrendId === trend.id
-                        }
-                        onClick={() =>
-                          void onAdaptTrend(trend.id, trend.recommendation?.id ?? null)
-                        }
-                      >
-                        {personalizingTrendId === trend.id ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <Sparkles className="mr-2 h-4 w-4" />
-                        )}
-                        {t("adaptTrendCta")}
-                      </Button>
-                    ) : null}
                     <TrendAiPickWrapper
                       whyItWorks={pick.whyItWorks}
                       suggestedAngle={pick.suggestedAngle}
                       confidence={pick.confidence}
+                      dayHint={pick.dayHint}
+                      preferredStudio={pick.preferredStudio}
                       trendCardProps={{
                         trend,
                         ...trendCardCommon,
@@ -647,6 +752,59 @@ export default function TrendsPage() {
                         isAnalyzingFormat: analyzingFormatTrendId === trend.id,
                       }}
                     />
+                    {!planLocked ? (
+                      <div className="flex flex-col gap-2">
+                        <Button
+                          className="w-full"
+                          disabled={
+                            applyMut.isPending ||
+                            personalizeOneMut.isPending ||
+                            personalizingTrendId === trend.id
+                          }
+                          onClick={() =>
+                            void onAdaptTrend(
+                              trend.id,
+                              trend.recommendation?.id ?? null
+                            )
+                          }
+                        >
+                          {personalizingTrendId === trend.id ||
+                          (applyMut.isPending &&
+                            applyDestinationRef.current === "autoGenerate") ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Sparkles className="mr-2 h-4 w-4" />
+                          )}
+                          {t("generateWeeklyFormatCta")}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="w-full"
+                          disabled={
+                            applyMut.isPending ||
+                            personalizeOneMut.isPending ||
+                            personalizingTrendId === trend.id
+                          }
+                          onClick={() =>
+                            void onScheduleWeekly(
+                              trend.id,
+                              trend.recommendation?.id ?? null,
+                              pick.dayHint
+                            )
+                          }
+                        >
+                          {personalizingTrendId === trend.id ||
+                          applyMut.isPending ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Calendar className="mr-2 h-4 w-4" />
+                          )}
+                          {t("scheduleWeeklyFormatCta", {
+                            day: t(`dayHint.${pick.dayHint}` as never),
+                          })}
+                        </Button>
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -655,19 +813,19 @@ export default function TrendsPage() {
 
           <div className="relative py-2">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-800" />
+              <div className="w-full border-t border-border" />
             </div>
           </div>
 
           {/* Section 2 — En ce moment */}
           <section className="space-y-4">
             <div>
-              <h2 className="text-lg font-semibold text-white">{t("sectionTrendingNow")}</h2>
-              <p className="text-sm text-slate-400">{t("sectionTrendingNowSubtitle")}</p>
+              <h2 className="text-lg font-semibold text-foreground">{t("sectionTrendingNow")}</h2>
+              <p className="text-sm text-muted-foreground">{t("sectionTrendingNowSubtitle")}</p>
             </div>
 
             {recsMissingCount > 0 && !planLocked && (
-              <p className="text-sm text-slate-400">
+              <p className="text-sm text-muted-foreground">
                 {t("recsMissingV2", {
                   count: recsMissingCount,
                   cost: analysisOneCost.toString(),
@@ -676,7 +834,7 @@ export default function TrendsPage() {
             )}
 
             {filteredGlobalItems.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-slate-800 bg-slate-900/30 p-8 text-center text-sm text-slate-400">
+              <p className="rounded-xl border border-dashed border-border bg-card/30 p-8 text-center text-sm text-muted-foreground">
                 {t("emptyFiltered")}
               </p>
             ) : (
@@ -713,7 +871,7 @@ export default function TrendsPage() {
               </div>
             )}
             {feedLimit >= planMaxFeed && globalAllItems.length > 0 && (
-              <p className="flex items-center justify-center gap-1 pt-2 text-xs text-slate-500">
+              <p className="flex items-center justify-center gap-1 pt-2 text-xs text-muted-foreground">
                 <ArrowDown className="h-3 w-3" />
                 {t("endOfFeed")}
               </p>
@@ -729,7 +887,7 @@ export default function TrendsPage() {
             }}
           >
             <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={searchDraft}
                 onChange={(e) => setSearchDraft(e.target.value)}

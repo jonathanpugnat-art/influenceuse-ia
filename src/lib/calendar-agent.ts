@@ -16,7 +16,8 @@ import type {
   CalendarAgentTurnResult,
 } from "@/lib/prompts/calendar-agent-prompts";
 
-const MAX_PLAN_DAYS = 14;
+/** Max span for an editorial plan (S5: 30-day month plans). */
+export const MAX_PLAN_DAYS = 30;
 
 const FRENCH_LOCALE_PATTERNS = [
   /\bce mois\b/,
@@ -84,6 +85,21 @@ export function countQuestions(message: string): number {
 }
 
 function parsePostsPerWeek(text: string): number | null {
+  // "30 posts" / "plan 30 jours" → ~1/day ≈ 7/week over a month
+  // (must run before day-unit matching — "30 jours" is a span, not 30/day)
+  if (
+    /\b30\s*posts?\b/i.test(text) ||
+    /\bplan\s*30\s*(?:jours?|days?)\b/i.test(text)
+  ) {
+    return 7;
+  }
+  // Require "post(s)" before the day unit so "30 jours" never matches.
+  const perDay = text.match(
+    /(\d+)\s*posts?\s*(?:par|per|\/)\s*(?:jour|day)\b/i
+  );
+  if (perDay?.[1]) {
+    return Math.min(21, Math.max(1, Number(perDay[1]) * 7));
+  }
   const match =
     text.match(/(\d+)\s*(?:x|×|\*)?\s*(?:\/|par\s*)?(?:semaine|week)/i) ??
     text.match(/(\d+)\s*posts?\s*(?:par|per|\/)\s*(?:semaine|week)/i);
@@ -163,8 +179,8 @@ function buildQuickReplies(
   }
   if (missingFields.includes("postsPerWeek")) {
     return locale === "fr"
-      ? ["2×/semaine", "3×/semaine", "1 post/jour"]
-      : ["2×/week", "3×/week", "1 post/day"];
+      ? ["3×/semaine", "1 post/jour", "30 posts sur 30 jours"]
+      : ["3×/week", "1 post/day", "30 posts over 30 days"];
   }
   return locale === "fr"
     ? ["Ce mois", "2 prochaines semaines", "Cette semaine"]
@@ -316,14 +332,14 @@ function buildPlanPreviewMessage(
       `Plan prêt : ${total} posts sur ${params.days} jour(s) ` +
       `(≈ ${params.postsPerDay}/jour), plateformes ${params.platforms.join(" + ")}.` +
       (params.vibe ? ` Vibe : ${params.vibe}.` : "") +
-      " Je lance la génération…"
+      " Valide le lot avant de lancer les images."
     );
   }
   return (
     `Plan ready: ${total} posts over ${params.days} day(s) ` +
     `(≈ ${params.postsPerDay}/day), platforms ${params.platforms.join(" + ")}.` +
     (params.vibe ? ` Vibe: ${params.vibe}.` : "") +
-    " Starting generation…"
+    " Review the batch before generating images."
   );
 }
 

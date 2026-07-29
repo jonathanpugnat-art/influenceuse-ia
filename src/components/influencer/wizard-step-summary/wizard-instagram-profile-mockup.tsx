@@ -38,7 +38,7 @@ export function WizardInstagramProfileMockup({
 
   return (
     <div className="mx-auto max-w-md">
-      <div className="overflow-hidden rounded-3xl border border-slate-800 bg-gradient-to-b from-slate-900 to-slate-950 shadow-2xl shadow-violet-500/10">
+      <div className="overflow-hidden rounded-3xl border border-slate-800 bg-gradient-to-b from-slate-900 to-slate-950 shadow-2xl shadow-black/40">
         <div className="flex items-center justify-between border-b border-slate-800/60 px-4 py-3">
           <div className="flex items-center gap-1.5 text-sm font-semibold text-white">
             <InstagramIcon className="h-4 w-4 text-pink-400" />

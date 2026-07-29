@@ -20,42 +20,42 @@ export function AppearanceVisualSignature({
 
   const traits = explodeAppearanceVariations(data.appearanceVariations);
   const items: Array<{ label: string; value: string }> = [
-    { label: "Visage", value: traits.faceShape },
-    { label: "Yeux", value: traits.eyeShape },
-    { label: "Couleur", value: traits.eyeColor },
-    { label: "Nez", value: traits.nose },
-    { label: "Détail", value: traits.distinctiveFeature },
-    { label: "Expression", value: traits.expression },
+    { label: t("traitFace"), value: traits.faceShape },
+    { label: t("traitEyes"), value: traits.eyeShape },
+    { label: t("traitEyeColor"), value: traits.eyeColor },
+    { label: t("traitNose"), value: traits.nose },
+    { label: t("traitDetail"), value: traits.distinctiveFeature },
+    { label: t("traitExpression"), value: traits.expression },
   ];
 
   return (
-    <div className="space-y-2 rounded-xl border border-violet-500/20 bg-violet-500/5 p-3">
+    <div className="space-y-2 rounded-xl border border-border/60 bg-muted/30 p-3">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-violet-300">
+        <p className="text-xs font-semibold text-foreground">
           {t("visualSignature")}
         </p>
         <button
           type="button"
           onClick={onReroll}
           disabled={disabled}
-          className="flex items-center gap-1 rounded-md border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-200 transition-colors hover:bg-violet-500/20 disabled:opacity-40"
+          className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground disabled:opacity-40"
           title={t("surpriseMeRerollTitle")}
         >
           <Dice5 className="h-3 w-3" />
           {t("surpriseMe")}
         </button>
       </div>
-      <ul className="grid grid-cols-1 gap-x-3 gap-y-1 text-[11px] text-slate-300 sm:grid-cols-2">
+      <ul className="grid grid-cols-1 gap-x-3 gap-y-1 text-[11px] text-foreground/80 sm:grid-cols-2">
         {items
           .filter((item) => item.value)
           .map((item) => (
             <li key={item.label} className="flex gap-1.5">
-              <span className="shrink-0 text-slate-500">{item.label}</span>
-              <span className="text-slate-300">· {item.value}</span>
+              <span className="shrink-0 text-muted-foreground">{item.label}</span>
+              <span>· {item.value}</span>
             </li>
           ))}
       </ul>
-      <p className="text-[10px] text-slate-500">{t("traitsInjectedHint")}</p>
+      <p className="text-[10px] text-muted-foreground">{t("traitsInjectedHint")}</p>
     </div>
   );
 }

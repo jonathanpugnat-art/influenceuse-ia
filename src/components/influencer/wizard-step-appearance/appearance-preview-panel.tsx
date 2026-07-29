@@ -34,10 +34,8 @@ export function AppearancePreviewPanel({
     <div className="order-1 space-y-3 lg:order-2 lg:sticky lg:top-20 lg:self-start">
       <div
         className={cn(
-          "relative aspect-[3/4] overflow-hidden rounded-2xl border bg-neutral-950/80 transition-all",
-          canvasImageUrl
-            ? "border-violet-500/40 shadow-lg shadow-violet-500/10"
-            : "border-slate-800/50"
+          "relative aspect-[3/4] overflow-hidden rounded-2xl border bg-background/80 transition-colors",
+          canvasImageUrl ? "border-border" : "border-border/50"
         )}
       >
         {canvasImageUrl ? (
@@ -57,8 +55,8 @@ export function AppearancePreviewPanel({
           </div>
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-3 p-6">
-            <User className="h-16 w-16 text-slate-600" />
-            <p className="text-center text-sm text-slate-500">
+            <User className="h-16 w-16 text-muted-foreground/40" />
+            <p className="text-center text-sm text-muted-foreground">
               {showGenerationProgress ? t("generatingAppearance") : t("previewHint")}
             </p>
           </div>
@@ -74,7 +72,7 @@ export function AppearancePreviewPanel({
             selectedIndex={selectedImageIndex}
             onSelect={handleSelectImage}
           />
-          <p className="text-xs text-slate-500 lg:hidden">{t("selectVariant")}</p>
+          <p className="text-xs text-muted-foreground lg:hidden">{t("selectVariant")}</p>
           <div className="grid grid-cols-4 gap-2 lg:hidden">
             {generatedImages.map((url, i) => (
               <button
@@ -82,9 +80,9 @@ export function AppearancePreviewPanel({
                 type="button"
                 onClick={() => handleSelectImage(i)}
                 className={cn(
-                  "relative aspect-square overflow-hidden rounded-xl border-2 transition-all",
+                  "relative aspect-square overflow-hidden rounded-xl border-2 transition-opacity",
                   selectedImageIndex === i
-                    ? "border-violet-500 shadow-lg shadow-violet-500/20"
+                    ? "border-rose-400"
                     : "border-transparent opacity-60 hover:opacity-90"
                 )}
               >
@@ -109,7 +107,7 @@ export function AppearancePreviewPanel({
             type="button"
             onClick={() => handleGenerate()}
             disabled={isGenerating || !hasEnoughCredits}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-700 py-2 text-xs text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
+            className="flex w-full items-center justify-center gap-2 rounded-full border border-border py-2 text-xs text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
           >
             <RefreshCw className="h-3 w-3" />
             {t("regenerate")} ({t("creditsCount", { count: cost })})

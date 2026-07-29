@@ -54,7 +54,7 @@ export function AppearanceGenerateActions({
         type="button"
         onClick={() => handleGenerate()}
         disabled={isGenerating || !hasEnoughCredits}
-        className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-800 hover:text-white disabled:opacity-40"
+        className="flex w-full items-center justify-center gap-2 rounded-full border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground disabled:opacity-40"
       >
         {isGenerating ? (
           <>
@@ -70,7 +70,7 @@ export function AppearanceGenerateActions({
       </button>
 
       {!form.hasAnyChoice && (
-        <p className="text-center text-xs text-slate-500">
+        <p className="text-center text-xs text-muted-foreground">
           {t("surpriseMeDefault")}
         </p>
       )}

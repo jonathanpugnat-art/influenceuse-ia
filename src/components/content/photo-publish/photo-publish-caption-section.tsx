@@ -1,7 +1,7 @@
 "use client";
 
 import { Sparkles } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -21,6 +21,7 @@ export function PhotoPublishCaptionSection({
   flow: PhotoPublishFlowState;
 }) {
   const t = useTranslations("content");
+  const locale = useLocale();
   const {
     params,
     caption,
@@ -41,7 +42,7 @@ export function PhotoPublishCaptionSection({
 
   return (
     <div className="space-y-2">
-      <Label className="text-xs text-slate-400">{t("studioToneLabel")}</Label>
+      <Label className="text-xs text-muted-foreground">{t("studioToneLabel")}</Label>
       <div className="flex flex-wrap gap-1.5">
         {CAPTION_TONES.map((tone) => (
           <button
@@ -49,53 +50,53 @@ export function PhotoPublishCaptionSection({
             type="button"
             onClick={() => setCaptionTone(tone.id)}
             className={cn(
-              "rounded-lg border px-2 py-1 text-[10px] font-medium transition-colors",
+              "rounded-full border px-2.5 py-1 text-[10px] font-medium transition-colors",
               captionTone === tone.id
-                ? "border-violet-500 bg-violet-500/20 text-violet-200"
-                : "border-slate-700 text-slate-500 hover:border-slate-600"
+                ? "border-rose-400/60 bg-rose-500/10 text-rose-200"
+                : "border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground"
             )}
           >
-            {tone.labelFr}
+            {locale === "en" ? tone.labelEn : tone.labelFr}
           </button>
         ))}
       </div>
       <div className="flex items-center justify-between">
-        <Label className="text-xs text-slate-400">Caption</Label>
+        <Label className="text-xs text-muted-foreground">{t("publishCaptionLabel")}</Label>
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={handleGenCaption}
             disabled={isGenCaption || isGenVariants || !params.influencerId}
-            className="flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300 disabled:opacity-40"
+            className="flex items-center gap-1 text-xs font-medium text-rose-400 hover:text-rose-300 disabled:opacity-40"
           >
             <Sparkles className="h-3 w-3" />
-            {isGenCaption ? "Génération..." : "Générer"}
+            {isGenCaption ? t("publishGenerating") : t("publishGenerate")}
           </button>
           <button
             type="button"
             onClick={handleGenVariants}
             disabled={isGenVariants || isGenCaption || !params.influencerId}
-            className="flex items-center gap-1 rounded-md border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-xs text-violet-300 hover:bg-violet-500/20 disabled:opacity-40"
-            title="Génère 2 variantes A/B et choisis la meilleure"
+            className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground disabled:opacity-40"
+            title={t("publishVariantsTooltip")}
           >
             {isGenVariants ? "A/B…" : "A/B"}
           </button>
         </div>
       </div>
       {variants && variants.length > 0 && (
-        <div className="space-y-2 rounded-lg border border-violet-500/30 bg-violet-500/5 p-3">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-violet-300">
-            2 variantes — choisis la meilleure
+        <div className="space-y-2 rounded-xl border border-border/60 bg-muted/30 p-3">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            {t("publishVariantsTitle")}
           </p>
           {variants.map((v, i) => (
             <button
               key={i}
               type="button"
               onClick={() => pickVariant(v)}
-              className="block w-full rounded-md border border-slate-700/60 bg-slate-900/60 p-2.5 text-left text-xs text-slate-200 transition-colors hover:border-violet-500/60 hover:bg-slate-900"
+              className="block w-full rounded-lg border border-border/60 bg-background/60 p-2.5 text-left text-xs text-foreground transition-colors hover:border-rose-400/50"
             >
-              <span className="mb-1 block text-[10px] font-bold text-violet-400">
-                Variante {i === 0 ? "A" : "B"}
+              <span className="mb-1 block text-[10px] font-bold text-rose-400">
+                {t("publishVariantLabel", { letter: i === 0 ? "A" : "B" })}
               </span>
               {v}
             </button>
@@ -105,41 +106,43 @@ export function PhotoPublishCaptionSection({
       <Textarea
         value={caption}
         onChange={(e) => setCaption(e.target.value)}
-        placeholder="Écris ta caption ici..."
+        placeholder={t("publishCaptionPlaceholder")}
         rows={4}
-        className="border-slate-800/50 bg-slate-800/30 text-sm text-white placeholder:text-slate-600"
+        className="text-sm"
       />
       <div className="flex items-center justify-between">
-        <span className="text-xs text-slate-600">{caption.length} caractères</span>
+        <span className="text-xs text-muted-foreground/70">
+          {t("publishCharCount", { count: caption.length })}
+        </span>
         <div className="flex gap-1.5">
           <Select
             value={language}
             onValueChange={(v) => setLanguage(v as "fr" | "en")}
           >
-            <SelectTrigger className="h-6 w-14 border-slate-700 bg-slate-800/50 px-1.5 text-xs text-slate-400">
+            <SelectTrigger className="h-7 w-16 px-2 text-xs">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="border-slate-800 bg-slate-900">
-              <SelectItem value="fr" className="text-xs text-slate-300">
-                🇫🇷 FR
+            <SelectContent>
+              <SelectItem value="fr" className="text-xs">
+                FR
               </SelectItem>
-              <SelectItem value="en" className="text-xs text-slate-300">
-                🇬🇧 EN
+              <SelectItem value="en" className="text-xs">
+                EN
               </SelectItem>
             </SelectContent>
           </Select>
           <Select value={captionPlatform} onValueChange={setCaptionPlatform}>
-            <SelectTrigger className="h-6 w-20 border-slate-700 bg-slate-800/50 px-1.5 text-xs text-slate-400">
+            <SelectTrigger className="h-7 w-24 px-2 text-xs">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="border-slate-800 bg-slate-900">
-              <SelectItem value="INSTAGRAM" className="text-xs text-slate-300">
+            <SelectContent>
+              <SelectItem value="INSTAGRAM" className="text-xs">
                 Instagram
               </SelectItem>
-              <SelectItem value="TIKTOK" className="text-xs text-slate-300">
+              <SelectItem value="TIKTOK" className="text-xs">
                 TikTok
               </SelectItem>
-              <SelectItem value="ONLYFANS" className="text-xs text-slate-300">
+              <SelectItem value="ONLYFANS" className="text-xs">
                 OnlyFans
               </SelectItem>
             </SelectContent>

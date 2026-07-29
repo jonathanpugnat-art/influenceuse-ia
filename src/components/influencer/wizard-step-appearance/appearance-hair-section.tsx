@@ -19,7 +19,7 @@ export function AppearanceHairSection({ form }: { form: AppearanceFormState }) {
       summary={form.hairSummary}
     >
       <div className="space-y-2">
-        <Label className="text-slate-300">{t("hairColor")}</Label>
+        <Label className="text-foreground/90">{t("hairColor")}</Label>
         <div className="flex flex-wrap gap-2">
           {form.hairColors.map((c) => (
             <button
@@ -28,10 +28,10 @@ export function AppearanceHairSection({ form }: { form: AppearanceFormState }) {
               onClick={() => form.setHairColor(c.value)}
               aria-pressed={form.hairColor === c.value}
               className={cn(
-                "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all",
+                "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
                 form.hairColor === c.value
-                  ? "border-violet-500 bg-violet-500/20 text-violet-300"
-                  : "border-slate-700 bg-slate-800/30 text-slate-400 hover:border-slate-600"
+                  ? "border-primary/40 bg-primary/10 text-foreground"
+                  : "border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground"
               )}
             >
               <span>{c.emoji}</span>
@@ -42,7 +42,7 @@ export function AppearanceHairSection({ form }: { form: AppearanceFormState }) {
       </div>
 
       <div className="space-y-2">
-        <Label className="text-slate-300">{t("hairLength")}</Label>
+        <Label className="text-foreground/90">{t("hairLength")}</Label>
         <div className="flex flex-wrap gap-2">
           {form.hairLengths.map((l) => (
             <AppearanceChip
@@ -56,7 +56,7 @@ export function AppearanceHairSection({ form }: { form: AppearanceFormState }) {
       </div>
 
       <div className="space-y-2">
-        <Label className="text-slate-300">{t("hairTexture")}</Label>
+        <Label className="text-foreground/90">{t("hairTexture")}</Label>
         <div className="flex flex-wrap gap-2">
           {form.hairTextures.map((ht) => (
             <AppearanceChip

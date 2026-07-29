@@ -29,7 +29,7 @@ export function PhotoPublishPlatformSection({
 
   return (
     <div className="space-y-2">
-      <Label className="text-xs text-slate-400">Plateformes</Label>
+      <Label className="text-xs text-muted-foreground">{t("publishPlatformsLabel")}</Label>
       <div className="space-y-1.5">
         <PlatformCard
           icon={<InstagramIcon className="h-4 w-4 text-pink-400" />}
@@ -48,30 +48,26 @@ export function PhotoPublishPlatformSection({
           name="OnlyFans"
           selected={platforms.includes("ONLYFANS")}
           onToggle={() => togglePlatform("ONLYFANS")}
-          note="Export ZIP — publication manuelle"
+          note={t("publishOfZipNote")}
         />
       </div>
 
       {platforms.includes("ONLYFANS") && (
-        <div className="flex items-start gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 p-2.5 text-[11px] text-blue-200">
-          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-400" />
-          <p className="leading-snug">
-            OnlyFans n&apos;a pas d&apos;API publique. Nous générons un ZIP avec
-            vos médias et un guide ; vous publierez manuellement sur votre compte
-            OF.
-          </p>
+        <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/30 p-2.5 text-[11px] text-muted-foreground">
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <p className="leading-snug">{t("publishOfNoApi")}</p>
         </div>
       )}
 
       {instagramSelected && params.influencerId && (
-        <div className="flex items-start gap-2 rounded-lg border border-pink-500/25 bg-pink-500/5 p-2.5 text-[11px] text-pink-100/90">
-          <Instagram className="mt-0.5 h-3.5 w-3.5 shrink-0 text-pink-400" />
+        <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/30 p-2.5 text-[11px] text-muted-foreground">
+          <Instagram className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <div className="space-y-1.5">
             <p className="leading-snug">{t("publishInstagramApiHint")}</p>
             {instagramCheck && !instagramCheck.ok && (
               <Link
                 href={`/influencers/${params.influencerId}?tab=social`}
-                className="inline-flex font-medium text-pink-300 underline-offset-2 hover:underline"
+                className="inline-flex font-medium text-rose-400 underline-offset-2 hover:underline"
               >
                 {t("publishConnectInstagram")}
               </Link>
@@ -81,12 +77,12 @@ export function PhotoPublishPlatformSection({
       )}
 
       {publishReminders.length > 0 && (
-        <div className="space-y-1.5 rounded-lg border border-slate-700/60 bg-slate-800/30 p-2.5">
-          <div className="flex items-center gap-2 text-[11px] font-medium text-slate-400">
+        <div className="space-y-1.5 rounded-lg border border-border/60 bg-muted/30 p-2.5">
+          <div className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground">
             <Info className="h-3.5 w-3.5" />
             {t("publishSoftRemindersTitle")}
           </div>
-          <ul className="list-inside list-disc space-y-0.5 text-[11px] text-slate-500">
+          <ul className="list-inside list-disc space-y-0.5 text-[11px] text-muted-foreground/80">
             {publishReminders.map((line) => (
               <li key={line}>{line}</li>
             ))}
@@ -115,10 +111,10 @@ function PlatformCard({
       type="button"
       onClick={onToggle}
       className={cn(
-        "flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition-all",
+        "flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors",
         selected
-          ? "border-violet-500/50 bg-violet-500/10"
-          : "border-slate-800/50 bg-slate-800/20 hover:border-slate-700"
+          ? "border-rose-400/50 bg-rose-500/5"
+          : "border-border/50 bg-muted/20 hover:border-foreground/30"
       )}
     >
       {icon}
@@ -126,19 +122,19 @@ function PlatformCard({
         <span
           className={cn(
             "text-xs font-medium",
-            selected ? "text-white" : "text-slate-400"
+            selected ? "text-foreground" : "text-muted-foreground"
           )}
         >
           {name}
         </span>
-        {note && <p className="text-[9px] text-slate-600">{note}</p>}
+        {note && <p className="text-[9px] text-muted-foreground/70">{note}</p>}
       </div>
       <div
         className={cn(
-          "h-4 w-4 rounded-md border-2 transition-all",
+          "h-4 w-4 rounded-md border-2 transition-colors",
           selected
-            ? "border-violet-500 bg-violet-500"
-            : "border-slate-600 bg-transparent"
+            ? "border-rose-500 bg-rose-500"
+            : "border-muted-foreground/50 bg-transparent"
         )}
       >
         {selected && (

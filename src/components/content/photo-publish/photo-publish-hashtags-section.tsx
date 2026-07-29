@@ -1,6 +1,7 @@
 "use client";
 
 import { Sparkles, X } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import type { PhotoPublishFlowState } from "@/hooks/photo-studio";
@@ -10,6 +11,7 @@ export function PhotoPublishHashtagsSection({
 }: {
   flow: PhotoPublishFlowState;
 }) {
+  const t = useTranslations("content");
   const {
     hashtags,
     hashtagInput,
@@ -24,22 +26,22 @@ export function PhotoPublishHashtagsSection({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <Label className="text-xs text-slate-400">Hashtags</Label>
+        <Label className="text-xs text-muted-foreground">{t("publishHashtagsLabel")}</Label>
         <button
           type="button"
           onClick={handleGenHashtags}
           disabled={isGenHashtags || !selectedInf}
-          className="flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300 disabled:opacity-40"
+          className="flex items-center gap-1 text-xs font-medium text-rose-400 hover:text-rose-300 disabled:opacity-40"
         >
           <Sparkles className="h-3 w-3" />
-          {isGenHashtags ? "Génération..." : "Générer"}
+          {isGenHashtags ? t("publishGenerating") : t("publishGenerate")}
         </button>
       </div>
       <div className="flex flex-wrap gap-1">
         {hashtags.map((tag) => (
           <span
             key={tag}
-            className="flex items-center gap-1 rounded-md bg-violet-500/10 px-2 py-0.5 text-xs text-violet-400"
+            className="flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 text-xs text-foreground/80"
           >
             #{tag}
             <button
@@ -60,10 +62,12 @@ export function PhotoPublishHashtagsSection({
             e.key === "Enter" && (e.preventDefault(), addHashtag())
           }
           placeholder="#hashtag"
-          className="h-7 border-slate-800/50 bg-slate-800/30 text-xs text-white placeholder:text-slate-600"
+          className="h-7 text-xs"
         />
       </div>
-      <p className="text-xs text-slate-600">{hashtags.length}/30 hashtags</p>
+      <p className="text-xs text-muted-foreground/70">
+        {t("publishHashtagsCount", { count: hashtags.length })}
+      </p>
     </div>
   );
 }

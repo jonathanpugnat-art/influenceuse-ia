@@ -163,10 +163,15 @@ export function looksLikeProviderRefusal(text: string): boolean {
     lower.includes("i cannot help") ||
     lower.includes("i'm unable to") ||
     lower.includes("i am unable to") ||
+    lower.includes("i won't be able to") ||
+    lower.includes("i will not") ||
     lower.includes("against my guidelines") ||
     lower.includes("content policy") ||
+    (lower.includes("violat") && lower.includes("polic")) ||
+    lower.includes("not able to assist") ||
     lower.includes("je ne peux pas") ||
     lower.includes("impossible de répondre") ||
-    lower.includes("contenu inapproprié")
+    lower.includes("contenu inapproprié") ||
+    lower.includes("je refuse")
   );
 }

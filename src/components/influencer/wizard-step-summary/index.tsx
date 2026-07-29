@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Rocket } from "lucide-react";
+import { ArrowLeft, Rocket } from "lucide-react";
 import { WizardCollisionBanner } from "@/components/influencer/wizard-collision-banner";
 import { WizardIdentityPackWait } from "@/components/influencer/wizard-identity-pack-wait";
 import { useTranslations } from "next-intl";
@@ -207,7 +207,7 @@ export function WizardStepSummary({ onPrev }: { onPrev: () => void }) {
           onClick={onPrev}
           className={wizardSecondaryButtonClass}
         >
-          ← {t("back")}
+          <ArrowLeft className="h-4 w-4" /> {t("back")}
         </button>
       </div>
     </div>

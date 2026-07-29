@@ -35,7 +35,8 @@ const NICHE_I18N_KEYS: Record<string, "nicheFashion" | "nicheFitness" | "nicheLi
 export function WizardNicheBrainPanel({ className }: { className?: string }) {
   const t = useTranslations("wizard");
   const tInfluencer = useTranslations("influencer");
-  const [mobileOpen, setMobileOpen] = useState(true);
+  // Optional by default — identity step already has niche + angle.
+  const [open, setOpen] = useState(false);
   const { updateData } = useInfluencerWizard();
   const {
     messages,
@@ -67,42 +68,30 @@ export function WizardNicheBrainPanel({ className }: { className?: string }) {
 
   return (
     <aside className={cn("min-w-0", className)}>
-      {/* Mobile collapsible header */}
       <button
         type="button"
-        onClick={() => setMobileOpen((o) => !o)}
-        className="mb-3 flex w-full items-center justify-between rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-3 text-left lg:hidden"
+        onClick={() => setOpen((o) => !o)}
+        className="mb-3 flex w-full items-center justify-between rounded-2xl border border-dashed border-border bg-card/40 px-4 py-3 text-left transition-colors hover:bg-accent/40"
       >
-        <span className="flex items-center gap-2 text-sm font-medium text-white">
-          <Brain className="h-4 w-4 text-slate-400" />
-          {t("nicheBrainTitle")}
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+            <Brain className="h-4 w-4 text-muted-foreground" />
+            {t("nicheBrainTitleOptional")}
+          </span>
+          <span className="text-[11px] text-muted-foreground">
+            {t("nicheBrainSubtitleOptional")}
+          </span>
         </span>
         <ChevronDown
           className={cn(
-            "h-4 w-4 text-slate-500 transition-transform",
-            mobileOpen && "rotate-180"
+            "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+            open && "rotate-180"
           )}
         />
       </button>
 
-      <div
-        className={cn(
-          "space-y-4 rounded-2xl border border-white/10 bg-white/[0.02] p-4",
-          !mobileOpen && "hidden lg:block"
-        )}
-      >
-        <div className="hidden lg:block">
-          <div className="flex items-center gap-2">
-            <Brain className="h-4 w-4 text-slate-400" />
-            <h3 className="text-sm font-medium text-white">
-              {t("nicheBrainTitle")}
-            </h3>
-          </div>
-          <p className="mt-1 text-xs leading-relaxed text-slate-400">
-            {t("nicheBrainSubtitle")}
-          </p>
-        </div>
-
+      {open ? (
+      <div className="space-y-4 rounded-2xl border border-border/60 bg-card/40 p-4">
         <AgentPanel
           domain="wizard"
           messages={messages}
@@ -122,14 +111,14 @@ export function WizardNicheBrainPanel({ className }: { className?: string }) {
             onUpdate={updateNicheProfile}
           />
         ) : (
-          <p className="rounded-xl border border-dashed border-slate-700/80 bg-slate-900/30 px-3 py-4 text-center text-xs text-slate-500">
+          <p className="rounded-xl border border-dashed border-border bg-background/30 px-3 py-4 text-center text-xs text-muted-foreground">
             {t("nicheProfileEmpty")}
           </p>
         )}
 
         {shotIdeas.length > 0 ? (
           <div className="space-y-2">
-            <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-violet-300/80">
+            <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
               <Camera className="h-3.5 w-3.5" />
               {t("nicheShotIdeasTitle")}
             </p>
@@ -142,25 +131,26 @@ export function WizardNicheBrainPanel({ className }: { className?: string }) {
                   className={cn(
                     "rounded-xl border p-3 text-left transition-colors",
                     selectedShotId === idea.id
-                      ? "border-violet-500 bg-violet-500/15"
-                      : "border-slate-700/80 bg-slate-800/30 hover:border-violet-500/50 hover:bg-violet-500/5"
+                      ? "border-rose-400/60 bg-rose-500/10"
+                      : "border-border bg-muted/20 hover:border-foreground/30"
                   )}
                 >
-                  <p className="text-xs font-medium text-white">{idea.title}</p>
-                  <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-slate-400">
+                  <p className="text-xs font-medium text-foreground">{idea.title}</p>
+                  <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
                     {idea.sceneDescription}
                   </p>
                 </button>
               ))}
             </div>
             {selectedShotId ? (
-              <p className="text-[11px] text-violet-300/90">
+              <p className="text-[11px] text-rose-300/90">
                 {t("nicheShotSelected")}
               </p>
             ) : null}
           </div>
         ) : null}
       </div>
+      ) : null}
     </aside>
   );
 }
@@ -178,13 +168,13 @@ function NicheProfileCard({
   const vc = profile.visualCodes;
 
   return (
-    <div className="space-y-3 rounded-xl border border-slate-700/60 bg-slate-800/20 p-3">
+    <div className="space-y-3 rounded-xl border border-border/60 bg-muted/20 p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="rounded-full bg-violet-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-300">
+        <span className="rounded-full border border-border bg-background/60 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-foreground">
           {nicheLabel ?? profile.nicheCategory}
         </span>
         {profile.subNiche.trim() ? (
-          <span className="text-xs text-slate-300">{profile.subNiche}</span>
+          <span className="text-xs text-foreground/80">{profile.subNiche}</span>
         ) : null}
       </div>
 
@@ -200,14 +190,14 @@ function NicheProfileCard({
 
       {profile.contentPillars.length > 0 ? (
         <div>
-          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             {t("nicheProfilePillars")}
           </p>
           <div className="flex flex-wrap gap-1">
             {profile.contentPillars.map((pillar) => (
               <span
                 key={pillar}
-                className="rounded-full border border-slate-600/60 bg-slate-900/50 px-2 py-0.5 text-[10px] text-slate-300"
+                className="rounded-full border border-border/60 bg-background/50 px-2 py-0.5 text-[10px] text-foreground/80"
               >
                 {pillar}
               </span>
@@ -218,11 +208,11 @@ function NicheProfileCard({
 
       {(vc.settings.length > 0 || vc.wardrobe.length > 0 || vc.lighting) ? (
         <div>
-          <p className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+          <p className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             <Palette className="h-3 w-3" />
             {t("nicheProfileVisuals")}
           </p>
-          <ul className="space-y-0.5 text-[11px] text-slate-400">
+          <ul className="space-y-0.5 text-[11px] text-muted-foreground">
             {vc.settings.slice(0, 2).map((s) => (
               <li key={s}>• {s}</li>
             ))}
@@ -236,11 +226,11 @@ function NicheProfileCard({
 
       {profile.doNots.length > 0 ? (
         <div>
-          <p className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+          <p className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             <Ban className="h-3 w-3" />
             {t("nicheProfileDoNots")}
           </p>
-          <ul className="space-y-0.5 text-[11px] text-slate-500">
+          <ul className="space-y-0.5 text-[11px] text-muted-foreground/80">
             {profile.doNots.slice(0, 3).map((d) => (
               <li key={d}>• {d}</li>
             ))}
@@ -268,11 +258,11 @@ function ProfileRow({
 }) {
   return (
     <div>
-      <p className="mb-0.5 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+      <p className="mb-0.5 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
         <Icon className="h-3 w-3" />
         {label}
       </p>
-      <p className="text-xs leading-relaxed text-slate-300">{value}</p>
+      <p className="text-xs leading-relaxed text-foreground/80">{value}</p>
     </div>
   );
 }
@@ -287,13 +277,13 @@ function EditableField({
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="space-y-1 border-t border-slate-700/50 pt-2">
-      <label className="text-[10px] font-medium text-slate-500">{label}</label>
+    <div className="space-y-1 border-t border-border/50 pt-2">
+      <label className="text-[10px] font-medium text-muted-foreground">{label}</label>
       <input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-slate-700 bg-slate-900/60 px-2.5 py-1.5 text-xs text-white placeholder:text-slate-600 focus:border-violet-500 focus:outline-none"
+        className="w-full rounded-lg border border-border bg-background/60 px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-ring/60 focus:outline-none"
       />
     </div>
   );

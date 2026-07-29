@@ -10,7 +10,11 @@ import {
   getMatchedBorderlineKeywords,
   type ContentImageEngine,
 } from "@/lib/prompts/nano-borderline";
-import { softenPromptForEditorial } from "@/lib/prompts/safety-soften";
+import {
+  softenPromptForEditorial,
+  softenSfwFieldsForKontext,
+  softenSfwFitnessFields,
+} from "@/lib/prompts/safety-soften";
 import { selectIdentityPackRefs } from "@/lib/identity-pack";
 import { resolvePromptData } from "@/server/services/prompt-data-resolver";
 import { assertPremiumPromptAllowed } from "@/lib/prompts/premium-prompt-guard";
@@ -26,6 +30,10 @@ import {
   isContentSafetyFilterError,
   throwSocialSafetyError,
 } from "@/lib/generation-errors";
+import {
+  isPremiumImagesDisabled,
+  PREMIUM_DISABLED_MESSAGE,
+} from "@/lib/kill-switches";
 import { uploadFromUrl } from "@/server/services/storage.service";
 import { checkCredits, deductCredits } from "@/server/services/credits.service";
 import { CREDIT_COSTS } from "@/lib/constants";
@@ -59,13 +67,42 @@ export async function generateContentImage(
   influencerStyle: InfluencerStyle,
   input: ImageGenerationInput
 ): Promise<ImageGenerationOutput> {
-  const enrichedInput = await applyPhotoPromptEnrichment(input);
+  const enrichedRaw = await applyPhotoPromptEnrichment(input);
+
+  // Route BEFORE softening — fitness tokens (sports bra, leggings, gym mirror)
+  // are borderline keywords; rewriting them first wrongly keeps the job on Nano.
+  const routingFields = {
+    scene: enrichedRaw.scene,
+    sceneDescription: enrichedRaw.sceneDescription,
+    outfit: enrichedRaw.outfit,
+    location: enrichedRaw.location,
+    customPrompt: enrichedRaw.customPrompt,
+    pose: enrichedRaw.pose,
+    expression: enrichedRaw.expression,
+  };
+  const routeKontext =
+    !enrichedRaw.isNsfw &&
+    (enrichedRaw.isReelSceneFrame ||
+      shouldRouteToKontext(routingFields) ||
+      enrichedRaw.instagramShot === true);
+
+  // Nano: full fitness soften (avoid E005). Kontext: keep athletic wardrobe.
+  const enrichedInput = enrichedRaw.isNsfw
+    ? enrichedRaw
+    : routeKontext
+      ? softenSfwFieldsForKontext(enrichedRaw)
+      : softenSfwFitnessFields(enrichedRaw);
   const resolvedData = await resolvePromptData(
     enrichedInput.influencerId,
     enrichedInput
   );
   const numImages = Math.min(enrichedInput.numberOfImages, 4);
   const cost = CREDIT_COSTS.PHOTO * numImages;
+  // Multi-image runs tolerate partial success (2/4 delivered is a valid
+  // result) — always bill on what was actually delivered, never on what
+  // was requested.
+  const deliveredCost = (deliveredCount: number) =>
+    CREDIT_COSTS.PHOTO * Math.min(deliveredCount, numImages);
   if (!input.omitCreditBilling) {
     const hasCredits = await checkCredits(userId, cost);
     if (!hasCredits) {
@@ -77,20 +114,8 @@ export async function generateContentImage(
 
   const sendsRefImage = resolvedData.useReferenceFace === true;
 
-  const borderlineFields = {
-    scene: enrichedInput.scene,
-    sceneDescription: enrichedInput.sceneDescription,
-    outfit: enrichedInput.outfit,
-    location: enrichedInput.location,
-    customPrompt: resolvedData.customPrompt,
-    pose: enrichedInput.pose,
-    expression: enrichedInput.expression,
-  };
-  const borderline =
-    !enrichedInput.isNsfw &&
-    (enrichedInput.isReelSceneFrame || shouldRouteToKontext(borderlineFields));
-  const matchedKeywords = borderline
-    ? getMatchedBorderlineKeywords(borderlineFields)
+  const matchedKeywords = routeKontext
+    ? getMatchedBorderlineKeywords(routingFields)
     : [];
 
   const buildPromptForEngine = (engine: ContentImageEngine) =>
@@ -102,7 +127,7 @@ export async function generateContentImage(
   const primaryEngine: ContentImageEngine =
     enrichedInput.isReelSceneFrame && !enrichedInput.isNsfw
       ? "kontext"
-      : borderline || enrichedInput.instagramShot
+      : routeKontext
         ? "kontext"
         : "nano";
   let usedEngine: ContentImageEngine = primaryEngine;
@@ -122,6 +147,11 @@ export async function generateContentImage(
   }
 
   if (input.isNsfw) {
+    // Service-level kill switch — also covers NSFW drafts flowing through
+    // the batch cron, which bypasses the tRPC router check.
+    if (isPremiumImagesDisabled()) {
+      throw new Error(PREMIUM_DISABLED_MESSAGE);
+    }
     const tier = nsfwTier ?? clampPremiumNsfwLevel(enrichedInput.nsfwLevel);
     assertPremiumPromptAllowed(
       {
@@ -165,7 +195,7 @@ export async function generateContentImage(
         );
 
         if (!input.omitCreditBilling) {
-          await deductCredits(userId, cost);
+          await deductCredits(userId, deliveredCost(storedUrls.length));
         }
 
         return {
@@ -220,7 +250,7 @@ export async function generateContentImage(
         );
 
         if (!input.omitCreditBilling) {
-          await deductCredits(userId, cost);
+          await deductCredits(userId, deliveredCost(storedUrls.length));
         }
 
         return {
@@ -265,7 +295,7 @@ export async function generateContentImage(
       );
 
       if (!input.omitCreditBilling) {
-        await deductCredits(userId, cost);
+        await deductCredits(userId, deliveredCost(storedUrls.length));
       }
 
       return {
@@ -321,8 +351,7 @@ export async function generateContentImage(
 
   let plan: ModelPlan;
   if (sendsRefImage && input.baseImageUrl) {
-    plan =
-      borderline || enrichedInput.instagramShot ? kontextPlan : nanoPlan;
+    plan = routeKontext ? kontextPlan : nanoPlan;
   } else {
     plan = {
       model: MODEL_SFW_T2I,
@@ -341,11 +370,9 @@ export async function generateContentImage(
       "[ai-image] Generating content image with",
       plan.model,
       sendsRefImage ? "(face-locked)" : "(no reference)",
-      borderline
+      routeKontext
         ? `(borderline → kontext, keywords: ${matchedKeywords.join(", ") || "n/a"})`
-        : enrichedInput.instagramShot
-          ? "(instagram-shot → kontext)"
-          : "(nano-first)",
+        : "(nano-first)",
       refs.length > 1 ? `(${refs.length} identity refs)` : ""
     );
 
@@ -410,7 +437,7 @@ export async function generateContentImage(
     );
 
     if (!input.omitCreditBilling) {
-      await deductCredits(userId, cost);
+      await deductCredits(userId, deliveredCost(storedUrls.length));
     }
 
     return {

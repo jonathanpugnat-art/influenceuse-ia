@@ -19,6 +19,7 @@ import {
   getInstagramOAuthProvider,
   usesInstagramDirectLogin,
 } from "@/lib/instagram-oauth-config";
+import { buildSignedOAuthState } from "@/lib/oauth-state";
 
 // ──────────────────────────────────────────────
 // Helpers
@@ -276,6 +277,24 @@ export const publishRouter = createTRPCRouter({
         });
       }
 
+      // Atomic claim — a double-click or a concurrent publish cron tick must
+      // never publish the same content twice on Meta. Whoever flips the
+      // status first wins; the loser gets a clear CONFLICT.
+      const previousStatus = content.status;
+      const claimed = await db.content.updateMany({
+        where: {
+          id: input.contentId,
+          status: { in: ["READY", "SCHEDULED"] },
+        },
+        data: { status: "GENERATING" },
+      });
+      if (claimed.count === 0) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "Une publication est déjà en cours pour ce contenu.",
+        });
+      }
+
       const contentWithInfluencer = await db.content.findUnique({
         where: { id: input.contentId },
         include: {
@@ -302,23 +321,96 @@ export const publishRouter = createTRPCRouter({
         throw new TRPCError({ code: "NOT_FOUND", message: "Content not found" });
       }
 
-      const { publishContent: doPublish, savePublishResults } = await import(
-        "@/server/services/publisher.service"
-      );
-      const results = await doPublish({
-        ...contentWithInfluencer,
-        platforms: input.platforms as ("INSTAGRAM" | "TIKTOK" | "ONLYFANS")[],
-      });
-      await savePublishResults(input.contentId, results);
+      let resultsCount = 0;
+      try {
+        const { publishContent: doPublish, savePublishResults } = await import(
+          "@/server/services/publisher.service"
+        );
+        const results = await doPublish({
+          ...contentWithInfluencer,
+          platforms: input.platforms as ("INSTAGRAM" | "TIKTOK" | "ONLYFANS")[],
+        });
+        resultsCount = results.length;
+        await savePublishResults(input.contentId, results);
+      } catch (err) {
+        // Release the claim so the user can retry (savePublishResults sets
+        // the final status on the nominal path).
+        await db.content
+          .updateMany({
+            where: { id: input.contentId, status: "GENERATING" },
+            data: { status: previousStatus },
+          })
+          .catch(() => undefined);
+        throw err;
+      }
 
       const created = await db.publishResult.findMany({
         where: { contentId: input.contentId },
         orderBy: { createdAt: "desc" },
-        take: results.length,
+        take: resultsCount,
       });
 
       return { results: created };
     }),
+
+  /**
+   * recentPublishFailures — Publications échouées (7 derniers jours) encore
+   * non résolues (aucun SUCCESS ultérieur pour le même contenu+plateforme).
+   * Consommé par la bannière du calendrier pour tuer le « silent fail » du
+   * cron publish : l'utilisateur voit l'échec sans avoir à fouiller.
+   */
+  recentPublishFailures: protectedProcedure.query(async ({ ctx }) => {
+    const user = await getDbUser(ctx.userId);
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const failures = await db.publishResult.findMany({
+      where: {
+        status: "FAILED",
+        createdAt: { gte: since },
+        content: { influencer: { userId: user.id } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 25,
+      select: {
+        id: true,
+        platform: true,
+        error: true,
+        createdAt: true,
+        content: {
+          select: {
+            id: true,
+            type: true,
+            caption: true,
+            thumbnailUrl: true,
+            status: true,
+            influencer: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+    if (failures.length === 0) return [];
+
+    // Un retry réussi résout l'échec — on ne remonte que les échecs ouverts.
+    const contentIds = [...new Set(failures.map((f) => f.content.id))];
+    const successes = await db.publishResult.findMany({
+      where: { status: "SUCCESS", contentId: { in: contentIds } },
+      select: { contentId: true, platform: true },
+    });
+    const resolved = new Set(
+      successes.map((s) => `${s.contentId}:${s.platform}`)
+    );
+
+    // Dédup par contenu+plateforme (on garde l'échec le plus récent).
+    const seen = new Set<string>();
+    const open: typeof failures = [];
+    for (const f of failures) {
+      const key = `${f.content.id}:${f.platform}`;
+      if (resolved.has(key) || seen.has(key)) continue;
+      seen.add(key);
+      open.push(f);
+    }
+    return open.slice(0, 5);
+  }),
 
   /**
    * connectInstagram — Retourne l'URL d'autorisation OAuth Instagram.
@@ -359,9 +451,12 @@ export const publishRouter = createTRPCRouter({
   connectInstagram: protectedProcedure
     .input(z.object({ influencerId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      await verifyInfluencerOwnership(input.influencerId, ctx.userId);
+      const { user } = await verifyInfluencerOwnership(input.influencerId, ctx.userId);
       const redirectUri = getInstagramOAuthRedirectUri();
-      const url = instagram.getAuthUrl(redirectUri, input.influencerId);
+      const url = instagram.getAuthUrl(
+        redirectUri,
+        buildSignedOAuthState(input.influencerId, user.id)
+      );
       return { url, redirectUri };
     }),
 
@@ -371,9 +466,12 @@ export const publishRouter = createTRPCRouter({
   connectTiktok: protectedProcedure
     .input(z.object({ influencerId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      await verifyInfluencerOwnership(input.influencerId, ctx.userId);
+      const { user } = await verifyInfluencerOwnership(input.influencerId, ctx.userId);
       const redirectUri = getTikTokOAuthRedirectUri();
-      const url = tiktok.getAuthUrl(redirectUri, input.influencerId);
+      const url = tiktok.getAuthUrl(
+        redirectUri,
+        buildSignedOAuthState(input.influencerId, user.id)
+      );
       return { url };
     }),
 
@@ -504,6 +602,23 @@ export const publishRouter = createTRPCRouter({
         });
       }
 
+      // Idempotence: never re-post something Instagram already accepted.
+      const alreadyPublished = await db.publishResult.findFirst({
+        where: {
+          contentId: input.contentId,
+          platform: "INSTAGRAM",
+          status: "SUCCESS",
+        },
+        select: { externalPostId: true },
+      });
+      if (alreadyPublished?.externalPostId) {
+        return {
+          success: true as const,
+          mediaId: alreadyPublished.externalPostId,
+          platform: "INSTAGRAM" as const,
+        };
+      }
+
       const account = await db.socialAccount.findFirst({
         where: {
           influencerId: input.influencerId,
@@ -541,16 +656,44 @@ export const publishRouter = createTRPCRouter({
         platformUserId: account.platformUserId,
       });
 
-      const caption = buildCaptionWithHashtags(content.caption, content.hashtags);
-      const mediaId = await publishInstagramContent({
-        contentId: input.contentId,
-        accessToken,
-        igUserId: account.platformUserId,
-        type: content.type,
-        mediaUrls: content.mediaUrls,
-        thumbnailUrl: content.thumbnailUrl,
-        caption,
+      // Atomic claim — protects against double-click / concurrent cron tick
+      // publishing the same content twice on Meta.
+      const previousStatus = content.status;
+      const claimed = await db.content.updateMany({
+        where: {
+          id: input.contentId,
+          status: { in: ["DRAFT", "READY", "SCHEDULED"] },
+        },
+        data: { status: "GENERATING" },
       });
+      if (claimed.count === 0) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "Une publication est déjà en cours pour ce contenu.",
+        });
+      }
+
+      const caption = buildCaptionWithHashtags(content.caption, content.hashtags);
+      let mediaId: string;
+      try {
+        mediaId = await publishInstagramContent({
+          contentId: input.contentId,
+          accessToken,
+          igUserId: account.platformUserId,
+          type: content.type,
+          mediaUrls: content.mediaUrls,
+          thumbnailUrl: content.thumbnailUrl,
+          caption,
+        });
+      } catch (err) {
+        await db.content
+          .updateMany({
+            where: { id: input.contentId, status: "GENERATING" },
+            data: { status: previousStatus },
+          })
+          .catch(() => undefined);
+        throw err;
+      }
 
       console.log(
         `[publishToInstagram] contentId=${input.contentId} mediaId=${mediaId} platform=INSTAGRAM`

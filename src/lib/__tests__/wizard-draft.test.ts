@@ -8,6 +8,7 @@ const emptyData: WizardData = {
   gender: "female",
   bio: "",
   personality: "",
+  angle: "",
   niche: "",
   age: 24,
   isNsfw: false,

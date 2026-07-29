@@ -46,6 +46,8 @@ export {
   listBatchesInputSchema,
   batchIdInputSchema,
   processBatchSliceInputSchema,
+  approveBatchInputSchema,
+  discardBatchContentsInputSchema,
 } from "./content-batch.schema";
 
 export {

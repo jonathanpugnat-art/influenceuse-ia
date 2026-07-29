@@ -5,6 +5,9 @@ import {
   runTrendsFetch,
 } from "@/server/services/trends.service";
 
+// Apify fetch + media mirroring + vision analysis can take minutes.
+export const maxDuration = 300;
+
 /**
  * v0.12 — Daily cron that refreshes the trends cache.
  *

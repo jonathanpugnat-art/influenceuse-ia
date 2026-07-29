@@ -80,20 +80,9 @@ function readContextString(
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-async function fetchInfluencerBrief(
-  influencerId: string,
-  userId: string
-): Promise<string | undefined> {
-  const influencer = await db.influencer.findFirst({
-    where: { id: influencerId, userId },
-    select: { brief: true },
-  });
-  return influencer?.brief?.trim() || undefined;
-}
-
 async function runPhotoAgentTurn(
   input: AgentTurnInput,
-  userId: string
+  clerkUserId: string
 ): Promise<AgentTurnOutput> {
   const photoInput = parsePhotoAgentContext(input);
   if (!photoInput) {
@@ -106,17 +95,18 @@ async function runPhotoAgentTurn(
   }
 
   const influencerId = readContextString(input.context, "influencerId");
-  const influencerBrief = influencerId
-    ? await fetchInfluencerBrief(influencerId, userId)
-    : undefined;
 
+  let influencerBrief: string | undefined;
   let topTrends: Awaited<ReturnType<typeof getTopTrendsForInfluencer>> = [];
   if (influencerId) {
+    // Ownership check runs against the DB user id — ctx.userId is the Clerk id.
+    const user = await getDbUser(clerkUserId);
     const influencer = await db.influencer.findFirst({
-      where: { id: influencerId, userId },
-      select: { id: true, niche: true, isNsfw: true },
+      where: { id: influencerId, userId: user.id },
+      select: { id: true, niche: true, isNsfw: true, brief: true },
     });
     if (influencer) {
+      influencerBrief = influencer.brief?.trim() || undefined;
       topTrends = await getTopTrendsForInfluencer(influencer, { limit: 3 });
     }
   }

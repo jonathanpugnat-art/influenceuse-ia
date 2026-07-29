@@ -1,14 +1,16 @@
 import type { WizardData } from "@/hooks/use-influencer-wizard";
 
 export function isIdentityStepComplete(data: WizardData): boolean {
+  const angle = (data.angle ?? data.brief ?? "").trim();
+  const hasAngleOrBio =
+    angle.length >= 5 ||
+    (data.bio.trim().length >= 10 && data.personality.trim().length >= 10);
+
   return (
     data.name.trim().length >= 2 &&
     data.name.trim().length <= 50 &&
-    data.bio.trim().length >= 10 &&
-    data.bio.trim().length <= 300 &&
-    data.personality.trim().length >= 10 &&
-    data.personality.trim().length <= 500 &&
-    Boolean(data.niche?.trim())
+    Boolean(data.niche?.trim()) &&
+    hasAngleOrBio
   );
 }
 
@@ -49,5 +51,8 @@ export function canNavigateToWizardStep(
   selectedImageIndex: number
 ): boolean {
   if (targetStep < 1 || targetStep > 4) return false;
-  return targetStep <= getMaxReachableWizardStep(data, generatedImages, selectedImageIndex);
+  return (
+    targetStep <=
+    getMaxReachableWizardStep(data, generatedImages, selectedImageIndex)
+  );
 }

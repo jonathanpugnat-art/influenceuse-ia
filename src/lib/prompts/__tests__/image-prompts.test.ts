@@ -553,10 +553,7 @@ describe("image-prompts", () => {
       });
       expect(without).not.toContain("facial details:");
 
-      // With variations → the same render() string the wizard portrait
-      // used appears in the content prompt as well. This is the key
-      // assertion: it's what guarantees feed photos look like the same
-      // person as the base portrait.
+      // With variations (no face ref) → DNA traits help text-only identity.
       const v = { faceShape: 0, eyeShape: 1, eyeColor: 2, nose: 0, distinctiveFeature: 0, expression: 0 };
       const withV = buildFullPrompt({
         gender: "female",
@@ -571,6 +568,23 @@ describe("image-prompts", () => {
       expect(withV).toContain("facial details:");
       expect(withV).toContain(APPEARANCE_VARIATIONS.eyeColor[2]);
       expect(withV).toContain(APPEARANCE_VARIATIONS.eyeShape[1]);
+    });
+
+    it("skips facial details when useReferenceFace is true (image lock wins)", () => {
+      const v = { faceShape: 0, eyeShape: 1, eyeColor: 2, nose: 0, distinctiveFeature: 0, expression: 0 };
+      const withRef = buildFullPrompt({
+        gender: "female",
+        age: 25,
+        ethnicity: "caucasian",
+        hairColor: "brown",
+        hairStyle: "long",
+        bodyType: "slim",
+        scene: "studio",
+        useReferenceFace: true,
+        appearanceVariations: v,
+      });
+      expect(withRef).not.toContain("facial details:");
+      expect(withRef).toContain("IDENTITY LOCK");
     });
   });
 });

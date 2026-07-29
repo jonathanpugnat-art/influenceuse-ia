@@ -184,7 +184,12 @@ export async function composeImageOnScenePlate(
   );
 
   if (!input.omitCreditBilling) {
-    await deductCredits(userId, cost);
+    // Partial success is possible (runMultiplePredictions settles per image):
+    // bill on delivered images, never on requested count.
+    await deductCredits(
+      userId,
+      CREDIT_COSTS.PHOTO * Math.min(storedUrls.length, numImages)
+    );
   }
 
   return {

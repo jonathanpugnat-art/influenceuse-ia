@@ -11,16 +11,15 @@ import {
   isToday,
   format,
 } from "date-fns";
-import { fr } from "date-fns/locale";
+import { fr, enUS } from "date-fns/locale";
+import { useLocale, useTranslations } from "next-intl";
 import { ImagePlus, Video } from "lucide-react";
 import { InstagramIcon, TikTokIcon, OnlyFansIcon } from "@/components/ui/social-icons";
 import { cn } from "@/lib/utils";
 import type { CalendarEvent } from "./types";
 
-const DAY_NAMES = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
-
 const statusColors: Record<string, string> = {
-  SCHEDULED: "bg-violet-500/20 border-violet-500/40 text-violet-300",
+  SCHEDULED: "bg-foreground/10 border-foreground/20 text-foreground/80",
   PUBLISHED: "bg-emerald-500/20 border-emerald-500/40 text-emerald-300",
   FAILED: "bg-red-500/20 border-red-500/40 text-red-300",
 };
@@ -49,24 +48,30 @@ export function MonthView({
   onEventClick: (event: CalendarEvent) => void;
   onDayClick: (date: Date) => void;
 }) {
+  const locale = useLocale();
+  const t = useTranslations("calendar");
+  const dfnLocale = locale === "fr" ? fr : enUS;
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
   const calStart = startOfWeek(monthStart, { weekStartsOn: 1 });
   const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start: calStart, end: calEnd });
+  const dayNames = days
+    .slice(0, 7)
+    .map((d) => format(d, "EEE", { locale: dfnLocale }));
 
   function getEventsForDay(day: Date) {
     return events.filter((e) => isSameDay(new Date(e.date), day));
   }
 
   return (
-    <div className="rounded-2xl border border-slate-800/50 bg-slate-900/50 backdrop-blur-xl overflow-hidden">
+    <div className="rounded-2xl border border-border/50 bg-card/50 backdrop-blur-xl overflow-hidden">
       {/* Day headers */}
-      <div className="grid grid-cols-7 border-b border-slate-800/50">
-        {DAY_NAMES.map((d) => (
+      <div className="grid grid-cols-7 border-b border-border/50">
+        {dayNames.map((d) => (
           <div
             key={d}
-            className="px-2 py-2.5 text-center text-xs font-medium text-slate-500"
+            className="px-2 py-2.5 text-center text-xs font-medium capitalize text-muted-foreground"
           >
             {d}
           </div>
@@ -87,10 +92,10 @@ export function MonthView({
               key={day.toISOString()}
               onClick={() => dayEvents.length === 0 && onDayClick(day)}
               className={cn(
-                "min-h-[100px] border-b border-r border-slate-800/30 p-1.5 transition-colors",
+                "min-h-[100px] border-b border-r border-border/30 p-1.5 transition-colors",
                 !inMonth && "opacity-30",
-                today && "bg-violet-500/5",
-                dayEvents.length === 0 && "cursor-pointer hover:bg-slate-800/20"
+                today && "bg-rose-500/5",
+                dayEvents.length === 0 && "cursor-pointer hover:bg-accent/20"
               )}
             >
               {/* Day number */}
@@ -99,10 +104,10 @@ export function MonthView({
                   className={cn(
                     "flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium",
                     today
-                      ? "bg-violet-500 text-white"
+                      ? "bg-rose-500 text-white"
                       : inMonth
-                        ? "text-slate-300"
-                        : "text-slate-600"
+                        ? "text-foreground/80"
+                        : "text-muted-foreground/60"
                   )}
                 >
                   {format(day, "d")}
@@ -142,9 +147,9 @@ export function MonthView({
                       e.stopPropagation();
                       onEventClick(dayEvents[maxVisible]);
                     }}
-                    className="w-full text-center text-[9px] text-slate-500 hover:text-violet-400"
+                    className="w-full text-center text-[9px] text-muted-foreground transition-colors hover:text-foreground"
                   >
-                    +{overflowCount} autre{overflowCount > 1 ? "s" : ""}
+                    {t("moreEvents", { count: overflowCount })}
                   </button>
                 )}
               </div>

@@ -45,6 +45,7 @@ RULES:
 - "missingFields" lists only critical fields still unknown: postsPerWeek, startDate, endDate, platforms (and influencerId is handled separately — never include it).
 - Set readyToExecute true ONLY when postsPerWeek, startDate, endDate, and platforms are all resolved (non-null).
 - Dates must be ISO YYYY-MM-DD. For "ce mois" / "this month", use the current calendar month boundaries.
+- Support month-scale plans: "30 posts", "1 post/jour ce mois", "3×/semaine pendant 1 mois" (up to ~30 days).
 - Default platforms to ["INSTAGRAM"] if the user mentions posting but no platform.
 - Map vibe into "goals" when no explicit goal is given (e.g. goals: "summer vibe, fitness content").
 - When INFLUENCER BRIEF is provided, infer vibe and goals from it — align content tone with positioning (premium OF, fitness coach, streetwear creator, etc.).

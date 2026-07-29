@@ -11,7 +11,6 @@ import { downloadMediaUrl } from "@/lib/download-media";
 import { WorkflowSteps } from "@/components/content/workflow-steps";
 import { PhotoInstagramFeedMock } from "@/components/content/photo-instagram-feed-mock";
 import { usePhotoCreator } from "@/hooks/use-photo-creator";
-import { trpc } from "@/lib/trpc";
 import { useInfluencers } from "@/hooks/use-influencers";
 import type { PhotoGenerationState } from "@/hooks/photo-studio";
 import { PhotoIntentNotice } from "./photo-intent-notice";
@@ -71,12 +70,12 @@ export function PhotoPreviewStudioLayout({
     <div className="flex min-h-0 flex-1 flex-col p-4 md:p-6 lg:p-8">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-sm font-semibold text-white">
+          <h2 className="text-sm font-semibold text-foreground">
             {t("studioCanvasTitle")}
           </h2>
-          <p className="text-xs text-slate-500">{t("studioCanvasSubtitle")}</p>
+          <p className="text-xs text-muted-foreground">{t("studioCanvasSubtitle")}</p>
         </div>
-        <Badge className="border-slate-700 bg-slate-800/50 text-xs text-slate-400">
+        <Badge variant="outline" className="text-xs text-muted-foreground">
           <Coins className="mr-1 inline h-3 w-3" />
           {useSceneFirst && !hasFinalImages && !awaitingSceneApproval
             ? t("sceneCostLabel", { cost: String(SCENE_FIRST_PLATE_CREDIT) })
@@ -97,7 +96,7 @@ export function PhotoPreviewStudioLayout({
       )}
 
       <div className="flex flex-1 flex-col items-center justify-center gap-6">
-        <div className="w-full max-w-[380px] space-y-2">
+        <div className="w-full max-w-md space-y-2">
           <PhotoInstagramFeedMock
             username={igUsername}
             avatarUrl={avatarUrl}
@@ -110,9 +109,9 @@ export function PhotoPreviewStudioLayout({
             aspect="square"
           />
           {params.outfit.trim() ? (
-            <p className="rounded-lg border border-slate-800/60 bg-slate-900/50 px-3 py-2 text-center text-[11px] text-slate-400">
-              <span className="font-medium text-violet-300">{t("outfit")}:</span>{" "}
-              <span className="text-slate-300">{params.outfit}</span>
+            <p className="px-3 text-center text-[11px] text-muted-foreground">
+              <span className="font-medium text-foreground">{t("outfit")}:</span>{" "}
+              {params.outfit}
             </p>
           ) : (
             <p className="text-center text-[11px] text-amber-500/90">
@@ -120,11 +119,11 @@ export function PhotoPreviewStudioLayout({
             </p>
           )}
           {params.sceneDescription.trim() ? (
-            <p className="rounded-lg border border-slate-800/60 bg-slate-900/50 px-3 py-2 text-center text-[11px] text-slate-400">
-              <span className="font-medium text-emerald-400">
+            <p className="px-3 text-center text-[11px] text-muted-foreground">
+              <span className="font-medium text-foreground">
                 {t("promptStudioLabel")}:
               </span>{" "}
-              <span className="text-slate-300">{params.sceneDescription}</span>
+              {params.sceneDescription}
             </p>
           ) : null}
           <PhotoIntentNotice
@@ -142,10 +141,10 @@ export function PhotoPreviewStudioLayout({
                 type="button"
                 onClick={() => setSelectedImageIndex(i)}
                 className={cn(
-                  "relative h-14 w-14 overflow-hidden rounded-lg border-2",
+                  "relative h-14 w-14 overflow-hidden rounded-lg border-2 transition-opacity",
                   selectedImageIndex === i
-                    ? "border-violet-500"
-                    : "border-transparent opacity-60"
+                    ? "border-rose-400"
+                    : "border-transparent opacity-60 hover:opacity-90"
                 )}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -186,7 +185,7 @@ export function PhotoPreviewStudioLayout({
         )}
 
         {(showPrimaryActions || awaitingSceneApproval) && (
-          <div className="flex w-full max-w-[380px] flex-col gap-2">
+          <div className="flex w-full max-w-md flex-col gap-2">
             {!params.influencerId && (
               <p className="text-center text-xs text-amber-400/90">
                 {t("selectInfluencerFirst")}
@@ -208,7 +207,7 @@ export function PhotoPreviewStudioLayout({
                   type="button"
                   onClick={handleGenerateScene}
                   disabled={!canGenerate}
-                  className="flex-1 rounded-xl border border-slate-600 py-3 text-sm text-slate-300 hover:bg-slate-800/50 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="min-h-10 flex-1 rounded-full border border-border py-2.5 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {t("regenerateSceneBtn")}
                 </button>
@@ -216,7 +215,7 @@ export function PhotoPreviewStudioLayout({
                   type="button"
                   onClick={handleCompose}
                   disabled={isGenerating}
-                  className="flex-1 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 py-3 text-sm font-semibold text-white disabled:opacity-40"
+                  className="min-h-10 flex-1 rounded-full bg-foreground py-2.5 text-sm font-semibold text-background transition-colors hover:bg-foreground/90 disabled:opacity-40"
                 >
                   {t("composeInfluencerBtn", { cost: String(composeCost) })}
                 </button>
@@ -226,7 +225,7 @@ export function PhotoPreviewStudioLayout({
                 type="button"
                 onClick={onPrimaryAction}
                 disabled={!canGenerate}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-foreground px-6 py-3 text-sm font-semibold text-background transition-colors hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Sparkles className="h-4 w-4" />
                 {primaryLabel}

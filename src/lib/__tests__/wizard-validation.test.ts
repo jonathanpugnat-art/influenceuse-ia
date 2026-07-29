@@ -13,6 +13,7 @@ const baseData: WizardData = {
   gender: "female",
   bio: "Fitness lover and lifestyle creator based in Paris.",
   personality: "Confident, warm, and always positive with her community.",
+  angle: "coach running Paris",
   niche: "FITNESS",
   age: 24,
   isNsfw: false,
@@ -40,6 +41,18 @@ describe("wizard-validation", () => {
   it("allows step 2 when identity is complete", () => {
     expect(isIdentityStepComplete(baseData)).toBe(true);
     expect(getMaxReachableWizardStep(baseData, [], 0)).toBe(2);
+  });
+
+  it("accepts niche + angle without long bio", () => {
+    expect(
+      isIdentityStepComplete({
+        ...baseData,
+        bio: "",
+        personality: "",
+        angle: "mode street Paris",
+        niche: "FASHION",
+      })
+    ).toBe(true);
   });
 
   it("allows steps 3–4 when portrait exists", () => {

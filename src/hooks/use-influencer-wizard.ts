@@ -24,6 +24,11 @@ export interface WizardData {
   /** Shot idea picked in the niche brain panel — applied to photo studio after create. */
   pendingNicheShotId?: string;
   pendingNicheShot?: NicheShotIdea;
+  /**
+   * Freeform positioning angle (e.g. "coach running Paris").
+   * Primary day-1 signal — niche enum stays a coarse bucket.
+   */
+  angle: string;
   niche: string;
   age: number;
   isNsfw: boolean;
@@ -94,6 +99,7 @@ const initialData: WizardData = {
   gender: "female",
   bio: "",
   personality: "",
+  angle: "",
   niche: "",
   age: 24,
   isNsfw: false,
@@ -162,7 +168,7 @@ export const useInfluencerWizard = create<WizardState>()(
         selectedImageIndex: s.selectedImageIndex,
         createdInfluencerId: s.createdInfluencerId,
       }),
-      version: 5,
+      version: 6,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as {
           data?: Partial<WizardData>;
@@ -170,13 +176,24 @@ export const useInfluencerWizard = create<WizardState>()(
           expressMode?: unknown;
         };
         if (version < 3 && state.data) {
-          state.data = { ...initialData, ...state.data, ...defaultWizardAppearanceV2() };
+          state.data = {
+            ...initialData,
+            ...state.data,
+            ...defaultWizardAppearanceV2(),
+          };
         }
         // v5 — the Guided/Express choice + express mode were removed in favour
         // of a single linear flow. Drop the stale fields from older drafts.
         if (version < 5) {
           delete state.entryMode;
           delete state.expressMode;
+        }
+        // v6 — angle field (niche positioning) for simplified identity step.
+        if (version < 6 && state.data) {
+          state.data = {
+            ...state.data,
+            angle: state.data.angle ?? state.data.brief ?? "",
+          };
         }
         return persisted as typeof persisted;
       },

@@ -25,6 +25,10 @@ import {
   resolveEffectivePhotoContentMode,
   validatePhotoIntent,
 } from "@/lib/photo-intent-validation";
+import {
+  isPremiumImagesDisabled,
+  PREMIUM_DISABLED_MESSAGE,
+} from "@/lib/kill-switches";
 import { resolvePublicMediaUrl } from "@/server/lib/resolve-public-media-url";
 import { toPortraitStyleInput } from "@/lib/appearance-v2";
 import {
@@ -94,6 +98,13 @@ export const contentPhotoRouter = createTRPCRouter({
           code: "FORBIDDEN",
           message:
             "Le contenu Premium (OnlyFans) nécessite un plan Creator ou supérieur.",
+        });
+      }
+
+      if (input.contentMode === "NSFW" && isPremiumImagesDisabled()) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: PREMIUM_DISABLED_MESSAGE,
         });
       }
 

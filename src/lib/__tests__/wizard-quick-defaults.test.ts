@@ -8,6 +8,7 @@ const base: WizardData = {
   gender: "female",
   bio: "",
   personality: "",
+  angle: "",
   niche: "",
   age: 24,
   isNsfw: false,
@@ -40,6 +41,17 @@ describe("wizard-quick-defaults", () => {
       brief: "Influenceuse fitness parisienne, énergie positive.",
     });
     expect(filled.bio).toContain("fitness");
+  });
+
+  it("builds minimal niche profile from angle", () => {
+    const filled = ensureWizardMinimumFields({
+      ...base,
+      niche: "FITNESS",
+      angle: "coach running Paris",
+    });
+    expect(filled.nicheProfile?.subNiche).toContain("running");
+    expect(filled.nicheProfile?.visualCodes.settings.length).toBeGreaterThan(0);
+    expect(filled.brief).toContain("running");
   });
 
   it("detects quick wizard readiness", () => {

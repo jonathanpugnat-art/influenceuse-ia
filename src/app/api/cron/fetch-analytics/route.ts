@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchAnalyticsSlice } from "@/server/services/analytics-fetcher.service";
 
+export const maxDuration = 60;
+
 /**
  * Cron endpoint — pulls latest views/likes/comments from Instagram & TikTok
  * for posts that are due for a refresh and persists a ContentAnalytics row.

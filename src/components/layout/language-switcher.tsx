@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "@/i18n/navigation";
-import { useLocale } from "next-intl";
-import { Globe } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
+import { Check, Globe } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,12 +12,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 const locales = [
-  { value: "fr" as const, label: "Français", flag: "🇫🇷" },
-  { value: "en" as const, label: "English", flag: "🇬🇧" },
+  { value: "fr" as const, label: "Français" },
+  { value: "en" as const, label: "English" },
 ];
 
 export function LanguageSwitcher() {
   const locale = useLocale();
+  const t = useTranslations("layout");
   const router = useRouter();
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
@@ -31,12 +32,15 @@ export function LanguageSwitcher() {
     router.replace(pathname, { locale: newLocale });
   };
 
+  const triggerClasses =
+    "flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground";
+
   if (!mounted) {
     return (
       <button
         type="button"
-        className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
-        aria-label="Changer de langue"
+        className={triggerClasses}
+        aria-label={t("changeLanguage")}
       >
         <Globe className="h-4 w-4" />
       </button>
@@ -48,26 +52,25 @@ export function LanguageSwitcher() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
-          aria-label="Changer de langue"
+          className={triggerClasses}
+          aria-label={t("changeLanguage")}
         >
           <Globe className="h-4 w-4" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        className="w-40 border-slate-800 bg-slate-900"
-      >
+      <DropdownMenuContent align="end" className="w-40">
         {locales.map((loc) => (
           <DropdownMenuItem
             key={loc.value}
             onClick={() => handleSelect(loc.value)}
-            className={`cursor-pointer text-slate-300 focus:bg-slate-800 focus:text-white ${
-              locale === loc.value ? "bg-slate-800/50 font-medium" : ""
+            className={`cursor-pointer ${
+              locale === loc.value ? "font-medium" : ""
             }`}
           >
-            <span className="mr-2">{loc.flag}</span>
             {loc.label}
+            {locale === loc.value && (
+              <Check className="ml-auto h-3.5 w-3.5 text-muted-foreground" />
+            )}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

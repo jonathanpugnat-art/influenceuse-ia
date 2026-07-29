@@ -39,7 +39,7 @@ export type AgentTurnInput = z.infer<typeof agentTurnInputSchema>;
 
 export const calendarPlanExecutionParamsSchema = z.object({
   influencerId: z.string(),
-  days: z.number().int().min(1).max(14),
+  days: z.number().int().min(1).max(30),
   postsPerDay: z.number().int().min(1).max(5),
   platforms: z
     .array(z.enum(["INSTAGRAM", "TIKTOK", "ONLYFANS"]))

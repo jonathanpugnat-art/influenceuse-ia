@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
+import { useRouter } from "@/i18n/navigation";
 import {
   CheckCircle2,
   AlertCircle,
@@ -30,7 +32,8 @@ const PLATFORM_META: Record<
     icon: typeof InstagramIcon;
     iconColor: string;
     gradient: string;
-    description: string;
+    /** Key inside influencer.social.* for the card description. */
+    descriptionKey: "descInstagram" | "descTiktok" | "descOnlyfans";
     /** Whether OAuth is actually implemented + reviewable today. */
     oauthSupported: boolean;
   }
@@ -40,8 +43,7 @@ const PLATFORM_META: Record<
     icon: InstagramIcon,
     iconColor: "text-pink-400",
     gradient: "from-pink-500/20 to-orange-500/20",
-    description:
-      "Publication directe de photos, carrousels et reels via l'API Graph officielle. Compte Business ou Creator requis.",
+    descriptionKey: "descInstagram",
     oauthSupported: true,
   },
   TIKTOK: {
@@ -49,8 +51,7 @@ const PLATFORM_META: Record<
     icon: TikTokIcon,
     iconColor: "text-white",
     gradient: "from-cyan-500/20 to-pink-500/20",
-    description:
-      "Publication de vidéos via Content Posting API. En attente de validation Meta-side avant activation.",
+    descriptionKey: "descTiktok",
     oauthSupported: false,
   },
   ONLYFANS: {
@@ -58,8 +59,7 @@ const PLATFORM_META: Record<
     icon: OnlyFansIcon,
     iconColor: "text-blue-400",
     gradient: "from-blue-500/20 to-cyan-500/20",
-    description:
-      "OnlyFans ne propose pas d'API publique. Le contenu est préparé pour téléchargement et publication manuelle.",
+    descriptionKey: "descOnlyfans",
     oauthSupported: false,
   },
 };
@@ -78,6 +78,8 @@ const PLATFORM_META: Record<
  */
 export function InfluencerSocial({ influencerId }: { influencerId: string }) {
   const router = useRouter();
+  const locale = useLocale();
+  const t = useTranslations("influencer.social");
   const searchParams = useSearchParams();
   const utils = trpc.useUtils();
 
@@ -104,7 +106,7 @@ export function InfluencerSocial({ influencerId }: { influencerId: string }) {
   const disconnectMut = trpc.publish.disconnectAccount.useMutation({
     onSuccess: () => {
       utils.publish.getConnectedAccounts.invalidate({ influencerId });
-      toast.success("Compte déconnecté");
+      toast.success(t("toastDisconnected"));
     },
     onError: (err) => toast.error(err.message),
   });
@@ -117,33 +119,34 @@ export function InfluencerSocial({ influencerId }: { influencerId: string }) {
     const error = searchParams.get("instagram_error");
 
     if (connected === "connected") {
-      toast.success("Instagram connecté avec succès !");
+      toast.success(t("toastConnected"));
       utils.publish.getConnectedAccounts.invalidate({ influencerId });
       setShowMetaHelp(false);
-      router.replace(`/fr/influencers/${influencerId}?tab=social`);
+      router.replace(`/influencers/${influencerId}?tab=social`);
     } else if (error) {
       toast.error(formatInstagramOAuthError(error), { duration: 12000 });
       setShowMetaHelp(true);
-      router.replace(`/fr/influencers/${influencerId}?tab=social`);
+      router.replace(`/influencers/${influencerId}?tab=social`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [searchParams, locale]);
 
   const findAccount = (platform: Platform) =>
     accounts?.find((a) => a.platform === platform);
 
   const handleConnect = (platform: Platform) => {
     if (platform !== "INSTAGRAM") return;
+    if (oauthSetup && !oauthSetup.hasCredentials) {
+      toast.error(t("toastOauthNotConfigured"));
+      setShowMetaHelp(true);
+      return;
+    }
     setConnectingPlatform(platform);
     connectInstagramMut.mutate({ influencerId });
   };
 
   const handleDisconnect = (socialAccountId: string) => {
-    if (
-      !window.confirm(
-        "Déconnecter ce compte ? Les publications planifiées seront mises en pause."
-      )
-    ) {
+    if (!window.confirm(t("confirmDisconnect"))) {
       return;
     }
     disconnectMut.mutate({ socialAccountId });
@@ -155,40 +158,30 @@ export function InfluencerSocial({ influencerId }: { influencerId: string }) {
       <div className="flex items-start gap-3 rounded-xl border border-violet-500/20 bg-violet-500/5 p-4">
         <Info className="mt-0.5 h-5 w-5 shrink-0 text-violet-400" />
         <div className="space-y-1.5 text-sm text-slate-300">
-          <p className="font-semibold text-white">
-            Avant de connecter Instagram
-          </p>
+          <p className="font-semibold text-white">{t("onboardTitle")}</p>
           <ul className="list-inside list-disc space-y-1 text-xs text-slate-400">
-            <li>
-              Compte Instagram en mode <strong>Professionnel</strong> (Business ou
-              Creator)
-            </li>
+            <li>{t("onboardPro")}</li>
             {oauthSetup?.instagramLogin === false && (
-              <li>
-                Lié à une <strong>Page Facebook</strong> (mode connexion Facebook)
-              </li>
+              <li>{t("onboardFacebookPage")}</li>
             )}
             {oauthSetup?.instagramLogin !== false && (
-              <li>
-                Connexion <strong>directe via Instagram</strong> — pas de Page
-                Facebook obligatoire
-              </li>
+              <li>{t("onboardDirectLogin")}</li>
             )}
-            <li>Autorisation révocable à tout moment dans les réglages Instagram</li>
+            <li>{t("onboardRevocable")}</li>
           </ul>
         </div>
       </div>
 
       {oauthSetup && (
         <div className="rounded-xl border border-slate-700/60 bg-slate-900/60 p-4 text-sm">
-          <p className="font-semibold text-white">URI Meta (à copier)</p>
+          <p className="font-semibold text-white">{t("redirectUriTitle")}</p>
           <p className="mt-1 text-xs text-slate-400">{oauthSetup.metaRedirectHint}</p>
           <code className="mt-2 block break-all rounded-lg bg-black/40 px-2 py-2 text-xs text-emerald-300">
             {oauthSetup.redirectUri}
           </code>
           {oauthSetup.alternateRedirectUris.length > 0 && (
             <p className="mt-2 text-xs text-amber-200/90">
-              Ajoute aussi (ton site redirige www ↔ sans www) :{" "}
+              {t("redirectUriAlternates")}{" "}
               {oauthSetup.alternateRedirectUris.map((u) => (
                 <code key={u} className="mt-1 block break-all text-amber-100/80">
                   {u}
@@ -197,23 +190,22 @@ export function InfluencerSocial({ influencerId }: { influencerId: string }) {
             </p>
           )}
           <p className="mt-2 text-xs text-slate-500">
-            Vercel : NEXT_PUBLIC_APP_URL = {oauthSetup.appUrl}
+            {t("vercelAppUrl", { url: oauthSetup.appUrl })}
           </p>
           {!oauthSetup.hasCredentials && (
             <p className="mt-2 rounded-lg bg-red-500/15 px-2 py-1.5 text-xs font-medium text-red-200">
-              Clés Meta absentes sur le serveur (INSTAGRAM_APP_ID / SECRET sur Vercel + redeploy).
+              {t("credentialsMissing")}
             </p>
           )}
           {oauthSetup.hasCredentials &&
             !oauthSetup.instagramLogin &&
             !oauthSetup.hasFacebookLoginConfigId && (
               <p className="mt-2 rounded-lg bg-amber-500/15 px-2 py-1.5 text-xs text-amber-100">
-                Mode Facebook : ajoute <code className="text-amber-50">FACEBOOK_LOGIN_CONFIG_ID</code>{" "}
-                sur Vercel.
+                {t("facebookConfigMissing")}
               </p>
             )}
           <p className="mt-2 text-xs text-slate-500">
-            Vérif prod :{" "}
+            {t("healthCheckLabel")}{" "}
             <a
               href="/api/health"
               target="_blank"
@@ -222,24 +214,18 @@ export function InfluencerSocial({ influencerId }: { influencerId: string }) {
             >
               /api/health
             </a>{" "}
-            → <code className="text-slate-400">instagramOAuth.credentialsConfigured</code> doit être{" "}
-            <code className="text-slate-400">true</code>
+            {t("healthCheckExpect")}
           </p>
         </div>
       )}
 
       {(showMetaHelp || searchParams.get("instagram_error")) && (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
-          <p className="font-semibold text-amber-50">
-            Meta bloque la connexion ?
-          </p>
-          <p className="mt-1 text-xs text-amber-200/90">
-            « Confirmez votre compte » puis « Service indisponible » vient presque
-            toujours de l’app Facebook, pas d’Aura.
-          </p>
+          <p className="font-semibold text-amber-50">{t("metaHelpTitle")}</p>
+          <p className="mt-1 text-xs text-amber-200/90">{t("metaHelpIntro")}</p>
           <ol className="mt-3 list-inside list-decimal space-y-1.5 text-xs text-amber-100/90">
             <li>
-              Dans{" "}
+              {t("metaHelpStep1")}{" "}
               <a
                 href="https://developers.facebook.com/apps/"
                 target="_blank"
@@ -248,24 +234,12 @@ export function InfluencerSocial({ influencerId }: { influencerId: string }) {
               >
                 Meta for Developers
               </a>
-              , ajoute ton compte Facebook en <strong>Testeur</strong> si l’app
-              est en mode Développement.
+              .
             </li>
-            <li>
-              Termine la vérification « Confirmez votre compte » dans l’app
-              Facebook (sécurité / checkpoint).
-            </li>
-            <li>
-              URI Meta = celle affichée dans l’encadré gris ci-dessus (pas l’URL de la page
-              influenceuse avec /fr/…).
-            </li>
-            <li>
-              Instagram Pro + Page Facebook liée (voir encadré violet ci-dessus).
-            </li>
-            <li>
-              En attendant : génère le contenu dans Aura et publie à la main dans
-              l’app Instagram (téléchargement + légende).
-            </li>
+            <li>{t("metaHelpStep2")}</li>
+            <li>{t("metaHelpStep3")}</li>
+            <li>{t("metaHelpStep4")}</li>
+            <li>{t("metaHelpStep5")}</li>
           </ol>
           <a
             href="https://developers.facebook.com/docs/instagram-platform/instagram-api-with-facebook-login"
@@ -273,7 +247,7 @@ export function InfluencerSocial({ influencerId }: { influencerId: string }) {
             rel="noopener noreferrer"
             className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-violet-300 hover:underline"
           >
-            Documentation Meta (connexion + publication)
+            {t("metaHelpDocLink")}
             <ExternalLink className="h-3 w-3" />
           </a>
         </div>
@@ -327,23 +301,23 @@ export function InfluencerSocial({ influencerId }: { influencerId: string }) {
                     {isConnected ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-300">
                         <CheckCircle2 className="h-3 w-3" />
-                        Connecté
+                        {t("badgeConnected")}
                       </span>
                     ) : !meta.oauthSupported ? (
                       <span className="rounded-full bg-slate-800/50 px-2 py-0.5 text-xs text-slate-500">
-                        Bientôt
+                        {t("badgeSoon")}
                       </span>
                     ) : null}
                   </div>
 
                   <p className="mt-1 text-sm text-slate-400">
-                    {meta.description}
+                    {t(meta.descriptionKey)}
                   </p>
 
                   {isConnected && account && (
                     <div className="mt-3 space-y-1 text-xs text-slate-400">
                       <p>
-                        <span className="text-slate-500">Compte :</span>{" "}
+                        <span className="text-slate-500">{t("accountLabel")}</span>{" "}
                         <strong className="text-slate-200">
                           @{account.username}
                         </strong>
@@ -359,18 +333,19 @@ export function InfluencerSocial({ influencerId }: { influencerId: string }) {
                           {tokenAboutToExpire ? (
                             <>
                               <AlertCircle className="mr-1 inline h-3 w-3" />
-                              Le token expire bientôt — il sera renouvelé
-                              automatiquement à la prochaine publication.
+                              {t("tokenExpiringSoon")}
                             </>
                           ) : (
-                            <>
-                              Token valide jusqu&apos;au{" "}
-                              {expiresAt.toLocaleDateString("fr-FR", {
-                                day: "numeric",
-                                month: "short",
-                                year: "numeric",
-                              })}
-                            </>
+                            t("tokenValidUntil", {
+                              date: expiresAt.toLocaleDateString(
+                                locale === "en" ? "en-US" : "fr-FR",
+                                {
+                                  day: "numeric",
+                                  month: "short",
+                                  year: "numeric",
+                                }
+                              ),
+                            })
                           )}
                         </p>
                       )}
@@ -394,24 +369,28 @@ export function InfluencerSocial({ influencerId }: { influencerId: string }) {
                     ) : (
                       <Unlink className="h-3 w-3" />
                     )}
-                    Déconnecter
+                    {t("disconnect")}
                   </button>
                 ) : meta.oauthSupported ? (
                   <button
                     type="button"
                     onClick={() => handleConnect(platform)}
-                    disabled={isConnecting}
+                    disabled={
+                      isConnecting ||
+                      (platform === "INSTAGRAM" &&
+                        oauthSetup?.hasCredentials === false)
+                    }
                     className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-500 px-3 py-1.5 text-xs font-medium text-white shadow-lg shadow-violet-500/25 transition-all hover:opacity-90 disabled:opacity-50"
                   >
                     {isConnecting ? (
                       <>
                         <Loader2 className="h-3 w-3 animate-spin" />
-                        Redirection...
+                        {t("connecting")}
                       </>
                     ) : (
                       <>
                         <Link2 className="h-3 w-3" />
-                        Connecter
+                        {t("connect")}
                       </>
                     )}
                   </button>
@@ -425,15 +404,14 @@ export function InfluencerSocial({ influencerId }: { influencerId: string }) {
       })}
 
       <p className="text-center text-xs text-slate-500">
-        🔒 Tes tokens d&apos;accès sont chiffrés (AES-256) avant stockage et
-        ne sont jamais accessibles en clair.{" "}
+        {t("securityNote")}{" "}
         <a
           href="/privacy"
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-0.5 text-violet-400 hover:underline"
         >
-          En savoir plus
+          {t("learnMore")}
           <ExternalLink className="h-3 w-3" />
         </a>
       </p>

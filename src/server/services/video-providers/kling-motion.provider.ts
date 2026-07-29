@@ -53,7 +53,10 @@ export async function runFalKlingMotionControl(
   const prompt = input.prompt?.trim();
   if (prompt) falInput.prompt = prompt;
 
-  const result = await falQueueSubscribe(model, falInput, 420_000);
+  // Cap below the Vercel tRPC budget (maxDuration 300s): a 420s poll would
+  // outlive the function and leave a zombie generation. If the motion job
+  // exceeds the cap, the i2v router falls back to standard Kling I2V.
+  const result = await falQueueSubscribe(model, falInput, 240_000);
   const outUrl = extractFalMotionVideoUrl(result);
   if (!outUrl) {
     throw new Error("Kling Motion Control returned no video URL.");

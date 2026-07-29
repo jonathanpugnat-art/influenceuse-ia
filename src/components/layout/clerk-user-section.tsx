@@ -1,6 +1,7 @@
 "use client";
 
 import { useUser, useClerk } from "@clerk/nextjs";
+import { useTranslations } from "next-intl";
 import {
   LogOut,
   User as UserIcon,
@@ -19,15 +20,16 @@ export default function ClerkUserSection({
 }: {
   isCollapsed: boolean;
 }) {
+  const t = useTranslations("layout");
   const { user } = useUser();
   const { signOut } = useClerk();
 
   const avatarUrl = user?.imageUrl;
-  const name = user?.fullName ?? user?.firstName ?? "Utilisateur";
+  const name = user?.fullName ?? user?.firstName ?? t("user");
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
 
   const avatar = (
-    <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-violet-500 to-indigo-500">
+    <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full border border-border bg-muted">
       {avatarUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -36,7 +38,7 @@ export default function ClerkUserSection({
           className="h-full w-full object-cover"
         />
       ) : (
-        <div className="flex h-full w-full items-center justify-center text-sm font-medium text-white">
+        <div className="flex h-full w-full items-center justify-center text-sm font-medium text-foreground">
           {name.charAt(0).toUpperCase()}
         </div>
       )}
@@ -47,30 +49,23 @@ export default function ClerkUserSection({
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button className="flex w-full items-center justify-center rounded-xl px-3 py-2 transition-colors hover:bg-slate-800/50">
+          <button className="flex w-full items-center justify-center rounded-xl px-3 py-2 transition-colors hover:bg-accent/60">
             {avatar}
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent
-          side="right"
-          align="end"
-          className="w-56 border-slate-800 bg-slate-900"
-        >
+        <DropdownMenuContent side="right" align="end" className="w-56">
           <div className="px-3 py-2">
-            <p className="text-sm font-medium text-white">{name}</p>
-            <p className="truncate text-xs text-slate-400">{email}</p>
+            <p className="text-sm font-medium text-foreground">{name}</p>
+            <p className="truncate text-xs text-muted-foreground">{email}</p>
           </div>
-          <DropdownMenuSeparator className="bg-slate-800" />
-          <DropdownMenuItem className="text-slate-300 focus:bg-slate-800 focus:text-white">
+          <DropdownMenuSeparator />
+          <DropdownMenuItem>
             <UserIcon className="mr-2 h-4 w-4" />
-            Mon profil
+            {t("profile")}
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => signOut()}
-            className="text-slate-300 focus:bg-slate-800 focus:text-white"
-          >
+          <DropdownMenuItem onClick={() => signOut()}>
             <LogOut className="mr-2 h-4 w-4" />
-            Déconnexion
+            {t("signOut")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -80,34 +75,26 @@ export default function ClerkUserSection({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-slate-800/50">
+        <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-accent/60">
           {avatar}
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-white">{name}</p>
-            <p className="truncate text-xs text-slate-500">{email}</p>
+            <p className="truncate text-sm font-medium text-foreground">{name}</p>
+            <p className="truncate text-xs text-muted-foreground">{email}</p>
           </div>
-          <MoreHorizontal className="h-4 w-4 shrink-0 text-slate-500" />
+          <MoreHorizontal className="h-4 w-4 shrink-0 text-muted-foreground" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent
-        side="right"
-        align="end"
-        className="w-56 border-slate-800 bg-slate-900"
-      >
-        <DropdownMenuItem className="text-slate-300 focus:bg-slate-800 focus:text-white">
+      <DropdownMenuContent side="right" align="end" className="w-56">
+        <DropdownMenuItem>
           <UserIcon className="mr-2 h-4 w-4" />
-          Mon profil
+          {t("profile")}
         </DropdownMenuItem>
-        <DropdownMenuSeparator className="bg-slate-800" />
-        <DropdownMenuItem
-          onClick={() => signOut()}
-          className="text-slate-300 focus:bg-slate-800 focus:text-white"
-        >
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => signOut()}>
           <LogOut className="mr-2 h-4 w-4" />
-          Déconnexion
+          {t("signOut")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
-

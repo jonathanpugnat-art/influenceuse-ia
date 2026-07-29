@@ -93,14 +93,14 @@ export function TemplatePicker() {
           className={cn(
             "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border",
             onCustomPath
-              ? "border-violet-400/30 bg-violet-500/10"
-              : "border-white/10 bg-white/[0.03]"
+              ? "border-primary/30 bg-primary/10"
+              : "border-border bg-card"
           )}
         >
           <PenLine
             className={cn(
               "h-4 w-4",
-              onCustomPath ? "text-violet-300" : "text-slate-500"
+              onCustomPath ? "text-foreground" : "text-muted-foreground"
             )}
           />
         </div>
@@ -111,7 +111,7 @@ export function TemplatePicker() {
           </p>
         </div>
         {onCustomPath ? (
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-violet-400/30 bg-violet-500/10 px-2.5 py-1 text-[10px] font-medium text-violet-200">
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-[10px] font-medium text-foreground">
             <Check className="h-3 w-3" />
             {t("customActive")}
           </span>
@@ -174,7 +174,7 @@ export function TemplatePicker() {
                     {t(`${tpl.descriptionKey}`)}
                   </p>
                   {isSelected ? (
-                    <span className="absolute right-2 top-2 inline-flex items-center gap-0.5 rounded-full border border-violet-400/30 bg-violet-500/15 px-1.5 py-0.5 text-[9px] font-medium text-violet-200">
+                    <span className="absolute right-2 top-2 inline-flex items-center gap-0.5 rounded-full border border-primary/30 bg-background/80 px-1.5 py-0.5 text-[9px] font-medium text-foreground">
                       <Check className="h-2.5 w-2.5" />
                       {t("applied")}
                     </span>

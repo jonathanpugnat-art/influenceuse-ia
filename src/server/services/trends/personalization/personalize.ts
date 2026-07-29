@@ -5,6 +5,7 @@ import {
   buildTrendPersonalizationPrompt,
   type TrendForPrompt,
 } from "@/lib/prompts/trend-prompts";
+import { softenSocialFitnessLanguage } from "@/lib/prompts/safety-soften";
 import { getTrendFormatBrief } from "@/server/services/trend-media-analysis.service";
 import { callTrendPersonalizationJsonLLM } from "@/server/services/ai-text.service";
 import { db } from "@/server/db";
@@ -21,9 +22,46 @@ import {
   trendPayloadFromItem,
 } from "../analysis/format-analysis";
 import {
-  llmOutputSchema,
+  coerceLlmTrendRecommendations,
   type TrendRecommendationFields,
 } from "../schemas";
+
+/** Soften gym/fitness wording in SFW prompts so Haiku is less likely to refuse. */
+function softenTrendPayloadForSfw(payload: TrendForPrompt): TrendForPrompt {
+  const brief = payload.formatBrief;
+  return {
+    ...payload,
+    title: softenSocialFitnessLanguage(payload.title),
+    description: payload.description
+      ? softenSocialFitnessLanguage(payload.description)
+      : undefined,
+    formatBrief: brief
+      ? {
+          ...brief,
+          sceneDescription: softenSocialFitnessLanguage(brief.sceneDescription),
+          outfit: softenSocialFitnessLanguage(brief.outfit),
+          hook: softenSocialFitnessLanguage(brief.hook),
+          mood: softenSocialFitnessLanguage(brief.mood),
+          inspirationNotes: brief.inspirationNotes
+            ? softenSocialFitnessLanguage(brief.inspirationNotes)
+            : undefined,
+          customPrompt: brief.customPrompt
+            ? softenSocialFitnessLanguage(brief.customPrompt)
+            : undefined,
+        }
+      : undefined,
+  };
+}
+
+function buildPersonalizationPayload(
+  items: TrendItem[],
+  isNsfw: boolean
+): TrendForPrompt[] {
+  return items.map((t) => {
+    const raw = trendPayloadFromItem(t, getTrendFormatBrief(t));
+    return isNsfw ? raw : softenTrendPayloadForSfw(raw);
+  });
+}
 
 export interface PersonalizationResult {
   created: number;
@@ -55,8 +93,9 @@ export async function personalizeFeedForInfluencer(
 
   const batch = trendItems.slice(0, 12);
 
-  const payload: TrendForPrompt[] = batch.map((t) =>
-    trendPayloadFromItem(t, getTrendFormatBrief(t))
+  const payload: TrendForPrompt[] = buildPersonalizationPayload(
+    batch,
+    influencer.isNsfw
   );
 
   const { systemPrompt, userPrompt } = buildTrendPersonalizationPrompt(
@@ -81,7 +120,7 @@ export async function personalizeFeedForInfluencer(
       maxTokens: 3500,
       temperature: 0.55,
       repairInstruction: JSON_REPAIR_INSTRUCTION,
-      validate: (raw) => llmOutputSchema.parse(raw),
+      validate: coerceLlmTrendRecommendations,
     });
 
   const byId = new Map(batch.map((t) => [t.id, t]));
@@ -169,7 +208,10 @@ export async function personalizeSingleTrendForInfluencer(
   }
 
   const brief = getTrendFormatBrief(item);
-  const payload: TrendForPrompt[] = [trendPayloadFromItem(item, brief)];
+  const payload: TrendForPrompt[] = buildPersonalizationPayload(
+    [item],
+    influencer.isNsfw
+  );
 
   const { systemPrompt, userPrompt } = buildTrendPersonalizationPrompt(
     {
@@ -193,7 +235,7 @@ export async function personalizeSingleTrendForInfluencer(
       maxTokens: 1500,
       temperature: 0.55,
       repairInstruction: JSON_REPAIR_INSTRUCTION,
-      validate: (raw) => llmOutputSchema.parse(raw),
+      validate: coerceLlmTrendRecommendations,
     });
 
   const rec = recs[0];

@@ -16,6 +16,7 @@ import { inferAdultLaneFromSignals } from "@/lib/text-provider-config";
 import { CALENDAR_AGENT_MODEL } from "@/lib/prompts/calendar-agent-prompts";
 import { type AgentTurnInput, type AgentTurnOutput } from "@/lib/agent-core";
 import { db } from "@/server/db";
+import { getDbUser } from "@/server/helpers/get-db-user";
 import { endOfMonth, format, startOfMonth } from "date-fns";
 
 async function callCalendarAgentJson(
@@ -45,7 +46,7 @@ function readContextString(
 
 export async function runCalendarAgentTurn(
   input: AgentTurnInput,
-  userId: string
+  clerkUserId: string
 ): Promise<AgentTurnOutput> {
   const uiLocale =
     readContextString(input.context, "locale") === "en" ? "en" : "fr";
@@ -63,8 +64,11 @@ export async function runCalendarAgentTurn(
   let contentLane: "sfw" | "adult" = "sfw";
 
   if (influencerId) {
+    // Ownership check runs against the DB user id — the caller passes the
+    // Clerk id (ctx.userId), which never matches Influencer.userId directly.
+    const user = await getDbUser(clerkUserId);
     const influencer = await db.influencer.findFirst({
-      where: { id: influencerId, userId },
+      where: { id: influencerId, userId: user.id },
       select: { name: true, niche: true, brief: true, isNsfw: true },
     });
     if (influencer) {

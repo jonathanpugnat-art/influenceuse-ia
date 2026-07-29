@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertTriangle, Sparkles, Check, Pencil } from "lucide-react";
+import { AlertTriangle, ArrowRight, ChevronDown } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,6 +12,11 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { useInfluencerWizard } from "@/hooks/use-influencer-wizard";
 import { TemplatePicker } from "@/components/influencer/template-picker";
 import {
@@ -23,15 +28,14 @@ import {
   wizardTextareaClass,
 } from "@/components/influencer/wizard-ui";
 import { WizardIdentityPreview } from "@/components/influencer/wizard-identity-preview";
-import { WizardVisionCard } from "@/components/influencer/wizard-vision-card";
 import { pickRandomInfluencerName } from "@/lib/influencer-name-suggestions";
 import {
   clearNsfwWizardDefaults,
   getNsfwWizardDefaults,
 } from "@/lib/wizard-of-flow";
-import { trpc } from "@/lib/trpc";
 import { useCurrentPlan } from "@/hooks/use-current-plan";
 import { cn } from "@/lib/utils";
+
 const NICHE_KEYS: Record<string, string> = {
   FASHION: "nicheFashion",
   FITNESS: "nicheFitness",
@@ -43,45 +47,14 @@ const NICHE_KEYS: Record<string, string> = {
   FOOD: "nicheFood",
 };
 
-const nicheColors: Record<string, string> = {
-  FASHION: "border-pink-500 bg-pink-500/10 text-pink-400",
-  FITNESS: "border-emerald-500 bg-emerald-500/10 text-emerald-400",
-  TRAVEL: "border-blue-500 bg-blue-500/10 text-blue-400",
-  GAMING: "border-purple-500 bg-purple-500/10 text-purple-400",
-  FOOD: "border-amber-500 bg-amber-500/10 text-amber-400",
-  LIFESTYLE: "border-rose-500 bg-rose-500/10 text-rose-400",
-  TECH: "border-cyan-500 bg-cyan-500/10 text-cyan-400",
-  ADULT: "border-red-500 bg-red-500/10 text-red-400",
-};
-
-const nicheEmojis: Record<string, string> = {
-  FASHION: "👗",
-  FITNESS: "💪",
-  TRAVEL: "🌴",
-  GAMING: "🎮",
-  FOOD: "🍕",
-  LIFESTYLE: "💄",
-  TECH: "💻",
-  ADULT: "🔥",
-};
-
-type NicheOption = {
-  value: string;
-  emoji: string;
-  label: string;
-  color: string;
-};
-
 export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
   const t = useTranslations("wizard");
   const tInfluencer = useTranslations("influencer");
   const { data, updateData } = useInfluencerWizard();
   const { data: plan } = useCurrentPlan();
   const allowNsfw = plan?.features.hasNsfw ?? false;
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
-  // Sprint 14 — rotate the name placeholder per mount so we don't all end
-  // up with "Luna Fit" influencers. Memoised so it doesn't jitter on every
-  // re-render but does refresh when the user opens the wizard again.
   const namePlaceholder = useMemo(() => pickRandomInfluencerName(), []);
 
   const schema = useMemo(
@@ -89,8 +62,13 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
       z.object({
         name: z.string().min(2, t("nameMin")).max(50, t("nameMax")),
         gender: z.enum(["female", "male", "nonbinary"]).default("female"),
-        bio: z.string().min(10, t("bioMin")).max(300, t("bioMax")),
-        personality: z.string().min(10, t("personalityMin")).max(500, t("personalityMax")),
+        angle: z.string().min(5, t("angleMin")).max(120, t("angleMax")),
+        bio: z.string().max(300, t("bioMax")).optional().default(""),
+        personality: z
+          .string()
+          .max(500, t("personalityMax"))
+          .optional()
+          .default(""),
         niche: z.string().min(1, t("chooseNiche")),
         age: z.number().min(18).max(35),
         isNsfw: z.boolean(),
@@ -102,14 +80,21 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
 
   const niches = useMemo(
     () =>
-      (["FASHION", "FITNESS", "TRAVEL", "GAMING", "FOOD", "LIFESTYLE", "TECH", "ADULT"] as const).map(
-        (value) => ({
-          value,
-          emoji: nicheEmojis[value],
-          label: tInfluencer(NICHE_KEYS[value]),
-          color: nicheColors[value],
-        })
-      ),
+      (
+        [
+          "FASHION",
+          "FITNESS",
+          "TRAVEL",
+          "GAMING",
+          "FOOD",
+          "LIFESTYLE",
+          "TECH",
+          "ADULT",
+        ] as const
+      ).map((value) => ({
+        value,
+        label: tInfluencer(NICHE_KEYS[value]),
+      })),
     [tInfluencer]
   );
 
@@ -125,15 +110,12 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
   } = useForm<FormData>({
     resolver: zodResolver(schema) as never,
     mode: "onChange",
-    // Sprint 14 — bugfix: with mode:"onChange" alone, isValid stays false on
-    // mount even when defaultValues are all valid (the case when arriving
-    // from a Template). We force a validation pass on mount + after every
-    // template-driven reset() below so the "Next" button isn't stuck.
     reValidateMode: "onChange",
     criteriaMode: "all",
     defaultValues: {
       name: data.name,
       gender: data.gender ?? "female",
+      angle: data.angle || data.brief || "",
       bio: data.bio,
       personality: data.personality,
       niche: data.niche,
@@ -142,20 +124,16 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
     },
   });
 
-  // Sprint 14 — bugfix #1: trigger() on mount so isValid reflects defaults.
   useEffect(() => {
     void trigger();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Sync form values when a template applies updates to the zustand store
-  // from outside this component (e.g. TemplatePicker). After resetting we
-  // re-run validation so the "Next" button enables immediately if the
-  // template filled every required field.
   useEffect(() => {
     reset({
       name: data.name,
       gender: data.gender ?? "female",
+      angle: data.angle || data.brief || "",
       bio: data.bio,
       personality: data.personality,
       niche: data.niche,
@@ -167,6 +145,8 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
     data.name,
     data.bio,
     data.personality,
+    data.angle,
+    data.brief,
     data.niche,
     data.gender,
     data.age,
@@ -175,14 +155,31 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
     trigger,
   ]);
 
-  const bio = watch("bio");
-  const personality = watch("personality");
   const selectedNiche = watch("niche");
   const isNsfw = watch("isNsfw");
   const age = watch("age");
 
   const onSubmit = (formData: FormData) => {
-    updateData(formData);
+    const angle = formData.angle.trim();
+    const bio =
+      formData.bio?.trim() && formData.bio.trim().length >= 10
+        ? formData.bio.trim()
+        : angle;
+    const personality =
+      formData.personality?.trim() && formData.personality.trim().length >= 10
+        ? formData.personality.trim()
+        : angle;
+    updateData({
+      name: formData.name,
+      gender: formData.gender,
+      angle,
+      bio,
+      personality,
+      brief: data.brief?.trim() || angle,
+      niche: formData.niche,
+      age: formData.age,
+      isNsfw: formData.isNsfw,
+    });
     onNext();
   };
 
@@ -191,14 +188,9 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
       onSubmit={handleSubmit(onSubmit)}
       className="space-y-6 max-md:pb-[var(--mobile-nav-height)]"
     >
-      {/* Sprint 7 — pre-baked persona templates */}
       <TemplatePicker />
-
-      <WizardVisionCard />
-
       <WizardIdentityPreview />
 
-      {/* Name */}
       <div className="space-y-2">
         <Eyebrow>{t("influencerName")}</Eyebrow>
         <Input
@@ -212,7 +204,6 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
         )}
       </div>
 
-      {/* Gender */}
       <div className="space-y-2">
         <Eyebrow>{t("gender")}</Eyebrow>
         <div className="grid grid-cols-3 gap-1.5">
@@ -232,47 +223,64 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
         </div>
       </div>
 
-      {/* Bio */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Eyebrow>{tInfluencer("bio")}</Eyebrow>
-          <span
-            className={cn(
-              "text-xs tabular-nums",
-              (bio?.length ?? 0) > 300 ? "text-red-400" : "text-slate-600"
-            )}
-          >
-            {bio?.length ?? 0}/300
-          </span>
+      <div className="space-y-2.5">
+        <Eyebrow>{tInfluencer("niche")}</Eyebrow>
+        <p className="text-[11px] leading-relaxed text-slate-500">
+          {t("nicheSimpleHint")}
+        </p>
+        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+          {niches.map((n) => {
+            const active = selectedNiche === n.value;
+            return (
+              <button
+                key={n.value}
+                type="button"
+                aria-pressed={active}
+                onClick={() =>
+                  setValue("niche", n.value, { shouldValidate: true })
+                }
+                className={cn(
+                  "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all",
+                  active
+                    ? "border-primary/40 bg-primary/10 text-foreground"
+                    : "border-border bg-card text-muted-foreground hover:border-foreground/20 hover:text-foreground"
+                )}
+              >
+                <span
+                  className={cn(
+                    "h-2 w-2 rounded-full",
+                    nicheDotClass[n.value] ?? "bg-violet-400"
+                  )}
+                />
+                {n.label}
+              </button>
+            );
+          })}
         </div>
-        <Textarea
-          {...register("bio")}
-          placeholder={t("bioPlaceholder")}
-          rows={3}
-          className={wizardTextareaClass}
-        />
-        {errors.bio && (
-          <p className="text-xs text-red-400">{errors.bio.message}</p>
+        {errors.niche && (
+          <p className="text-xs text-red-400">{errors.niche.message}</p>
         )}
       </div>
 
-      {/* Niche — demoted: the agent detects it, the user confirms/overrides. */}
-      <NicheField
-        niches={niches}
-        selected={selectedNiche}
-        detected={Boolean(
-          data.nicheProfile?.nicheCategory &&
-            data.nicheProfile.nicheCategory === selectedNiche
+      <div className="space-y-2">
+        <Eyebrow>{t("angleLabel")}</Eyebrow>
+        <p className="text-[11px] leading-relaxed text-slate-500">
+          {t("angleHint")}
+        </p>
+        <Input
+          {...register("angle")}
+          placeholder={t("anglePlaceholder")}
+          className={wizardInputClass}
+        />
+        {errors.angle && (
+          <p className="text-xs text-red-400">{errors.angle.message}</p>
         )}
-        onSelect={(value) => setValue("niche", value, { shouldValidate: true })}
-        error={errors.niche?.message}
-      />
+      </div>
 
-      {/* Age */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <Eyebrow>{t("age")}</Eyebrow>
-          <Badge className="border-violet-500/30 bg-violet-500/10 text-violet-300">
+          <Badge variant="outline" className="text-muted-foreground">
             {age} {t("years")}
           </Badge>
         </div>
@@ -292,29 +300,37 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
         />
       </div>
 
-      {/* Personality */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Eyebrow>{t("personality")}</Eyebrow>
-          <span
+      <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
+        <CollapsibleTrigger className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-left text-sm text-slate-300 hover:border-white/20">
+          {t("identityDetailsOptional")}
+          <ChevronDown
             className={cn(
-              "text-xs tabular-nums",
-              (personality?.length ?? 0) > 500 ? "text-red-400" : "text-slate-600"
+              "h-4 w-4 text-slate-500 transition-transform",
+              detailsOpen && "rotate-180"
             )}
-          >
-            {personality?.length ?? 0}/500
-          </span>
-        </div>
-        <Textarea
-          {...register("personality")}
-          placeholder={t("personalityPlaceholder")}
-          rows={3}
-          className={wizardTextareaClass}
-        />
-        {errors.personality && (
-          <p className="text-xs text-red-400">{errors.personality.message}</p>
-        )}
-      </div>
+          />
+        </CollapsibleTrigger>
+        <CollapsibleContent className="mt-3 space-y-4">
+          <div className="space-y-2">
+            <Eyebrow>{tInfluencer("bio")}</Eyebrow>
+            <Textarea
+              {...register("bio")}
+              placeholder={t("bioPlaceholder")}
+              rows={3}
+              className={wizardTextareaClass}
+            />
+          </div>
+          <div className="space-y-2">
+            <Eyebrow>{t("personality")}</Eyebrow>
+            <Textarea
+              {...register("personality")}
+              placeholder={t("personalityPlaceholder")}
+              rows={3}
+              className={wizardTextareaClass}
+            />
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
 
       {allowNsfw && (
         <div className="space-y-3 rounded-xl border border-slate-800/50 bg-slate-800/20 p-4">
@@ -363,7 +379,6 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
         </div>
       )}
 
-      {/* Submit */}
       <div className="flex justify-end pt-2">
         <button
           type="submit"
@@ -371,127 +386,9 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
           className={wizardPrimaryButtonClass}
         >
           {t("next")}
-          <span className="transition-transform group-hover:translate-x-0.5">
-            →
-          </span>
+          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
         </button>
       </div>
     </form>
   );
 }
-
-/**
- * Demoted niche field. Per the product decision, the niche is a technical
- * category the agent infers — not a manual gate. When a niche is set we show
- * a confirmable chip (flagged "detected" when it came from the agent); the
- * full selector stays one click away for override.
- */
-function NicheField({
-  niches,
-  selected,
-  detected,
-  onSelect,
-  error,
-}: {
-  niches: NicheOption[];
-  selected: string;
-  detected: boolean;
-  onSelect: (value: string) => void;
-  error?: string;
-}) {
-  const t = useTranslations("wizard");
-  const tInfluencer = useTranslations("influencer");
-  const [editing, setEditing] = useState(!selected);
-
-  // Collapse back to the confirm chip when niche is set externally (template/agent).
-  useEffect(() => {
-    if (selected) setEditing(false);
-  }, [selected]);
-
-  const current = niches.find((n) => n.value === selected);
-  const showGrid = editing || !current;
-
-  return (
-    <div className="space-y-2.5">
-      <div className="flex items-center justify-between">
-        <Eyebrow>{tInfluencer("niche")}</Eyebrow>
-        {current && !showGrid ? (
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 transition-colors hover:text-violet-300"
-          >
-            <Pencil className="h-3 w-3" />
-            {t("nicheChange")}
-          </button>
-        ) : null}
-      </div>
-
-      {current && !showGrid ? (
-        <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3.5">
-          <span className="flex items-center gap-2.5">
-            <span
-              className={cn(
-                "h-2.5 w-2.5 rounded-full",
-                nicheDotClass[current.value] ?? "bg-violet-400"
-              )}
-            />
-            <span className="text-sm font-medium text-white">
-              {current.label}
-            </span>
-          </span>
-          {detected ? (
-            <span className="inline-flex items-center gap-1 rounded-full border border-violet-400/30 bg-violet-500/10 px-2.5 py-1 text-[10px] font-medium text-violet-200">
-              <Sparkles className="h-3 w-3" />
-              {t("nicheDetected")}
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-300/90">
-              <Check className="h-3 w-3" />
-              {t("nicheConfirmed")}
-            </span>
-          )}
-        </div>
-      ) : (
-        <>
-          <p className="text-[11px] leading-relaxed text-slate-500">
-            {t("nicheAutoHint")}
-          </p>
-          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-            {niches.map((n) => {
-              const active = selected === n.value;
-              return (
-                <button
-                  key={n.value}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => {
-                    onSelect(n.value);
-                    setEditing(false);
-                  }}
-                  className={cn(
-                    "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all",
-                    active
-                      ? "border-violet-400/50 bg-violet-500/10 text-white"
-                      : "border-white/10 bg-white/[0.02] text-slate-400 hover:border-white/20 hover:text-slate-200"
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "h-2 w-2 rounded-full",
-                      nicheDotClass[n.value] ?? "bg-violet-400"
-                    )}
-                  />
-                  {n.label}
-                </button>
-              );
-            })}
-          </div>
-        </>
-      )}
-
-      {error && <p className="text-xs text-red-400">{error}</p>}
-    </div>
-  );
-}
-

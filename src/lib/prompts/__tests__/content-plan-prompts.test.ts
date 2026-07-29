@@ -96,6 +96,36 @@ describe("content-plan-prompts", () => {
       expect(p).toContain("strategy brief");
       expect(p).toContain("PHOTO, REEL, and CAROUSEL");
     });
+
+    it("injects TREND ANCHORS when provided", () => {
+      const p = buildContentPlanSystemPrompt({
+        influencerName: "Luna",
+        influencerGender: "female",
+        niche: "FITNESS",
+        personality: "coach running",
+        bio: "Paris running",
+        language: "fr",
+        platforms: ["INSTAGRAM"],
+        days: 30,
+        postsPerDay: 1,
+        trendAnchors: [
+          {
+            trendId: "trend_abc",
+            dayIndex: 0,
+            dayHint: "mon",
+            date: "2026-07-13",
+            title: "Morning run mirror",
+            whyItWorks: "Niche running + UGC gym energy",
+            suggestedAngle: "Open on shoes lace-up in 2s",
+            preferredStudio: "photo",
+          },
+        ],
+      });
+      expect(p).toContain("TREND ANCHORS");
+      expect(p).toContain("trend_abc");
+      expect(p).toContain("dayIndex=0");
+      expect(p).toContain('"trendId"');
+    });
   });
 
   describe("buildIdeasSystemPrompt", () => {

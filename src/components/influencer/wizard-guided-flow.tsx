@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useLocale, useTranslations } from "next-intl";
+import { useLocale } from "next-intl";
 import { WizardProgress } from "@/components/influencer/wizard-progress";
 import { WizardNicheBrainPanel } from "@/components/influencer/wizard-niche-brain-panel";
 import {
@@ -19,7 +19,6 @@ import {
 } from "@/lib/wizard-validation";
 
 export function WizardGuidedFlow() {
-  const t = useTranslations("wizard");
   const locale = useLocale();
   const {
     step,
@@ -51,15 +50,6 @@ export function WizardGuidedFlow() {
   return (
     <WizardAgentProvider step={wizardStepToAgentStep(step)}>
       <div className="space-y-8">
-        <div className="text-center">
-        <h2 className="text-lg font-light tracking-tight text-white">
-          {t("guidedFlowTitle")}
-        </h2>
-        <p className="mt-1 text-sm text-slate-500">
-            {t("guidedFlowSubtitle")}
-          </p>
-        </div>
-
         <WizardProgress
           currentStep={step}
           maxReachableStep={maxReachableStep}

@@ -80,27 +80,24 @@ export function WizardIdentityPackWait({
   return (
     <div className="mx-auto flex max-w-md flex-col items-center space-y-8 py-8 text-center">
       <div className="space-y-2">
-        <h2 className="text-xl font-semibold text-white">
+        <h2 className="text-xl font-semibold text-foreground">
           {t("identityPackWaitTitle")}
         </h2>
-        <p className="text-sm text-slate-400">{influencerName}</p>
+        <p className="text-sm text-muted-foreground">{influencerName}</p>
       </div>
 
       {portraitUrl ? (
-        <div className="relative">
-          <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-violet-500/40 to-pink-500/40 blur-xl" />
-          <img
-            src={portraitUrl}
-            alt=""
-            className="relative h-28 w-28 rounded-full object-cover ring-2 ring-violet-500/50"
-          />
-        </div>
+        <img
+          src={portraitUrl}
+          alt=""
+          className="h-28 w-28 rounded-full border border-border object-cover"
+        />
       ) : null}
 
       <div className="w-full space-y-3">
-        <div className="h-2 overflow-hidden rounded-full bg-slate-800">
+        <div className="h-2 overflow-hidden rounded-full bg-muted">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all duration-700 ease-out"
+            className="h-full rounded-full bg-foreground transition-all duration-700 ease-out"
             style={{ width: `${progressPercent}%` }}
           />
         </div>
@@ -116,7 +113,7 @@ export function WizardIdentityPackWait({
         </ul>
       </div>
 
-      <p className="max-w-sm text-xs leading-relaxed text-slate-400">
+      <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
         {t("identityPackWaitMessage")}
       </p>
 
@@ -145,7 +142,7 @@ export function WizardIdentityPackWait({
       )}
 
       {!isFailed && !isReady && (
-        <Loader2 className="h-6 w-6 animate-spin text-violet-400" />
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       )}
     </div>
   );
@@ -165,13 +162,17 @@ function WaitStep({
       {done ? (
         <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
       ) : active ? (
-        <Loader2 className="h-5 w-5 shrink-0 animate-spin text-violet-400" />
+        <Loader2 className="h-5 w-5 shrink-0 animate-spin text-foreground" />
       ) : (
-        <Circle className="h-5 w-5 shrink-0 text-slate-600" />
+        <Circle className="h-5 w-5 shrink-0 text-muted-foreground/50" />
       )}
       <span
         className={cn(
-          done ? "text-emerald-200" : active ? "text-white" : "text-slate-500"
+          done
+            ? "text-emerald-200"
+            : active
+              ? "text-foreground"
+              : "text-muted-foreground"
         )}
       >
         {label}

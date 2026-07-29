@@ -17,12 +17,12 @@ export function AppearanceCreditsPanel({
 
   return (
     <>
-      <div className="flex items-center justify-between rounded-xl border border-slate-800/50 bg-slate-800/20 px-4 py-3">
-        <div className="flex items-center gap-2 text-sm text-slate-300">
+      <div className="flex items-center justify-between rounded-xl border border-border/50 bg-muted/20 px-4 py-3">
+        <div className="flex items-center gap-2 text-sm text-foreground/90">
           <Coins className="h-4 w-4 text-amber-400" />
           <span>{t("generationCost", { cost })}</span>
         </div>
-        <div className="text-sm text-slate-400">
+        <div className="text-sm text-muted-foreground">
           {t("creditsLeft", { count: creditsRemaining })}
         </div>
       </div>

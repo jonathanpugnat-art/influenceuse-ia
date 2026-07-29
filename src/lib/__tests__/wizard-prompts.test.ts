@@ -18,6 +18,7 @@ const sampleWizardData: WizardData = {
   gender: "female",
   bio: "Bio test",
   personality: "Confiante",
+  angle: "coach fitness",
   niche: "FITNESS",
   age: 26,
   isNsfw: false,

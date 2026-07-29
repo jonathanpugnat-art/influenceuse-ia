@@ -222,7 +222,7 @@ async function ensureTrendMediaAssets(item: TrendItem): Promise<TrendItem> {
 export async function analyzeTrendItemFormat(
   trendItemId: string,
   options?: { force?: boolean }
-): Promise<{ brief: TrendFormatBrief; model: string }> {
+): Promise<{ brief: TrendFormatBrief; model: string; cached: boolean }> {
   let item = await db.trendItem.findUnique({ where: { id: trendItemId } });
   if (!item) throw new Error("Trend item not found");
 
@@ -232,6 +232,7 @@ export async function analyzeTrendItemFormat(
       return {
         brief: existing,
         model: item.formatAnalysisModel ?? "cached",
+        cached: true,
       };
     }
   }
@@ -266,7 +267,7 @@ export async function analyzeTrendItemFormat(
     },
   });
 
-  return { brief, model };
+  return { brief, model, cached: false };
 }
 
 export function getTrendFormatBrief(

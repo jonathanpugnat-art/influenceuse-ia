@@ -629,11 +629,13 @@ export const trendsRouter = createTRPCRouter({
           input.trendItemId,
           { force: input.force }
         );
-        if (cost > 0) await deductCredits(user.id, cost);
+        // Cache hits cost us nothing — never bill the user for them.
+        const billed = !result.cached && cost > 0 ? cost : 0;
+        if (billed > 0) await deductCredits(user.id, billed);
         return {
           brief: result.brief,
           model: result.model,
-          cost,
+          cost: billed,
         };
       } catch (error) {
         console.error("[trends.analyzeFormat]", error);

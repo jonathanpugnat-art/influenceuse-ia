@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { CheckCircle2, Info, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, Info, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -397,9 +397,9 @@ export function WizardStepSocial({
         )}
       </div>
 
-      <div className="flex items-start gap-2 rounded-xl border border-violet-500/20 bg-violet-500/5 p-3">
-        <Info className="mt-0.5 h-4 w-4 shrink-0 text-violet-400/80" />
-        <p className="text-xs text-slate-400">{t("socialOptionalHint")}</p>
+      <div className="flex items-start gap-2 rounded-xl border border-border/60 bg-muted/30 p-3">
+        <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+        <p className="text-xs text-muted-foreground">{t("socialOptionalHint")}</p>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
@@ -408,7 +408,7 @@ export function WizardStepSocial({
           onClick={onPrev}
           className={wizardSecondaryButtonClass}
         >
-          ← {t("back")}
+          <ArrowLeft className="h-4 w-4" /> {t("back")}
         </button>
         <button
           type="button"
@@ -416,8 +416,9 @@ export function WizardStepSocial({
           className={wizardPrimaryButtonClass}
         >
           {data.instagramEnabled || data.tiktokEnabled || data.onlyfansEnabled
-            ? `${t("next")} →`
-            : `${t("socialSkipToFinalize")} →`}
+            ? t("next")
+            : t("socialSkipToFinalize")}
+          <ArrowRight className="h-4 w-4" />
         </button>
       </div>
     </div>

@@ -7,7 +7,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Sparkles,
   LayoutDashboard,
-  Users,
   ImagePlus,
   Calendar,
   BarChart3,
@@ -15,9 +14,6 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
-  LogOut,
-  User as UserIcon,
-  MoreHorizontal,
   FolderOpen,
   TrendingUp,
 } from "lucide-react";
@@ -26,13 +22,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { useSidebarStore } from "@/hooks/use-sidebar-store";
@@ -131,6 +120,7 @@ function NavItem({
 
 function CreditsSection({ isCollapsed }: { isCollapsed: boolean }) {
   const t = useTranslations("common");
+  const tLayout = useTranslations("layout");
   const { data, isLoading } = useCurrentPlan();
 
   // Sprint 14 — bugfix: show a skeleton during load instead of "0 / 50",
@@ -208,13 +198,14 @@ function CreditsSection({ isCollapsed }: { isCollapsed: boolean }) {
       </div>
       <Progress value={progressPercent} className="h-1 bg-muted" />
       <p className="mt-1.5 text-xs text-muted-foreground">
-        {creditsUsed} / {creditsLimit} utilisés
+        {tLayout("creditsUsed", { used: creditsUsed, limit: creditsLimit })}
       </p>
     </div>
   );
 }
 
 function FallbackUserSection({ isCollapsed }: { isCollapsed: boolean }) {
+  const t = useTranslations("layout");
   const avatar = (
     <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full border border-border bg-muted">
       <div className="flex h-full w-full items-center justify-center text-sm font-medium text-foreground">
@@ -235,7 +226,7 @@ function FallbackUserSection({ isCollapsed }: { isCollapsed: boolean }) {
     <div className="flex w-full items-center gap-3 rounded-xl px-3 py-2">
       {avatar}
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-foreground">Utilisateur</p>
+        <p className="truncate text-sm font-medium text-foreground">{t("user")}</p>
         <p className="truncate text-xs text-muted-foreground">user@example.com</p>
       </div>
     </div>

@@ -12,6 +12,7 @@ import {
   INSTAGRAM_OAUTH_RETURN_COOKIE,
   sanitizeOAuthReturnPath,
 } from "@/lib/instagram-oauth-return";
+import { buildSignedOAuthState } from "@/lib/oauth-state";
 
 const APP_URL = getAppUrl();
 
@@ -27,9 +28,9 @@ const APP_URL = getAppUrl();
  * - Clerk auth is enforced — anonymous users get bounced to /sign-in
  * - The influencerId is validated against the DB and must belong to the
  *   caller (no IDOR), otherwise the user is redirected with an error
- * - The state passed to Facebook is the influencerId itself. We re-check
- *   ownership on the callback too in case the state was tampered with
- *   between hops (defence in depth)
+ * - The state passed to Facebook is HMAC-signed and bound to the initiating
+ *   user (see src/lib/oauth-state.ts). The callback verifies the signature
+ *   AND re-checks ownership (defence in depth)
  */
 export async function GET(req: NextRequest) {
   const { userId } = await auth();
@@ -63,7 +64,10 @@ export async function GET(req: NextRequest) {
 
   try {
     const redirectUri = getInstagramOAuthRedirectUri();
-    const authUrl = instagram.getAuthUrl(redirectUri, influencerId);
+    const authUrl = instagram.getAuthUrl(
+      redirectUri,
+      buildSignedOAuthState(influencerId, user.id)
+    );
     const returnPath = sanitizeOAuthReturnPath(
       req.nextUrl.searchParams.get("redirectTo")
     );

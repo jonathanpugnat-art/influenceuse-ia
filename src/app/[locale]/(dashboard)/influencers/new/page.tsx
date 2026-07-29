@@ -52,9 +52,14 @@ export default function NewInfluencerPage() {
   useEffect(() => {
     if (!hydrationReady || showDraftDialog || oauthHandledRef.current) return;
     const instagramError = searchParams.get("instagram_error");
+    const instagramConnected = searchParams.get("instagram");
     if (instagramError) {
       oauthHandledRef.current = true;
       toast.error(formatInstagramOAuthError(instagramError), { duration: 12000 });
+      window.history.replaceState({}, "", `/${locale}/influencers/new`);
+    } else if (instagramConnected === "connected" || instagramConnected === "instagram") {
+      oauthHandledRef.current = true;
+      toast.success(t("instagramConnectedToast"));
       window.history.replaceState({}, "", `/${locale}/influencers/new`);
     }
   }, [hydrationReady, showDraftDialog, locale, searchParams]);
@@ -72,19 +77,24 @@ export default function NewInfluencerPage() {
 
   if (!hydrationReady) {
     return (
-      <div className="mx-auto max-w-2xl space-y-8">
-        <div className="h-8 w-48 animate-pulse rounded-lg bg-slate-800" />
+      <div className="mx-auto max-w-5xl space-y-8">
+        <div className="h-4 w-32 animate-pulse rounded-lg bg-muted" />
+        <div className="space-y-2">
+          <div className="h-8 w-64 animate-pulse rounded-lg bg-muted" />
+          <div className="h-4 w-80 animate-pulse rounded-lg bg-muted/60" />
+        </div>
+        <div className="h-64 animate-pulse rounded-2xl bg-muted/40" />
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
+    <div className="mx-auto max-w-5xl space-y-8">
       <AlertDialog open={showDraftDialog} onOpenChange={setShowDraftDialog}>
-        <AlertDialogContent className="border-slate-800 bg-slate-900 text-white">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("draftResumeTitle")}</AlertDialogTitle>
-            <AlertDialogDescription className="text-slate-400">
+            <AlertDialogDescription>
               {t("draftResumeDescription", { step })}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -94,14 +104,10 @@ export default function NewInfluencerPage() {
                 reset();
                 setShowDraftDialog(false);
               }}
-              className="border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800"
             >
               {t("draftRestart")}
             </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => setShowDraftDialog(false)}
-              className="bg-violet-600 hover:bg-violet-500"
-            >
+            <AlertDialogAction onClick={() => setShowDraftDialog(false)}>
               {t("draftContinue")}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -110,15 +116,17 @@ export default function NewInfluencerPage() {
 
       <Link
         href="/influencers"
-        className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-white"
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" />
         {t("backToList")}
       </Link>
 
       <div>
-        <h1 className="text-2xl font-bold text-white">{t("pageTitle")}</h1>
-        <p className="mt-1 text-sm text-slate-400">{t("pageSubtitle")}</p>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">
+          {t("pageTitle")}
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">{t("pageSubtitle")}</p>
       </div>
 
       <WizardGuidedFlow />

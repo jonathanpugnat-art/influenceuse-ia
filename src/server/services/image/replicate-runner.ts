@@ -12,6 +12,10 @@ import {
 import { runFluxT2iWithFallback } from "@/server/services/image-providers/flux-t2i-router";
 import type { FalFluxT2iInput } from "@/server/services/image-providers/fal-flux-t2i.provider";
 import {
+  isFalKontextFallbackEnabled,
+  runFalKontextSingle,
+} from "@/server/services/image-providers/fal-kontext.provider";
+import {
   buildPremiumReplicateInput,
   isPremiumUncensoredReplicateModel,
   isPulidReplicateModel,
@@ -253,6 +257,44 @@ export async function runMultiplePredictions(
               : input.prompt,
         })
       );
+    }
+  } else if (model === MODEL_SFW_KONTEXT) {
+    // Kontext is the Social-lane workhorse and was a Replicate-only SPOF.
+    // On NON-safety failures (5xx, rate-limit exhausted, network) mirror the
+    // edit on FAL Kontext. Safety errors keep propagating so the soften
+    // cascade in content-photo-generation stays in charge.
+    for (let i = 0; i < count; i++) {
+      tasks.push(async () => {
+        const params: Record<string, unknown> = {
+          ...input,
+          seed: Math.floor(Math.random() * 2147483647),
+        };
+        try {
+          return await runReplicatePrediction(model, params);
+        } catch (err) {
+          const imageUrl =
+            typeof params.input_image === "string" &&
+            params.input_image.startsWith("http")
+              ? params.input_image
+              : undefined;
+          if (
+            isContentSafetyFilterError(err) ||
+            !imageUrl ||
+            !isFalKontextFallbackEnabled()
+          ) {
+            throw err;
+          }
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(
+            `[ai-image] Kontext Replicate failed (${msg.slice(0, 120)}), falling back to FAL Kontext…`
+          );
+          const fal = await runFalKontextSingle({
+            prompt: String(params.prompt ?? ""),
+            imageUrl,
+          });
+          return fal.urls;
+        }
+      });
     }
   } else {
     for (let i = 0; i < count; i++) {

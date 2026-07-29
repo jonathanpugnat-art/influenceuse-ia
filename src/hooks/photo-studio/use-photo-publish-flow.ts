@@ -174,7 +174,7 @@ export function usePhotoPublishFlow() {
         setCaption(result.caption.slice(0, i + 1));
       }
     } catch {
-      toast.error("Erreur lors de la génération de la caption");
+      toast.error(t("publishToastCaptionError"));
     } finally {
       setIsGenCaption(false);
     }
@@ -185,6 +185,7 @@ export function usePhotoPublishFlow() {
     captionMutation,
     setCaption,
     captionDescriptionWithTone,
+    t,
   ]);
 
   const handleGenVariants = useCallback(async () => {
@@ -200,7 +201,7 @@ export function usePhotoPublishFlow() {
       });
       setVariants(result.variants);
     } catch {
-      toast.error("Erreur lors de la génération des variantes");
+      toast.error(t("publishToastVariantsError"));
     } finally {
       setIsGenVariants(false);
     }
@@ -210,6 +211,7 @@ export function usePhotoPublishFlow() {
     language,
     variantsMutation,
     captionDescriptionWithTone,
+    t,
   ]);
 
   const pickVariant = (text: string) => {
@@ -229,7 +231,7 @@ export function usePhotoPublishFlow() {
       });
       setHashtags(result.hashtags.map((h) => h.replace(/^#/, "")));
     } catch {
-      toast.error("Erreur lors de la génération des hashtags");
+      toast.error(t("publishToastHashtagsError"));
     } finally {
       setIsGenHashtags(false);
     }
@@ -239,6 +241,7 @@ export function usePhotoPublishFlow() {
     hashtagMutation,
     setHashtags,
     photoContentDescription,
+    t,
   ]);
 
   const addHashtag = () => {
@@ -277,13 +280,13 @@ export function usePhotoPublishFlow() {
       });
 
       if (!publish) {
-        toast.success("Brouillon sauvegardé !");
+        toast.success(t("publishToastDraftSaved"));
         return;
       }
 
       if (scheduleMode === "schedule" && scheduledAt) {
         if (platformList.length === 0) {
-          toast.error("Choisis au moins une plateforme");
+          toast.error(t("publishToastNeedPlatform"));
           return;
         }
         await scheduleMutation.mutateAsync({
@@ -291,17 +294,14 @@ export function usePhotoPublishFlow() {
           platforms: platformList,
           scheduledAt: scheduledAt.toISOString(),
         });
-        toast.success("Contenu programmé !");
+        toast.success(t("publishToastScheduled"));
         return;
       }
 
       const igPlatforms = platformList.filter((p) => p === "INSTAGRAM");
       if (igPlatforms.length > 0) {
         if (instagramCheck && !instagramCheck.ok) {
-          toast.error(
-            instagramCheck.reason ??
-              "Instagram n’est pas prêt (connexion ou média manquant)."
-          );
+          toast.error(instagramCheck.reason ?? t("publishToastIgNotReady"));
           return;
         }
         const { results } = await publishNowMutation.mutateAsync({
@@ -310,18 +310,18 @@ export function usePhotoPublishFlow() {
         });
         const failed = results.filter((r) => r.status === "FAILED");
         if (failed.length > 0) {
-          toast.error(failed[0]?.error ?? "Échec de publication Instagram");
+          toast.error(failed[0]?.error ?? t("publishToastIgFailed"));
           return;
         }
-        toast.success("Publié sur Instagram !");
+        toast.success(t("publishToastPublished"));
         return;
       }
 
       await updateMutation.mutateAsync({ contentId, status: "PUBLISHED" });
-      toast.success("Contenu enregistré — publication manuelle sur les apps");
+      toast.success(t("publishToastSavedManual"));
     } catch (err) {
       const msg =
-        err instanceof Error ? err.message : "Erreur lors de la sauvegarde";
+        err instanceof Error ? err.message : t("publishToastSaveError");
       toast.error(msg);
     }
   };
@@ -331,9 +331,9 @@ export function usePhotoPublishFlow() {
     try {
       const result = await bundleMutation.mutateAsync({ contentId });
       window.open(result.downloadUrl, "_blank");
-      toast.success("Pack OnlyFans prêt !");
+      toast.success(t("publishToastOfReady"));
     } catch {
-      toast.error("Erreur lors de la création du pack");
+      toast.error(t("publishToastOfError"));
     }
   };
 
@@ -378,6 +378,8 @@ export function usePhotoPublishFlow() {
     handleOFBundle,
     updateMutation,
     bundleMutation,
+    publishNowMutation,
+    scheduleMutation,
   };
 }
 

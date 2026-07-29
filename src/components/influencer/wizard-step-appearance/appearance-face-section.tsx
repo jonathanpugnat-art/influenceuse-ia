@@ -29,7 +29,7 @@ export function AppearanceFaceSection({ form }: { form: AppearanceFormState }) {
       summary={form.faceSummary}
     >
       <div className="space-y-2">
-        <Label className="text-slate-300">{t("ethnicity")}</Label>
+        <Label className="text-foreground/90">{t("ethnicity")}</Label>
         <Select value={form.ethnicity} onValueChange={form.setEthnicity}>
           <SelectTrigger className={wizardSelectTriggerClass}>
             <SelectValue placeholder={t("selectPlaceholder")} />
@@ -39,7 +39,7 @@ export function AppearanceFaceSection({ form }: { form: AppearanceFormState }) {
               <SelectItem
                 key={e.value}
                 value={e.value}
-                className="text-slate-300 focus:bg-slate-800 focus:text-white"
+                className=""
               >
                 {e.label}
               </SelectItem>

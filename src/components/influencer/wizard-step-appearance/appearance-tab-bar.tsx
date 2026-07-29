@@ -21,10 +21,10 @@ export function AppearanceTabBar({
           onClick={() => onTabChange(tab)}
           aria-pressed={appearanceTab === tab}
           className={cn(
-            "flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all",
+            "flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-colors",
             appearanceTab === tab
-              ? "bg-white/[0.08] text-white"
-              : "text-slate-500 hover:text-slate-300"
+              ? "bg-foreground/10 text-foreground"
+              : "text-muted-foreground hover:text-foreground"
           )}
         >
           {tab === "gallery" ? t("galleryTab") : t("customizeTab")}

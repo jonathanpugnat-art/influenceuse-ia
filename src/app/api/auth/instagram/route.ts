@@ -13,6 +13,7 @@ import {
   INSTAGRAM_OAUTH_RETURN_COOKIE,
   sanitizeOAuthReturnPath,
 } from "@/lib/instagram-oauth-return";
+import { verifySignedOAuthState } from "@/lib/oauth-state";
 
 const APP_URL = getAppUrl();
 
@@ -44,8 +45,9 @@ function buildOAuthRedirectResponse(
 
 /**
  * GET /api/auth/instagram
- * Callback OAuth Instagram : ?code=...&state=influencerId
- * Échange le code, chiffre les tokens, sauvegarde dans SocialAccount, redirige.
+ * Callback OAuth Instagram : ?code=...&state=<signed state>
+ * Vérifie le state signé (anti-CSRF), échange le code, chiffre les tokens,
+ * sauvegarde dans SocialAccount, redirige.
  */
 export async function GET(req: NextRequest) {
   const { userId } = await auth();
@@ -58,7 +60,9 @@ export async function GET(req: NextRequest) {
   const state = searchParams.get("state");
   const error = searchParams.get("error");
 
-  const influencerIdFromState = searchParams.get("state");
+  // First dot-segment of the state is the influencerId — only used to build
+  // error redirects. Never trusted before verifySignedOAuthState passes.
+  const influencerIdFromState = state?.split(".")[0] ?? null;
 
   if (error) {
     const errorDesc = searchParams.get("error_description") ?? error;
@@ -74,13 +78,20 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const influencerId = state;
   const redirectUri = getInstagramOAuthRedirectUri();
 
   const user = await db.user.findUnique({ where: { clerkId: userId } });
   if (!user) {
-    return buildOAuthRedirectResponse(req, influencerId, {
+    return buildOAuthRedirectResponse(req, influencerIdFromState, {
       instagram_error: "Session expirée. Reconnecte-toi à Aura puis réessaie.",
+    });
+  }
+
+  const influencerId = verifySignedOAuthState(state, user.id);
+  if (!influencerId) {
+    return buildOAuthRedirectResponse(req, influencerIdFromState, {
+      instagram_error:
+        "Lien de connexion invalide ou expiré. Relance la connexion Instagram depuis Aura.",
     });
   }
 

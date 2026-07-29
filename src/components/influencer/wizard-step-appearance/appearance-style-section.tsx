@@ -28,9 +28,9 @@ export function AppearanceStyleSection({
       summary={form.styleSummary}
     >
       <div className="space-y-2">
-        <Label className="text-slate-300">
+        <Label className="text-foreground/90">
           {t("fashionStyle")}{" "}
-          <span className="text-slate-500">{t("multiSelect")}</span>
+          <span className="text-muted-foreground">{t("multiSelect")}</span>
         </Label>
         <div className="flex flex-wrap gap-2">
           {form.fashionStylesList.map((s) => (

@@ -379,9 +379,41 @@ export async function refreshToken(
 }
 
 /**
+ * Poll le `status_code` d'un container média jusqu'à FINISHED. Meta traite
+ * les containers de façon asynchrone : appeler `media_publish` trop tôt
+ * échoue avec « media not ready ». Les reels prennent 10-60 s, les photos
+ * quelques secondes — d'où des budgets différents par type.
+ */
+async function waitForContainerReady(
+  accessToken: string,
+  containerId: string,
+  opts: { maxAttempts: number; intervalMs: number; label: string }
+): Promise<void> {
+  for (let i = 0; i < opts.maxAttempts; i++) {
+    const statusRes = await axios
+      .get<{ status_code: string }>(`${BASE}/${API_VERSION}/${containerId}`, {
+        params: { fields: "status_code", access_token: accessToken },
+      })
+      .then((r) => r.data)
+      .catch(handleError);
+
+    if (statusRes.status_code === "FINISHED") return;
+    if (statusRes.status_code === "ERROR") {
+      throw new InstagramApiError(
+        `Le média ${opts.label} n'a pas pu être traité par Instagram. Vérifiez le format et l'URL publique du média.`
+      );
+    }
+    await new Promise((r) => setTimeout(r, opts.intervalMs));
+  }
+  throw new InstagramApiError(
+    `Timeout: le média ${opts.label} n'est pas prêt à être publié. Réessayez dans une minute.`
+  );
+}
+
+/**
  * Étape 1 : Crée un container média image.
- * Étape 2 : Publie le container.
- * Étape 3 : Optionnel — poll du status jusqu'à FINISHED.
+ * Étape 2 : Poll du status jusqu'à FINISHED.
+ * Étape 3 : Publie le container.
  */
 export async function publishPhoto(
   accessToken: string,
@@ -405,6 +437,13 @@ export async function publishPhoto(
     .catch(handleError);
 
   const containerId = createRes.id;
+
+  // Photos process fast; ~15s budget covers the slow tail.
+  await waitForContainerReady(accessToken, containerId, {
+    maxAttempts: 10,
+    intervalMs: 1500,
+    label: "photo",
+  });
 
   const publishRes = await axios
     .post<{ id: string }>(
@@ -471,6 +510,13 @@ export async function publishCarousel(
     .then((r) => r.data)
     .catch(handleError);
 
+  // The parent container aggregates children processing — poll it before publish.
+  await waitForContainerReady(accessToken, carouselRes.id, {
+    maxAttempts: 15,
+    intervalMs: 2000,
+    label: "carousel",
+  });
+
   const publishRes = await axios
     .post<{ id: string }>(
       `${BASE}/${API_VERSION}/${igUserId}/media_publish`,
@@ -513,38 +559,26 @@ export async function publishReel(
 
   const containerId = createRes.id;
 
-  const maxAttempts = 30;
-  for (let i = 0; i < maxAttempts; i++) {
-    const statusRes = await axios
-      .get<{ status_code: string }>(`${BASE}/${API_VERSION}/${containerId}`, {
-        params: { fields: "status_code", access_token: accessToken },
-      })
-      .then((r) => r.data)
-      .catch(handleError);
+  await waitForContainerReady(accessToken, containerId, {
+    maxAttempts: 30,
+    intervalMs: 2000,
+    label: "reel",
+  });
 
-    if (statusRes.status_code === "FINISHED") {
-      const publishRes = await axios
-        .post<{ id: string }>(
-          `${BASE}/${API_VERSION}/${igUserId}/media_publish`,
-          null,
-          {
-            params: {
-              creation_id: containerId,
-              access_token: accessToken,
-            },
-          }
-        )
-        .then((r) => r.data)
-        .catch(handleError);
-      return { mediaId: publishRes.id };
-    }
-    if (statusRes.status_code === "ERROR") {
-      throw new InstagramApiError("Le média reel n'a pas pu être traité par Instagram.");
-    }
-    await new Promise((r) => setTimeout(r, 2000));
-  }
-
-  throw new InstagramApiError("Timeout: le reel n'est pas prêt à être publié.");
+  const publishRes = await axios
+    .post<{ id: string }>(
+      `${BASE}/${API_VERSION}/${igUserId}/media_publish`,
+      null,
+      {
+        params: {
+          creation_id: containerId,
+          access_token: accessToken,
+        },
+      }
+    )
+    .then((r) => r.data)
+    .catch(handleError);
+  return { mediaId: publishRes.id };
 }
 
 /**

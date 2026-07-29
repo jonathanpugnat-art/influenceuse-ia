@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useInfluencerWizard } from "@/hooks/use-influencer-wizard";
 import { buildWizardCreateInput } from "@/lib/wizard-create-payload";
-import { nicheShotToPhotoSeed } from "@/lib/niche-shot-ideas";
+import { nicheShotToPhotoSeed, buildDefaultDay1PhotoSeed } from "@/lib/niche-shot-ideas";
 import { stashWizardWelcomePhotoSeed } from "@/lib/wizard-photo-seed";
 import { trpc } from "@/lib/trpc";
 import { useUpgradeOnLimitError } from "@/hooks/use-upgrade-on-limit-error";
@@ -42,16 +42,23 @@ export function useWizardCreateFlow() {
 
   const finishWizardAndRedirect = useCallback(
     (influencerId: string, name: string, isNsfw: boolean) => {
-      if (data.pendingNicheShot) {
-        stashWizardWelcomePhotoSeed(
-          nicheShotToPhotoSeed(data.pendingNicheShot, influencerId, { isNsfw })
-        );
-      }
+      const angle = data.angle?.trim() || data.brief?.trim() || "";
+      const seed = data.pendingNicheShot
+        ? nicheShotToPhotoSeed(data.pendingNicheShot, influencerId, {
+            isNsfw,
+            angle,
+          })
+        : buildDefaultDay1PhotoSeed(influencerId, {
+            niche: data.niche,
+            angle,
+            isNsfw,
+          });
+      stashWizardWelcomePhotoSeed(seed);
       toast.success(t("firstPhotoCta", { name }));
       reset();
       router.push(`/content/photo?influencer=${influencerId}&welcome=1`);
     },
-    [data.pendingNicheShot, reset, router, t]
+    [data.angle, data.brief, data.niche, data.pendingNicheShot, reset, router, t]
   );
 
   const beginPostCreateFlow = useCallback(

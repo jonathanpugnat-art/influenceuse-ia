@@ -4,19 +4,19 @@
   "crons": [
     {
       "path": "/api/cron/publish",
-      "schedule": "0 9 * * *"
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/cron/process-batches",
-      "schedule": "30 9 * * *"
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/cron/retry-webhooks",
-      "schedule": "0 10 * * *"
+      "schedule": "*/10 * * * *"
     },
     {
       "path": "/api/cron/fetch-analytics",
-      "schedule": "0 4 * * *"
+      "schedule": "0 * * * *"
     },
     {
       "path": "/api/cron/fetch-trends",

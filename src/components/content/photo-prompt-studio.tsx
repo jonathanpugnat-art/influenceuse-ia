@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ChevronDown, Coins, Loader2, Sparkles } from "lucide-react";
@@ -29,7 +29,6 @@ import {
 import { MIN_USER_SCENE_LENGTH } from "@/lib/photo-scene-user";
 import { type InfluencerGender } from "@/lib/photo-niche-defaults";
 import { CREDIT_COSTS } from "@/lib/constants";
-import { trpc } from "@/lib/trpc";
 import { useInfluencers } from "@/hooks/use-influencers";
 import { useCurrentPlan } from "@/hooks/use-current-plan";
 import { cn } from "@/lib/utils";
@@ -41,15 +40,38 @@ const PROMPT_EXAMPLES = [
   "promptExampleBoudoir",
 ] as const;
 
-export function PhotoPromptStudio() {
+function draftPromptFromParams(params: {
+  sceneDescription: string;
+  outfit: string;
+  customPrompt: string;
+}): string {
+  return [
+    params.sceneDescription.trim(),
+    params.outfit.trim() ? `wearing ${params.outfit.trim()}` : null,
+    params.customPrompt.trim() || null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+export function PhotoPromptStudio({
+  identityPackPending = false,
+}: {
+  /** Soft-block generate while identity angles are still building (welcome flow). */
+  identityPackPending?: boolean;
+}) {
   const t = useTranslations("content");
   const locale = useLocale() as "fr" | "en";
   const { params, updateParams, applyParamsAndGenerate, isGenerating } =
     usePhotoCreator();
   const [prompt, setPrompt] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [seedSynced, setSeedSynced] = useState(false);
 
-  const { data: influencersData } = useInfluencers({ limit: 50 }, { placeholderData: (prev) => prev });
+  const { data: influencersData } = useInfluencers(
+    { limit: 50 },
+    { placeholderData: (prev) => prev }
+  );
   const { data: plan } = useCurrentPlan();
   const influencers = influencersData?.influencers ?? [];
   const selected = influencers.find((i) => i.id === params.influencerId);
@@ -60,10 +82,21 @@ export function PhotoPromptStudio() {
   const hasNsfwPlan = plan?.features.hasNsfw ?? false;
   const composeCost = params.numberOfImages * CREDIT_COSTS.PHOTO;
 
+  // Welcome / trends seed → fill the freeform box so day-1 is one click.
+  useEffect(() => {
+    if (seedSynced || prompt.trim()) return;
+    const draft = draftPromptFromParams(params);
+    if (draft.length >= MIN_USER_SCENE_LENGTH) {
+      setPrompt(draft);
+      setSeedSynced(true);
+    }
+  }, [params, prompt, seedSynced]);
+
   const canGenerate =
     hasInfluencer &&
     prompt.trim().length >= MIN_USER_SCENE_LENGTH &&
-    !isGenerating;
+    !isGenerating &&
+    !identityPackPending;
 
   const examples = useMemo(
     () => PROMPT_EXAMPLES.map((key) => ({ key, text: t(key) })),
@@ -71,6 +104,10 @@ export function PhotoPromptStudio() {
   );
 
   const handleGenerate = () => {
+    if (identityPackPending) {
+      toast.info(t("identityPackGeneratingBanner"));
+      return;
+    }
     if (!hasInfluencer) {
       toast.error(t("selectInfluencerFirst"));
       return;
@@ -108,19 +145,19 @@ export function PhotoPromptStudio() {
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden border-r border-neutral-800/60 bg-neutral-950/40">
-      <div className="shrink-0 border-b border-neutral-800/60 px-4 py-4">
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden border-r border-border/60 bg-card/30">
+      <div className="shrink-0 border-b border-border/60 px-4 py-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold text-white">
+            <p className="text-sm font-semibold text-foreground">
               {t("promptStudioTitle")}
             </p>
-            <p className="mt-0.5 text-[11px] text-neutral-500">
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
               {t("promptStudioSubtitle")}
             </p>
           </div>
           {selected && portraitUrl ? (
-            <div className="relative h-10 w-9 shrink-0 overflow-hidden rounded-lg border border-rose-400/30">
+            <div className="relative h-10 w-9 shrink-0 overflow-hidden rounded-lg border border-border">
               <Image
                 src={portraitUrl}
                 alt=""
@@ -133,11 +170,14 @@ export function PhotoPromptStudio() {
         </div>
 
         {influencers.length === 0 ? (
-          <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-dashed border-neutral-700 px-3 py-2">
-            <p className="text-[11px] text-neutral-500">
+          <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-dashed border-border px-3 py-2">
+            <p className="text-[11px] text-muted-foreground">
               {t("createFirstInfluencer")}
             </p>
-            <Link href="/influencers/new" className="text-[11px] text-rose-400">
+            <Link
+              href="/influencers/new"
+              className="text-[11px] font-medium text-rose-400 hover:text-rose-300"
+            >
               {t("createLink")}
             </Link>
           </div>
@@ -146,16 +186,12 @@ export function PhotoPromptStudio() {
             value={params.influencerId}
             onValueChange={(v) => updateParams({ influencerId: v })}
           >
-            <SelectTrigger className="mt-3 h-10 border-neutral-800/60 bg-neutral-900/50 text-sm text-white">
+            <SelectTrigger className="mt-3 h-10 text-sm">
               <SelectValue placeholder={t("selectPlaceholder")} />
             </SelectTrigger>
-            <SelectContent className="border-neutral-800 bg-neutral-950">
+            <SelectContent>
               {influencers.map((inf) => (
-                <SelectItem
-                  key={inf.id}
-                  value={inf.id}
-                  className="text-neutral-300"
-                >
+                <SelectItem key={inf.id} value={inf.id}>
                   {inf.name}
                 </SelectItem>
               ))}
@@ -165,7 +201,7 @@ export function PhotoPromptStudio() {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col px-4 py-4">
-        <Label className="mb-2 text-xs text-neutral-400">
+        <Label className="mb-2 text-xs text-muted-foreground">
           {t("promptStudioLabel")}
         </Label>
         <textarea
@@ -174,7 +210,7 @@ export function PhotoPromptStudio() {
           disabled={!hasInfluencer || isGenerating}
           placeholder={t("promptStudioPlaceholder")}
           rows={8}
-          className="min-h-[160px] w-full flex-1 resize-none rounded-xl border border-neutral-800/60 bg-neutral-900/60 px-3 py-3 text-sm leading-relaxed text-white placeholder:text-neutral-600 focus:border-rose-400/40 focus:outline-none focus:ring-1 focus:ring-rose-400/30 disabled:opacity-50"
+          className="min-h-[160px] w-full flex-1 resize-none rounded-xl border border-border/60 bg-muted/40 px-3 py-3 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/60 focus:border-ring/60 focus:outline-none focus:ring-1 focus:ring-ring/40 disabled:opacity-50"
         />
 
         <div className="mt-3 flex flex-wrap gap-1.5">
@@ -184,7 +220,7 @@ export function PhotoPromptStudio() {
               type="button"
               disabled={!hasInfluencer || isGenerating}
               onClick={() => setPrompt(text)}
-              className="rounded-full border border-neutral-800 bg-neutral-900/80 px-2.5 py-1 text-[10px] text-neutral-400 transition-colors hover:border-rose-400/40 hover:text-rose-200 disabled:opacity-40"
+              className="rounded-full border border-border bg-muted/50 px-2.5 py-1 text-[10px] text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground disabled:opacity-40"
             >
               {text}
             </button>
@@ -192,9 +228,9 @@ export function PhotoPromptStudio() {
         </div>
       </div>
 
-      <div className="shrink-0 border-t border-neutral-800/60 bg-neutral-950/80 px-4 py-3">
+      <div className="shrink-0 border-t border-border/60 bg-background/80 px-4 py-3">
         <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
-          <CollapsibleTrigger className="flex w-full items-center justify-between py-1 text-[11px] text-neutral-500 hover:text-neutral-300">
+          <CollapsibleTrigger className="flex w-full items-center justify-between py-1 text-[11px] text-muted-foreground hover:text-foreground">
             {t("promptStudioAdvanced")}
             <ChevronDown
               className={cn(
@@ -203,59 +239,64 @@ export function PhotoPromptStudio() {
               )}
             />
           </CollapsibleTrigger>
-          <CollapsibleContent className="pt-2">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label className="text-[11px] text-neutral-400">
-                  {t("numberOfImages")}
-                </Label>
-                <span className="text-[11px] text-neutral-300">
-                  {params.numberOfImages}
-                </span>
-              </div>
+          <CollapsibleContent className="space-y-3 pb-2 pt-3">
+            <div>
+              <Label className="text-[11px] text-muted-foreground">
+                {t("numberOfImages")}
+              </Label>
               <Slider
+                value={[params.numberOfImages]}
                 min={1}
                 max={4}
                 step={1}
-                value={[params.numberOfImages]}
-                onValueChange={([v]) => updateParams({ numberOfImages: v })}
+                onValueChange={([v]) =>
+                  updateParams({ numberOfImages: v ?? 1 })
+                }
+                className="mt-2"
               />
+              <p className="mt-1 text-[10px] text-muted-foreground/70">
+                {params.numberOfImages}
+              </p>
             </div>
+            <p className="text-[10px] leading-relaxed text-muted-foreground/70">
+              {t("promptStudioRoutingHint")}
+            </p>
           </CollapsibleContent>
         </Collapsible>
+
+        {identityPackPending ? (
+          <p className="mb-2 text-[11px] text-amber-400/90">
+            {t("identityPackGeneratingBanner")}
+          </p>
+        ) : null}
 
         <button
           type="button"
           onClick={handleGenerate}
           disabled={!canGenerate}
           className={cn(
-            "mt-3 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold text-white transition-all",
+            "mt-2 flex min-h-10 w-full items-center justify-center gap-2 rounded-full py-2.5 text-sm font-semibold transition-colors",
             canGenerate
-              ? "bg-gradient-to-r from-rose-500 to-pink-600 shadow-lg shadow-rose-500/20 hover:opacity-95"
-              : "cursor-not-allowed bg-neutral-800 text-neutral-500"
+              ? "bg-foreground text-background hover:bg-foreground/90"
+              : "cursor-not-allowed bg-muted text-muted-foreground"
           )}
         >
           {isGenerating ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
-              {t("generatingInfluencer")}
+              {t("generating")}
             </>
           ) : (
             <>
               <Sparkles className="h-4 w-4" />
               {t("promptStudioGenerate")}
-              <span className="flex items-center gap-1 text-xs font-normal text-rose-100/80">
+              <span className="flex items-center gap-0.5 text-xs opacity-80">
                 <Coins className="h-3 w-3" />
-                {composeCost} {t("creditUnit")}
-                {composeCost > 1 ? "s" : ""}
+                {composeCost}
               </span>
             </>
           )}
         </button>
-
-        <p className="mt-2 text-center text-[10px] text-neutral-600">
-          {t("promptStudioRoutingHint")}
-        </p>
       </div>
     </div>
   );

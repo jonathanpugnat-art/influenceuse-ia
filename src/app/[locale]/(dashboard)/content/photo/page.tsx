@@ -25,17 +25,19 @@ import { toast } from "sonner";
 export default function PhotoCreatorPage() {
   const t = useTranslations("content");
   const searchParams = useSearchParams();
-  const { generatedUrls, isGenerating, params, updateParams, applySeed, applyViralBrief } =
+  const { generatedUrls, isGenerating, params, updateParams, applySeed, applyViralBrief, requestGenerate } =
     usePhotoCreator();
   const showPublish = generatedUrls.length > 0 && !isGenerating;
   const [mobileConfigOpen, setMobileConfigOpen] = useState(false);
   const [welcomeDismissed, setWelcomeDismissed] = useState(false);
   const seededRef = useRef(false);
   const trendSeededRef = useRef(false);
+  const autoGenerateFiredRef = useRef(false);
 
   const influencerIdFromUrl = searchParams.get("influencer");
   const trendItemIdFromUrl = searchParams.get("trendItemId");
   const recommendationIdFromUrl = searchParams.get("recommendationId");
+  const autoGenerate = searchParams.get("autoGenerate") === "1";
   const isWelcomeFlow =
     searchParams.get("welcome") === "1" && !welcomeDismissed;
 
@@ -130,6 +132,36 @@ export default function PhotoCreatorPage() {
     trendSeedQuery.data?.brief,
   ]);
 
+  // Trends 1-click: seed is in store (and/or hydrated via getPhotoSeed) → generate.
+  useEffect(() => {
+    if (!autoGenerate || autoGenerateFiredRef.current || isGenerating) return;
+    if (!params.influencerId) return;
+    const hasTrendIds = Boolean(
+      params.recommendationId || params.trendItemId || recommendationIdFromUrl
+    );
+    const hasSceneOutfit =
+      Boolean(params.outfit?.trim()) &&
+      Boolean(params.sceneDescription?.trim());
+    if (!hasTrendIds && !hasSceneOutfit) return;
+    // Wait for seed from applySeed or getPhotoSeed when coming from trends.
+    if (hasTrendIds && !hasSceneOutfit && !trendSeededRef.current) {
+      // Store may already be seeded by trends page before navigation.
+      if (!params.recommendationId && !params.trendItemId) return;
+    }
+    autoGenerateFiredRef.current = true;
+    requestGenerate();
+  }, [
+    autoGenerate,
+    isGenerating,
+    params.influencerId,
+    params.outfit,
+    params.recommendationId,
+    params.sceneDescription,
+    params.trendItemId,
+    recommendationIdFromUrl,
+    requestGenerate,
+  ]);
+
   const portraitUrl =
     welcomeInfluencer?.baseImageUrl?.trim() ||
     welcomeInfluencer?.avatarUrl?.trim() ||
@@ -154,12 +186,12 @@ export default function PhotoCreatorPage() {
       )}
 
       {/* Mobile config drawer */}
-      <div className="border-b border-slate-800/50 lg:hidden">
+      <div className="border-b border-border/50 lg:hidden">
         <Collapsible open={mobileConfigOpen} onOpenChange={setMobileConfigOpen}>
           <CollapsibleTrigger
             className={cn(
-              "flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-slate-300",
-              mobileConfigOpen && "bg-slate-800/30"
+              "flex min-h-11 w-full items-center justify-between px-4 py-3 text-sm font-medium text-foreground/90",
+              mobileConfigOpen && "bg-accent/40"
             )}
           >
             <span className="flex items-center gap-2">
@@ -168,8 +200,8 @@ export default function PhotoCreatorPage() {
             </span>
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <div className="h-[min(55vh,100dvh)] border-t border-slate-800/50">
-              <PhotoPromptStudio />
+            <div className="h-[min(55vh,100dvh)] border-t border-border/50">
+              <PhotoPromptStudio identityPackPending={showIdentityPackBanner} />
             </div>
           </CollapsibleContent>
         </Collapsible>
@@ -178,13 +210,13 @@ export default function PhotoCreatorPage() {
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* Left — 40% config */}
         <div className="hidden h-full w-full max-w-[400px] shrink-0 lg:flex lg:w-[38%] lg:max-w-[420px]">
-          <PhotoPromptStudio />
+          <PhotoPromptStudio identityPackPending={showIdentityPackBanner} />
         </div>
 
         {/* Right — 60% canvas + publish */}
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row">
-            <div className="flex min-h-0 flex-1 flex-col bg-slate-950">
+            <div className="flex min-h-0 flex-1 flex-col bg-background/60">
               <PhotoPreview layout="studio" isWelcomeFlow={isWelcomeFlow} />
             </div>
 
@@ -195,7 +227,7 @@ export default function PhotoCreatorPage() {
                   animate={{ width: 360, opacity: 1 }}
                   exit={{ width: 0, opacity: 0 }}
                   transition={{ type: "spring", bounce: 0.08, duration: 0.35 }}
-                  className="hidden shrink-0 overflow-hidden border-l border-slate-800/50 xl:block"
+                  className="hidden shrink-0 overflow-hidden xl:block"
                 >
                   <PhotoPublish />
                 </motion.aside>
@@ -215,7 +247,7 @@ export default function PhotoCreatorPage() {
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
             transition={{ type: "spring", bounce: 0.15 }}
-            className="fixed inset-x-0 bottom-0 z-50 max-h-[min(88vh,100dvh)] overflow-y-auto border-t border-slate-800/60 bg-slate-900 shadow-2xl lg:hidden"
+            className="fixed inset-x-0 bottom-0 z-50 max-h-[min(88vh,100dvh)] overflow-y-auto rounded-t-2xl border-t border-border/60 bg-popover shadow-2xl lg:hidden"
           >
             <PhotoPublish mobileSheet />
           </motion.div>

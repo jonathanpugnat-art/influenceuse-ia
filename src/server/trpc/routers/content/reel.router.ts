@@ -14,6 +14,7 @@ import {
   scheduleGenerationTask,
 } from "@/server/helpers/run-generation-job";
 import { LOCALHOST_REF_MESSAGE } from "@/lib/generation-errors";
+import { isReelsDisabled, REELS_DISABLED_MESSAGE } from "@/lib/kill-switches";
 import { resolvePublicMediaUrl } from "@/server/lib/resolve-public-media-url";
 import { buildReelSceneFrameParams } from "@/lib/reel-scene-frame";
 import {
@@ -42,6 +43,12 @@ export const contentReelRouter = createTRPCRouter({
   generateReel: protectedProcedure
     .input(generateReelInputSchema)
     .mutation(async ({ ctx, input }) => {
+      if (isReelsDisabled()) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: REELS_DISABLED_MESSAGE,
+        });
+      }
       const user = await getDbUser(ctx.userId);
 
       const { hydrateTrendReelInput } = await loadTrendsService();
