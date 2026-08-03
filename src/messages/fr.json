@@ -1711,7 +1711,30 @@
     "sectionTrendingNow": "En ce moment",
     "sectionTrendingNowSubtitle": "Toutes niches · Ce qui performe cette semaine",
     "searchTrendPlaceholder": "Cherche un trend sur…",
-    "searchTrendSubmit": "Rechercher"
+    "searchTrendSubmit": "Rechercher",
+    "sectionWeeklyFormats": "Formats de la semaine",
+    "sectionWeeklyFormatsSubtitle": "3 formats sélectionnés pour ta cadence de publication",
+    "sectionWeeklyFormatsSubtitleRange": "Semaine du {range}",
+    "weeklyFormatsEmpty": "Pas encore de formats hebdo — personnalise le feed pour démarrer.",
+    "generateWeeklyFormatCta": "Générer ce format",
+    "scheduleWeeklyFormatCta": "Planifier ({day})",
+    "generateFromTrendCta": "Générer depuis la tendance ({cost} cr)",
+    "generateFromTrendStarted": "Génération lancée depuis la tendance.",
+    "generatePhotoCta": "Générer une photo",
+    "openStudioCta": "Ouvrir le studio",
+    "preferredStudioPhoto": "Studio photo",
+    "preferredStudioReel": "Studio reel",
+    "scheduleFromTrendSuccessDated": "Brief enregistré — créneau suggéré : {date}.",
+    "weekRange": "{start} – {end}",
+    "dayHint": {
+      "mon": "Lundi",
+      "tue": "Mardi",
+      "wed": "Mercredi",
+      "thu": "Jeudi",
+      "fri": "Vendredi",
+      "sat": "Samedi",
+      "sun": "Dimanche"
+    }
   },
   "pricing": {
     "title": "Tarifs",

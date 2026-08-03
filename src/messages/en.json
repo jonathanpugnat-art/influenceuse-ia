@@ -1712,7 +1712,30 @@
     "sectionTrendingNow": "Trending now",
     "sectionTrendingNowSubtitle": "All niches · What's performing this week",
     "searchTrendPlaceholder": "Search for a trend vibe…",
-    "searchTrendSubmit": "Search"
+    "searchTrendSubmit": "Search",
+    "sectionWeeklyFormats": "This week's formats",
+    "sectionWeeklyFormatsSubtitle": "3 formats selected for your posting cadence",
+    "sectionWeeklyFormatsSubtitleRange": "Week of {range}",
+    "weeklyFormatsEmpty": "No weekly formats yet — personalize the feed to get started.",
+    "generateWeeklyFormatCta": "Generate this format",
+    "scheduleWeeklyFormatCta": "Schedule ({day})",
+    "generateFromTrendCta": "Generate from trend ({cost} cr)",
+    "generateFromTrendStarted": "Generation started from this trend.",
+    "generatePhotoCta": "Generate a photo",
+    "openStudioCta": "Open studio",
+    "preferredStudioPhoto": "Photo studio",
+    "preferredStudioReel": "Reel studio",
+    "scheduleFromTrendSuccessDated": "Brief saved — suggested slot: {date}.",
+    "weekRange": "{start} – {end}",
+    "dayHint": {
+      "mon": "Monday",
+      "tue": "Tuesday",
+      "wed": "Wednesday",
+      "thu": "Thursday",
+      "fri": "Friday",
+      "sat": "Saturday",
+      "sun": "Sunday"
+    }
   },
   "pricing": {
     "title": "Pricing",
