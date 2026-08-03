@@ -1,6 +1,9 @@
 "use client";
 
 import { create } from "zustand";
+import type { ViralBrief } from "@/lib/viral-brief";
+import { viralBriefToPhotoCreatorSeed } from "@/lib/viral-brief";
+import type { TrendPromptContext } from "@/lib/trends/trend-format-brief";
 
 export interface PhotoParams {
   influencerId: string;
@@ -28,6 +31,10 @@ export interface PhotoParams {
   sceneFirst: boolean;
   contentMode: "SFW" | "NSFW";
   nsfwLevel: string;
+  /** Optional scraped trend metadata + analyzed brief for prompt enrichment. */
+  trendContext?: TrendPromptContext;
+  trendItemId?: string;
+  recommendationId?: string;
 }
 
 /**
@@ -47,9 +54,14 @@ export interface PhotoCreatorSeed {
   customPrompt?: string;
   useFaceReference?: boolean;
   sceneFirst?: boolean;
+  contentMode?: "SFW" | "NSFW";
+  nsfwLevel?: string;
   /** Optional hook copied into the caption textarea. */
   caption?: string;
   hashtags?: string[];
+  trendContext?: TrendPromptContext;
+  trendItemId?: string;
+  recommendationId?: string;
 }
 
 interface PhotoCreatorState {
@@ -58,6 +70,8 @@ interface PhotoCreatorState {
   updateParams: (partial: Partial<PhotoParams>) => void;
   /** Convenience: apply a Trends seed in one call (params + caption + tags). */
   applySeed: (seed: PhotoCreatorSeed) => void;
+  /** Apply a unified viral brief (trends → studio → generation). */
+  applyViralBrief: (brief: ViralBrief, influencerId: string) => void;
   // Generation
   contentId: string | null;
   /** Approved scene plate URL between step 1 and 2. */
@@ -84,6 +98,8 @@ interface PhotoCreatorState {
   /** Increment to trigger classic generation from PhotoPreview. */
   generateNonce: number;
   requestGenerate: () => void;
+  /** Apply params and trigger generation in one atomic store update. */
+  applyParamsAndGenerate: (partial: Partial<PhotoParams>) => void;
   // Reset
   reset: () => void;
 }
@@ -107,6 +123,9 @@ const defaultParams: PhotoParams = {
   sceneFirst: false,
   contentMode: "SFW",
   nsfwLevel: "suggestive",
+  trendContext: undefined,
+  trendItemId: undefined,
+  recommendationId: undefined,
 };
 
 export const usePhotoCreator = create<PhotoCreatorState>()((set) => ({
@@ -115,6 +134,20 @@ export const usePhotoCreator = create<PhotoCreatorState>()((set) => ({
     set((s) => ({ params: { ...s.params, ...partial } })),
   applySeed: (seed) =>
     set((s) => {
+      const {
+        caption: captionSeed,
+        hashtags: hashtagsSeed,
+        ...paramSeed
+      } = seed;
+      return {
+        params: { ...s.params, ...paramSeed },
+        ...(captionSeed !== undefined ? { caption: captionSeed } : {}),
+        ...(hashtagsSeed !== undefined ? { hashtags: hashtagsSeed } : {}),
+      };
+    }),
+  applyViralBrief: (brief, influencerId) =>
+    set((s) => {
+      const seed = viralBriefToPhotoCreatorSeed(brief, influencerId);
       const {
         caption: captionSeed,
         hashtags: hashtagsSeed,
@@ -149,6 +182,11 @@ export const usePhotoCreator = create<PhotoCreatorState>()((set) => ({
   generateNonce: 0,
   requestGenerate: () =>
     set((s) => ({ generateNonce: s.generateNonce + 1 })),
+  applyParamsAndGenerate: (partial) =>
+    set((s) => ({
+      params: { ...s.params, ...partial },
+      generateNonce: s.generateNonce + 1,
+    })),
   reset: () =>
     set({
       params: { ...defaultParams },

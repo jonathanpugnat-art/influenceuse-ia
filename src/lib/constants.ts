@@ -19,19 +19,15 @@
 //   - NSFW (Premium)                 → Together FLUX → self-host → Flux Dev Uncensored
 //                                      + Sightengine post-filter (recommended prod)
 //   - Wizard base portrait         → Nano Banana (Flux 1.1 Pro fallback)
-// Beta period (2026-05): the FREE tier is intentionally generous (500 credits
-// instead of 50) so early adopters can fully exercise the app — generate
-// multiple influencers, run several content batches — without ever hitting a
-// paywall during the closed-bêta window. The `creditsLimit` we persist on
-// `User.creditsLimit` keeps reading from this constant, so existing FREE
-// users automatically get the bump on their next sign-in (no migration).
-// Drop back to 50 when the beta ends and the paid plans are open.
+// Paid beta open: FREE is a teaser only (50 credits). Paying users start at
+// Creator (29 €) or Pro (79 €). Existing FREE users pick up the new limit on
+// next sign-in via `User.creditsLimit` sync — no migration required.
 export const PLANS = {
   FREE: {
     name: "Free",
     price: 0,
     maxInfluencers: 1,
-    credits: 500,
+    credits: 50,
     hasVideo: false,
     hasSceneFirstPipeline: false,
     hasNsfw: false,
@@ -43,6 +39,7 @@ export const PLANS = {
     /** v0.12 — trend feed visible? FREE gets a 3-card teaser only. */
     hasTrends: false,
     trendsMaxFeed: 3,
+    hasCharacterLora: false,
   },
   STARTER: {
     name: "Creator",
@@ -59,6 +56,7 @@ export const PLANS = {
     hasWebhooks: false,
     hasTrends: true,
     trendsMaxFeed: 15,
+    hasCharacterLora: false,
   },
   PRO: {
     name: "Pro",
@@ -76,6 +74,7 @@ export const PLANS = {
     hasWebhooks: true,
     hasTrends: true,
     trendsMaxFeed: 50,
+    hasCharacterLora: true,
   },
   ENTERPRISE: {
     name: "Agency",
@@ -92,6 +91,7 @@ export const PLANS = {
     hasWebhooks: true,
     hasTrends: true,
     trendsMaxFeed: 200,
+    hasCharacterLora: true,
   },
 } as const;
 
@@ -122,8 +122,26 @@ export const CREDIT_COSTS = {
   REEL_NARRATION: 0,
   CAPTION: 0.5,
   BASE_IMAGE: 2,
+  /**
+   * Wizard step-2 preview. Same Nano-Banana model as the final 4 variants,
+   * but a single reusable image — so the preview faithfully matches the
+   * result instead of the old cheap-but-different FLUX Schnell render. Priced
+   * below BASE_IMAGE since it produces one image the user can keep as their
+   * portrait.
+   */
+  WIZARD_PREVIEW: 1,
   /** 3 extra Kontext angles from the chosen wizard portrait (profile, 3/4, full body). */
   IDENTITY_PACK: 3,
+  /**
+   * LoRA dataset (~12 Kontext angles) from base portrait.
+   * Calibrated vs ~$0.48 API (18× Kontext) — see unit economics.
+   */
+  LORA_DATASET: 10,
+  /**
+   * LoRA training job (FAL fast trainer, ~500 steps, ~20-60 min).
+   * Calibrated vs ~$2 API — full train ≈ 40 cr total with dataset.
+   */
+  LORA_TRAINING: 30,
   HASHTAGS: 0.25,
   /** Per-post cost when generating a multi-day editorial plan. */
   CONTENT_PLAN_PER_POST: 0.5,

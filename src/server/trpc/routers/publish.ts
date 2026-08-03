@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import { db } from "@/server/db";
+import { decrypt, encrypt } from "@/lib/encryption";
 import * as instagram from "@/server/services/instagram.service";
 import * as tiktok from "@/server/services/tiktok.service";
 
@@ -18,6 +19,7 @@ import {
   getInstagramOAuthProvider,
   usesInstagramDirectLogin,
 } from "@/lib/instagram-oauth-config";
+import { buildSignedOAuthState } from "@/lib/oauth-state";
 
 // ──────────────────────────────────────────────
 // Helpers
@@ -43,6 +45,136 @@ async function verifyInfluencerOwnership(influencerId: string, clerkId: string) 
     throw new TRPCError({ code: "NOT_FOUND", message: "Influencer not found" });
   }
   return { user, influencer };
+}
+
+type InstagramAccountForPublish = {
+  id: string;
+  accessToken: string;
+  tokenExpiresAt: Date | null;
+  oauthProvider: string | null;
+  platformUserId: string | null;
+};
+
+function buildCaptionWithHashtags(caption: string | null, hashtags: string[]): string {
+  const base = caption ?? "";
+  return hashtags.length ? `${base}\n\n${hashtags.join(" ")}` : base;
+}
+
+async function ensureValidInstagramAccessToken(
+  account: InstagramAccountForPublish
+): Promise<string> {
+  const accessToken = decrypt(account.accessToken);
+  const now = new Date();
+  if (account.tokenExpiresAt && account.tokenExpiresAt > now) {
+    return accessToken;
+  }
+
+  try {
+    const refreshed = await instagram.refreshToken(
+      accessToken,
+      account.oauthProvider === "instagram_login" ||
+        account.oauthProvider === "facebook_login"
+        ? account.oauthProvider
+        : null
+    );
+    await db.socialAccount.update({
+      where: { id: account.id },
+      data: {
+        accessToken: encrypt(refreshed.accessToken),
+        tokenExpiresAt: refreshed.expiresAt,
+      },
+    });
+    return refreshed.accessToken;
+  } catch {
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "Token expiré, reconnectez Instagram",
+    });
+  }
+}
+
+async function publishInstagramContent(params: {
+  contentId: string;
+  accessToken: string;
+  igUserId: string;
+  type: "PHOTO" | "CAROUSEL" | "REEL" | "STORY";
+  mediaUrls: string[];
+  thumbnailUrl: string | null;
+  caption: string;
+}): Promise<string> {
+  const { contentId, accessToken, igUserId, type, mediaUrls, thumbnailUrl, caption } =
+    params;
+
+  if (type === "STORY") {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Stories non supportées pour l'instant",
+    });
+  }
+
+  try {
+    if (type === "PHOTO") {
+      const imageUrl = mediaUrls[0];
+      if (!imageUrl) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Aucune image à publier.",
+        });
+      }
+      const { mediaId } = await instagram.publishPhoto(
+        accessToken,
+        igUserId,
+        imageUrl,
+        caption
+      );
+      return mediaId;
+    }
+
+    if (type === "CAROUSEL") {
+      const imageUrls = mediaUrls.length > 0 ? mediaUrls : [];
+      if (imageUrls.length === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Aucune image pour le carousel.",
+        });
+      }
+      const { mediaId } = await instagram.publishCarousel(
+        accessToken,
+        igUserId,
+        imageUrls,
+        caption
+      );
+      return mediaId;
+    }
+
+    if (type === "REEL") {
+      const videoUrl = mediaUrls[0];
+      if (!videoUrl) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Aucune vidéo à publier.",
+        });
+      }
+      const { mediaId } = await instagram.publishReel(
+        accessToken,
+        igUserId,
+        videoUrl,
+        caption,
+        thumbnailUrl ?? undefined
+      );
+      return mediaId;
+    }
+
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Type de contenu non supporté pour Instagram.",
+    });
+  } catch (err) {
+    if (err instanceof TRPCError) throw err;
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[publishToInstagram] contentId=${contentId} Meta API error:`, message);
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message });
+  }
 }
 
 // ──────────────────────────────────────────────
@@ -145,6 +277,24 @@ export const publishRouter = createTRPCRouter({
         });
       }
 
+      // Atomic claim — a double-click or a concurrent publish cron tick must
+      // never publish the same content twice on Meta. Whoever flips the
+      // status first wins; the loser gets a clear CONFLICT.
+      const previousStatus = content.status;
+      const claimed = await db.content.updateMany({
+        where: {
+          id: input.contentId,
+          status: { in: ["READY", "SCHEDULED"] },
+        },
+        data: { status: "GENERATING" },
+      });
+      if (claimed.count === 0) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "Une publication est déjà en cours pour ce contenu.",
+        });
+      }
+
       const contentWithInfluencer = await db.content.findUnique({
         where: { id: input.contentId },
         include: {
@@ -171,23 +321,96 @@ export const publishRouter = createTRPCRouter({
         throw new TRPCError({ code: "NOT_FOUND", message: "Content not found" });
       }
 
-      const { publishContent: doPublish, savePublishResults } = await import(
-        "@/server/services/publisher.service"
-      );
-      const results = await doPublish({
-        ...contentWithInfluencer,
-        platforms: input.platforms as ("INSTAGRAM" | "TIKTOK" | "ONLYFANS")[],
-      });
-      await savePublishResults(input.contentId, results);
+      let resultsCount = 0;
+      try {
+        const { publishContent: doPublish, savePublishResults } = await import(
+          "@/server/services/publisher.service"
+        );
+        const results = await doPublish({
+          ...contentWithInfluencer,
+          platforms: input.platforms as ("INSTAGRAM" | "TIKTOK" | "ONLYFANS")[],
+        });
+        resultsCount = results.length;
+        await savePublishResults(input.contentId, results);
+      } catch (err) {
+        // Release the claim so the user can retry (savePublishResults sets
+        // the final status on the nominal path).
+        await db.content
+          .updateMany({
+            where: { id: input.contentId, status: "GENERATING" },
+            data: { status: previousStatus },
+          })
+          .catch(() => undefined);
+        throw err;
+      }
 
       const created = await db.publishResult.findMany({
         where: { contentId: input.contentId },
         orderBy: { createdAt: "desc" },
-        take: results.length,
+        take: resultsCount,
       });
 
       return { results: created };
     }),
+
+  /**
+   * recentPublishFailures — Publications échouées (7 derniers jours) encore
+   * non résolues (aucun SUCCESS ultérieur pour le même contenu+plateforme).
+   * Consommé par la bannière du calendrier pour tuer le « silent fail » du
+   * cron publish : l'utilisateur voit l'échec sans avoir à fouiller.
+   */
+  recentPublishFailures: protectedProcedure.query(async ({ ctx }) => {
+    const user = await getDbUser(ctx.userId);
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const failures = await db.publishResult.findMany({
+      where: {
+        status: "FAILED",
+        createdAt: { gte: since },
+        content: { influencer: { userId: user.id } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 25,
+      select: {
+        id: true,
+        platform: true,
+        error: true,
+        createdAt: true,
+        content: {
+          select: {
+            id: true,
+            type: true,
+            caption: true,
+            thumbnailUrl: true,
+            status: true,
+            influencer: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+    if (failures.length === 0) return [];
+
+    // Un retry réussi résout l'échec — on ne remonte que les échecs ouverts.
+    const contentIds = [...new Set(failures.map((f) => f.content.id))];
+    const successes = await db.publishResult.findMany({
+      where: { status: "SUCCESS", contentId: { in: contentIds } },
+      select: { contentId: true, platform: true },
+    });
+    const resolved = new Set(
+      successes.map((s) => `${s.contentId}:${s.platform}`)
+    );
+
+    // Dédup par contenu+plateforme (on garde l'échec le plus récent).
+    const seen = new Set<string>();
+    const open: typeof failures = [];
+    for (const f of failures) {
+      const key = `${f.content.id}:${f.platform}`;
+      if (resolved.has(key) || seen.has(key)) continue;
+      seen.add(key);
+      open.push(f);
+    }
+    return open.slice(0, 5);
+  }),
 
   /**
    * connectInstagram — Retourne l'URL d'autorisation OAuth Instagram.
@@ -228,9 +451,12 @@ export const publishRouter = createTRPCRouter({
   connectInstagram: protectedProcedure
     .input(z.object({ influencerId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      await verifyInfluencerOwnership(input.influencerId, ctx.userId);
+      const { user } = await verifyInfluencerOwnership(input.influencerId, ctx.userId);
       const redirectUri = getInstagramOAuthRedirectUri();
-      const url = instagram.getAuthUrl(redirectUri, input.influencerId);
+      const url = instagram.getAuthUrl(
+        redirectUri,
+        buildSignedOAuthState(input.influencerId, user.id)
+      );
       return { url, redirectUri };
     }),
 
@@ -240,9 +466,12 @@ export const publishRouter = createTRPCRouter({
   connectTiktok: protectedProcedure
     .input(z.object({ influencerId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      await verifyInfluencerOwnership(input.influencerId, ctx.userId);
+      const { user } = await verifyInfluencerOwnership(input.influencerId, ctx.userId);
       const redirectUri = getTikTokOAuthRedirectUri();
-      const url = tiktok.getAuthUrl(redirectUri, input.influencerId);
+      const url = tiktok.getAuthUrl(
+        redirectUri,
+        buildSignedOAuthState(input.influencerId, user.id)
+      );
       return { url };
     }),
 
@@ -291,6 +520,205 @@ export const publishRouter = createTRPCRouter({
         },
       });
       return accounts;
+    }),
+
+  /**
+   * getInstagramStatus — État léger du compte Instagram (sans exposer le token).
+   */
+  getInstagramStatus: protectedProcedure
+    .input(z.object({ influencerId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      await verifyInfluencerOwnership(input.influencerId, ctx.userId);
+
+      const account = await db.socialAccount.findFirst({
+        where: { influencerId: input.influencerId, platform: "INSTAGRAM" },
+        select: {
+          isConnected: true,
+          username: true,
+          tokenExpiresAt: true,
+        },
+      });
+
+      if (!account) {
+        return {
+          isConnected: false,
+          username: null as string | null,
+          tokenExpiresAt: null as Date | null,
+          isExpired: false,
+        };
+      }
+
+      const now = new Date();
+      const isExpired = account.tokenExpiresAt
+        ? account.tokenExpiresAt < now
+        : false;
+
+      return {
+        isConnected: account.isConnected,
+        username: account.username,
+        tokenExpiresAt: account.tokenExpiresAt,
+        isExpired: account.isConnected && isExpired,
+      };
+    }),
+
+  /**
+   * publishToInstagram — Publie un contenu du calendrier sur Instagram.
+   */
+  publishToInstagram: protectedProcedure
+    .input(
+      z.object({
+        contentId: z.string(),
+        influencerId: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const user = await getDbUser(ctx.userId);
+      await verifyInfluencerOwnership(input.influencerId, ctx.userId);
+
+      const content = await db.content.findUnique({
+        where: { id: input.contentId },
+        include: { influencer: { select: { userId: true } } },
+      });
+
+      if (!content || content.influencer.userId !== user.id) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Content not found" });
+      }
+
+      if (content.influencerId !== input.influencerId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Ce contenu n'appartient pas à cette influenceuse.",
+        });
+      }
+
+      if (
+        content.status !== "DRAFT" &&
+        content.status !== "SCHEDULED" &&
+        content.status !== "READY"
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Ce contenu ne peut pas être publié dans son état actuel.",
+        });
+      }
+
+      // Idempotence: never re-post something Instagram already accepted.
+      const alreadyPublished = await db.publishResult.findFirst({
+        where: {
+          contentId: input.contentId,
+          platform: "INSTAGRAM",
+          status: "SUCCESS",
+        },
+        select: { externalPostId: true },
+      });
+      if (alreadyPublished?.externalPostId) {
+        return {
+          success: true as const,
+          mediaId: alreadyPublished.externalPostId,
+          platform: "INSTAGRAM" as const,
+        };
+      }
+
+      const account = await db.socialAccount.findFirst({
+        where: {
+          influencerId: input.influencerId,
+          platform: "INSTAGRAM",
+          isConnected: true,
+        },
+        select: {
+          id: true,
+          accessToken: true,
+          tokenExpiresAt: true,
+          oauthProvider: true,
+          platformUserId: true,
+        },
+      });
+
+      if (!account?.accessToken) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Aucun compte Instagram connecté",
+        });
+      }
+
+      if (!account.platformUserId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "ID Instagram manquant. Reconnectez le compte.",
+        });
+      }
+
+      const accessToken = await ensureValidInstagramAccessToken({
+        id: account.id,
+        accessToken: account.accessToken,
+        tokenExpiresAt: account.tokenExpiresAt,
+        oauthProvider: account.oauthProvider,
+        platformUserId: account.platformUserId,
+      });
+
+      // Atomic claim — protects against double-click / concurrent cron tick
+      // publishing the same content twice on Meta.
+      const previousStatus = content.status;
+      const claimed = await db.content.updateMany({
+        where: {
+          id: input.contentId,
+          status: { in: ["DRAFT", "READY", "SCHEDULED"] },
+        },
+        data: { status: "GENERATING" },
+      });
+      if (claimed.count === 0) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "Une publication est déjà en cours pour ce contenu.",
+        });
+      }
+
+      const caption = buildCaptionWithHashtags(content.caption, content.hashtags);
+      let mediaId: string;
+      try {
+        mediaId = await publishInstagramContent({
+          contentId: input.contentId,
+          accessToken,
+          igUserId: account.platformUserId,
+          type: content.type,
+          mediaUrls: content.mediaUrls,
+          thumbnailUrl: content.thumbnailUrl,
+          caption,
+        });
+      } catch (err) {
+        await db.content
+          .updateMany({
+            where: { id: input.contentId, status: "GENERATING" },
+            data: { status: previousStatus },
+          })
+          .catch(() => undefined);
+        throw err;
+      }
+
+      console.log(
+        `[publishToInstagram] contentId=${input.contentId} mediaId=${mediaId} platform=INSTAGRAM`
+      );
+
+      await db.publishResult.create({
+        data: {
+          contentId: input.contentId,
+          platform: "INSTAGRAM",
+          status: "SUCCESS",
+          externalPostId: mediaId,
+          publishedAt: new Date(),
+        },
+      });
+
+      await db.content.update({
+        where: { id: input.contentId },
+        data: {
+          status: "PUBLISHED",
+          publishedAt: new Date(),
+          scheduledAt: null,
+        },
+      });
+
+      return { success: true as const, mediaId, platform: "INSTAGRAM" as const };
     }),
 
   /**

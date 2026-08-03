@@ -47,7 +47,7 @@ export function PhotoInstagramFeedMock({
   return (
     <div
       className={cn(
-        "mx-auto w-full max-w-[380px] overflow-hidden rounded-2xl border border-slate-700/80 bg-black shadow-2xl shadow-black/50",
+        "mx-auto w-full overflow-hidden rounded-2xl border border-slate-700/80 bg-black shadow-2xl shadow-black/50",
         className
       )}
     >
@@ -84,7 +84,7 @@ export function PhotoInstagramFeedMock({
           <>
             <Skeleton className="absolute inset-0 h-full w-full bg-slate-800/50" />
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-center">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" />
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
               <p className="text-xs text-slate-400">{loadingLabel ?? t("generating")}</p>
             </div>
           </>

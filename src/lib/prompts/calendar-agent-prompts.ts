@@ -45,8 +45,10 @@ RULES:
 - "missingFields" lists only critical fields still unknown: postsPerWeek, startDate, endDate, platforms (and influencerId is handled separately — never include it).
 - Set readyToExecute true ONLY when postsPerWeek, startDate, endDate, and platforms are all resolved (non-null).
 - Dates must be ISO YYYY-MM-DD. For "ce mois" / "this month", use the current calendar month boundaries.
+- Support month-scale plans: "30 posts", "1 post/jour ce mois", "3×/semaine pendant 1 mois" (up to ~30 days).
 - Default platforms to ["INSTAGRAM"] if the user mentions posting but no platform.
 - Map vibe into "goals" when no explicit goal is given (e.g. goals: "summer vibe, fitness content").
+- When INFLUENCER BRIEF is provided, infer vibe and goals from it — align content tone with positioning (premium OF, fitness coach, streetwear creator, etc.).
 - platforms values MUST be exactly: INSTAGRAM, TIKTOK, or ONLYFANS.
 
 Return STRICT JSON only:
@@ -77,17 +79,22 @@ export function buildCalendarAgentUserPrompt(opts: {
   influencerId?: string;
   influencerName?: string;
   influencerNiche?: string;
+  influencerBrief?: string;
   conversation: string;
 }): string {
-  return [
+  const lines = [
     `Today: ${opts.todayIso}`,
     `Current month: ${opts.monthStartIso} → ${opts.monthEndIso}`,
     `Required reply language: ${opts.locale === "fr" ? "French" : "English"} (params.language = "${opts.locale}")`,
     opts.influencerId
       ? `Selected influencer: ${opts.influencerName ?? "unknown"} (niche: ${opts.influencerNiche ?? "unknown"}, id: ${opts.influencerId})`
       : "No influencer selected yet — do NOT set readyToExecute true.",
-    "",
-    "Conversation:",
-    opts.conversation,
-  ].join("\n");
+  ];
+
+  if (opts.influencerBrief?.trim()) {
+    lines.push("", `INFLUENCER BRIEF:\n${opts.influencerBrief.trim()}`);
+  }
+
+  lines.push("", "Conversation:", opts.conversation);
+  return lines.join("\n");
 }

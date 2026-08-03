@@ -1,4 +1,7 @@
-import { resolvePremiumSelfHostUrl } from "@/lib/premium-image-config";
+import {
+  resolvePremiumSelfHostModelLabel,
+  resolvePremiumSelfHostUrl,
+} from "@/lib/premium-image-config";
 import { runWithConcurrency } from "@/server/services/replicate-utils";
 import type { TogetherFluxInput } from "@/server/services/image-providers/together-flux.provider";
 
@@ -75,7 +78,7 @@ export async function runSelfHostFluxBatch(
   if (urls.length === 0 && errors.length > 0) {
     throw errors[0];
   }
-  return { urls, model: "selfhost/flux" };
+  return { urls, model: resolvePremiumSelfHostModelLabel() };
 }
 
 export function isSelfHostFluxConfigured(): boolean {

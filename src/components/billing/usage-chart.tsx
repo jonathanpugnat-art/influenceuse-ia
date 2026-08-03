@@ -12,6 +12,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { trpc } from "@/lib/trpc";
+import { useCurrentPlan } from "@/hooks/use-current-plan";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // Mock 30-day usage data (will be replaced with real data later)
@@ -35,7 +36,7 @@ function generateMockData(limit: number) {
 }
 
 export function UsageChart() {
-  const { data: planData, isLoading } = trpc.billing.getCurrentPlan.useQuery();
+  const { data: planData, isLoading } = useCurrentPlan();
 
   if (isLoading) {
     return (

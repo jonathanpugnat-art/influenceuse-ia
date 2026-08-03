@@ -170,10 +170,16 @@ PREMIUM_IMAGE_MODERATION=auto
 
 ## 7. Crons Vercel
 
-Le projet utilise des crons (analytics, batches, retry webhooks).
-**Vercel les détecte automatiquement** depuis `vercel.json` au déploiement.
-Vérifie sur **Settings → Cron Jobs** qu'ils sont activés. Ils utilisent
-`CRON_SECRET` pour s'authentifier.
+Le projet utilise des crons (publish, batches, retry webhooks, analytics,
+trends). **Vercel les détecte automatiquement** depuis `vercel.json` au
+déploiement. Vérifie sur **Settings → Cron Jobs** qu'ils sont activés. Ils
+utilisent `CRON_SECRET` pour s'authentifier.
+
+> **⚠️ Plan Vercel requis : Pro.** `publish` et `process-batches` tournent
+> toutes les 5 min (sinon un post programmé à 18h partirait le lendemain, et
+> un batch de 30 photos mettrait 10 jours à se générer). Le plan Hobby limite
+> les crons à 1 exécution/jour — passe le projet en **Vercel Pro** avant le
+> launch, ou dégrade temporairement les schedules dans `vercel.json`.
 
 ---
 

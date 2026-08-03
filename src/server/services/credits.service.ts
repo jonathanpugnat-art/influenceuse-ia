@@ -135,10 +135,13 @@ export async function refundCredits(
 ): Promise<void> {
   if (cost <= 0) return;
   try {
-    await db.user.update({
-      where: { id: userId },
-      data: { creditsUsed: { decrement: cost } },
-    });
+    // Floor at 0 — a double refund (or refund > used) must never push
+    // creditsUsed negative and mint free credits.
+    await db.$executeRaw`
+      UPDATE "User"
+      SET "creditsUsed" = GREATEST(0, "creditsUsed" - ${cost})
+      WHERE "id" = ${userId}
+    `;
     console.log(`[credits.service] refunded ${cost} credit(s) to user ${userId}`);
   } catch (error) {
     // Best-effort: log and swallow. We don't want to mask the original error.

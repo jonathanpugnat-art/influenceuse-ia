@@ -51,7 +51,7 @@ export function MobileNav() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm md:hidden"
+              className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm md:hidden"
               onClick={() => setShowMore(false)}
             />
             <motion.div
@@ -59,14 +59,14 @@ export function MobileNav() {
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", bounce: 0.15, duration: 0.4 }}
-              className="fixed bottom-0 left-0 right-0 z-50 rounded-t-2xl border-t border-slate-800/50 bg-slate-900 p-4 pb-8 md:hidden"
+              className="fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl border-t border-border/50 bg-popover/95 p-4 pb-8 backdrop-blur-2xl md:hidden"
             >
               <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-white">{t("more")}</h3>
+                <h3 className="text-sm font-semibold text-foreground">{t("more")}</h3>
                 <button
                   type="button"
                   onClick={() => setShowMore(false)}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   aria-label={tCommon("close")}
                 >
                   <X className="h-4 w-4" />
@@ -79,10 +79,10 @@ export function MobileNav() {
                     href={item.href}
                     onClick={() => setShowMore(false)}
                     className={cn(
-                      "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors",
+                      "flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors",
                       isActive(item.href)
-                        ? "bg-violet-500/10 text-violet-400"
-                        : "text-slate-400 hover:bg-slate-800/50 hover:text-white"
+                        ? "bg-accent text-foreground"
+                        : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
                     )}
                   >
                     <item.icon className="h-5 w-5" />
@@ -95,16 +95,16 @@ export function MobileNav() {
         )}
       </AnimatePresence>
 
-      {/* Bottom nav bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-800/50 bg-slate-900 md:hidden">
-        <div className="flex items-center justify-around px-2 py-2">
+      {/* Bottom nav bar — floating pill */}
+      <nav className="fixed bottom-4 left-4 right-4 z-40 rounded-full border border-border/50 bg-card/70 shadow-lg shadow-black/30 backdrop-blur-2xl pb-[env(safe-area-inset-bottom,0px)] md:hidden">
+        <div className="flex items-center justify-around px-2 py-2.5">
           {mainItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
               className={cn(
-                "flex flex-col items-center gap-0.5 rounded-lg px-3 py-1.5 transition-colors",
-                isActive(item.href) ? "text-violet-400" : "text-slate-500"
+                "flex flex-col items-center gap-0.5 rounded-full px-3 py-1.5 transition-colors",
+                isActive(item.href) ? "text-foreground" : "text-muted-foreground"
               )}
             >
               <item.icon className="h-5 w-5" />
@@ -114,16 +114,14 @@ export function MobileNav() {
           <button
             onClick={() => setShowMore(true)}
             className={cn(
-              "flex flex-col items-center gap-0.5 rounded-lg px-3 py-1.5 transition-colors",
-              isMoreActive ? "text-violet-400" : "text-slate-500"
+              "flex flex-col items-center gap-0.5 rounded-full px-3 py-1.5 transition-colors",
+              isMoreActive ? "text-foreground" : "text-muted-foreground"
             )}
           >
             <MoreHorizontal className="h-5 w-5" />
             <span className="text-xs font-medium">{t("more")}</span>
           </button>
         </div>
-        {/* Safe area padding for iPhone */}
-        <div className="h-safe-area-bottom" />
       </nav>
     </>
   );

@@ -7,21 +7,98 @@ import type { RawTrendItem } from "@/server/services/trend-provider";
 import type { TrendFormatBrief } from "@/lib/trends/trend-format-brief";
 
 const IMAGE_URL_RE = /\.(jpe?g|png|webp|gif)(\?|$)/i;
+const VIDEO_URL_RE = /\.mp4(\?|$)/i;
+
+/** Direct MP4 (or similar) URL for inline card preview. */
+export function pickVideoUrlFromTrend(input: {
+  mediaUrls?: string[] | null;
+}): string | null {
+  for (const url of input.mediaUrls ?? []) {
+    if (url?.startsWith("http") && VIDEO_URL_RE.test(url)) {
+      return url;
+    }
+  }
+  return null;
+}
+
+/** Best poster/thumbnail when `thumbnailUrl` is missing on the row. */
+export function pickPosterUrlFromTrend(input: {
+  thumbnailUrl?: string | null;
+  thumbnailUrlAlt?: string | null;
+  mediaUrls?: string[] | null;
+}): string | null {
+  if (input.thumbnailUrl?.startsWith("http")) return input.thumbnailUrl;
+  for (const url of input.mediaUrls ?? []) {
+    if (url?.startsWith("http") && !VIDEO_URL_RE.test(url)) {
+      return url;
+    }
+  }
+  if (input.thumbnailUrlAlt?.startsWith("http")) return input.thumbnailUrlAlt;
+  return null;
+}
+
+export function extractTikTokVideoId(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const match = url.match(/\/video\/(\d+)/);
+  return match?.[1] ?? null;
+}
+
+export function buildTikTokEmbedUrl(sourceUrl: string | null | undefined): string | null {
+  const id = extractTikTokVideoId(sourceUrl);
+  if (!id) return null;
+  return `https://www.tiktok.com/embed/v2/${id}`;
+}
+
+export function buildInstagramEmbedUrl(
+  sourceUrl: string | null | undefined
+): string | null {
+  if (!sourceUrl) return null;
+  const match = sourceUrl.match(/\/(?:reel|p)\/([A-Za-z0-9_-]+)/);
+  if (!match?.[1]) return null;
+  return `https://www.instagram.com/reel/${match[1]}/embed`;
+}
+
+/** Inline preview: MP4 first, then platform embed iframe. */
+export function resolveTrendInlinePreview(input: {
+  platform: "TIKTOK" | "INSTAGRAM" | "ONLYFANS";
+  sourceUrl?: string | null;
+  embedUrl?: string | null;
+  mediaUrls?: string[] | null;
+}): { kind: "video"; url: string } | { kind: "embed"; url: string } | null {
+  const mp4 = pickVideoUrlFromTrend({ mediaUrls: input.mediaUrls });
+  if (mp4) return { kind: "video", url: mp4 };
+
+  const tiktokEmbed =
+    input.platform === "TIKTOK"
+      ? buildTikTokEmbedUrl(input.embedUrl ?? input.sourceUrl)
+      : null;
+  if (tiktokEmbed) return { kind: "embed", url: tiktokEmbed };
+
+  const igEmbed =
+    input.platform === "INSTAGRAM"
+      ? buildInstagramEmbedUrl(input.embedUrl ?? input.sourceUrl)
+      : null;
+  if (igEmbed) return { kind: "embed", url: igEmbed };
+
+  return null;
+}
 
 /** URLs suitable for Claude vision (static images only — not MP4). */
 export function pickVisionUrlsFromTrend(input: {
   thumbnailUrl?: string | null;
   thumbnailUrlAlt?: string | null;
   mediaUrls?: string[] | null;
+  videoFrameUrls?: string[] | null;
 }): string[] {
   const candidates = [
+    ...(input.videoFrameUrls ?? []),
     input.thumbnailUrl,
     input.thumbnailUrlAlt,
     ...(input.mediaUrls ?? []),
   ].filter((u): u is string => Boolean(u?.startsWith("http")));
 
   const images = candidates.filter((u) => IMAGE_URL_RE.test(u) || !/\.mp4(\?|$)/i.test(u));
-  return [...new Set(images)].slice(0, 4);
+  return [...new Set(images)].slice(0, 6);
 }
 
 export function isVideoTrendItem(mediaKind?: string | null): boolean {

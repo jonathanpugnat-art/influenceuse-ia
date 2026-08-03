@@ -12,9 +12,10 @@ describe("premium-content", () => {
     expect(laneFromContentMode("NSFW")).toBe("premium");
   });
 
-  it("clamps explicit to suggestive", () => {
-    expect(clampPremiumNsfwLevel("explicit")).toBe("suggestive");
+  it("preserves explicit nsfw level", () => {
+    expect(clampPremiumNsfwLevel("explicit")).toBe("explicit");
     expect(clampPremiumNsfwLevel("soft")).toBe("soft");
+    expect(clampPremiumNsfwLevel(undefined)).toBe("suggestive");
   });
 
   it("premium defaults use bedroom boudoir and NSFW suggestive", () => {

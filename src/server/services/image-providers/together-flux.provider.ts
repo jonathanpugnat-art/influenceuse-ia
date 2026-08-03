@@ -1,4 +1,7 @@
-import { resolveTogetherFluxModel } from "@/lib/premium-image-config";
+import {
+  resolvePremiumTogetherFluxModel,
+  resolveTogetherFluxModel,
+} from "@/lib/premium-image-config";
 import { runWithConcurrency } from "@/server/services/replicate-utils";
 
 export type TogetherFluxInput = {
@@ -124,9 +127,12 @@ async function runSingleTogetherFlux(
 
 export async function runTogetherFluxBatch(
   input: TogetherFluxInput,
-  count: number
+  count: number,
+  opts?: { premium?: boolean }
 ): Promise<{ urls: string[]; model: string }> {
-  const model = resolveTogetherFluxModel();
+  const model = opts?.premium
+    ? resolvePremiumTogetherFluxModel()
+    : resolveTogetherFluxModel();
   const tasks = Array.from({ length: count }, (_, i) => () =>
     runSingleTogetherFlux(model, {
       ...input,

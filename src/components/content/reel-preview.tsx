@@ -2,20 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import Link from "next/link";
 import {
   Video,
   RefreshCw,
   Download,
   Trash2,
-  Sparkles,
   Play,
   Pause,
   Volume2,
   VolumeX,
   Maximize,
-  AlertTriangle,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { downloadMediaUrl } from "@/lib/download-media";
 import { useUpgradeOnLimitError } from "@/hooks/use-upgrade-on-limit-error";
+import { useInvalidateCurrentPlan } from "@/hooks/use-current-plan";
 
 // We no longer expose the per-step labels to the user (they were too verbose
 // and gave away implementation details like "frames generation" vs "audio").
@@ -143,6 +142,7 @@ function VideoPlayer({ url, format }: { url: string; format: string }) {
 }
 
 export function ReelPreview() {
+  const t = useTranslations("content");
   const {
     params,
     contentId,
@@ -157,10 +157,12 @@ export function ReelPreview() {
     setGenerationProgress,
     setVideoUrl,
     setThumbnailUrl,
+    generateNonce,
   } = useReelCreator();
 
   const simulationRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const handleUpgrade = useUpgradeOnLimitError();
+  const invalidatePlan = useInvalidateCurrentPlan();
 
   const generateMutation = trpc.content.generateReel.useMutation({
     onSuccess: (data) => {
@@ -197,6 +199,7 @@ export function ReelPreview() {
       setThumbnailUrl(statusData.thumbnailUrl ?? null);
       setGenerationStep("done");
       setGenerationProgress(100);
+      invalidatePlan();
       if (simulationRef.current) clearInterval(simulationRef.current);
       setTimeout(() => {
         setIsGenerating(false);
@@ -212,7 +215,7 @@ export function ReelPreview() {
       setGenerationStep("");
       if (simulationRef.current) clearInterval(simulationRef.current);
     }
-  }, [statusData, isGenerating, setVideoUrl, setThumbnailUrl, setGenerationStep, setGenerationProgress, setIsGenerating]);
+  }, [statusData, isGenerating, invalidatePlan, setVideoUrl, setThumbnailUrl, setGenerationStep, setGenerationProgress, setIsGenerating]);
 
   const startProgressSimulation = useCallback(() => {
     let step = 0;
@@ -229,8 +232,8 @@ export function ReelPreview() {
   }, [setGenerationStep, setGenerationProgress]);
 
   const handleGenerate = useCallback(() => {
-    if (!params.influencerId || !params.script) {
-      toast.error("Sélectionne une influenceuse et écris un scénario");
+    if (!params.influencerId || !params.script?.trim()) {
+      toast.error(t("reelGenerateMissing"));
       return;
     }
     setIsGenerating(true);
@@ -253,12 +256,21 @@ export function ReelPreview() {
       nsfwLevel: params.contentMode === "NSFW" ? params.nsfwLevel : undefined,
       reelStylePreset: params.reelStylePreset,
       generateSceneFrame: params.generateSceneFrame,
+      motionSourceVideoUrl: params.motionSourceVideoUrl,
+      fromTrend: params.fromTrend,
       audioUrl:
         params.reelStylePreset === "lip_sync" && params.audioUrl.trim()
           ? params.audioUrl.trim()
           : undefined,
     });
-  }, [params, setIsGenerating, setVideoUrl, setGenerationProgress, setGenerationStep, generateMutation]);
+  }, [params, setIsGenerating, setVideoUrl, setGenerationProgress, setGenerationStep, generateMutation, t]);
+
+  const generateNonceRef = useRef(0);
+  useEffect(() => {
+    if (generateNonce <= generateNonceRef.current) return;
+    generateNonceRef.current = generateNonce;
+    handleGenerate();
+  }, [generateNonce, handleGenerate]);
 
   useEffect(() => {
     return () => {
@@ -267,7 +279,6 @@ export function ReelPreview() {
   }, []);
 
   const cost = CREDIT_COSTS.REEL;
-  const canGenerate = !!params.influencerId && !!params.script && !isGenerating;
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center p-4 md:p-6">
@@ -369,45 +380,12 @@ export function ReelPreview() {
               <div className="flex h-full flex-col items-center justify-center gap-3 p-8">
                 <Video className="h-16 w-16 text-slate-700" />
                 <p className="text-center text-sm text-slate-500">
-                  Configure les paramètres pour générer un reel
+                  {t("reelPreviewEmpty")}
                 </p>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
-
-        {/* Generate button */}
-        <div className="mt-4 space-y-2">
-          <button
-            type="button"
-            onClick={handleGenerate}
-            disabled={!canGenerate}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-500/25 transition-all hover:shadow-xl hover:shadow-violet-500/30 disabled:opacity-40 disabled:shadow-none"
-          >
-            {isGenerating ? (
-              <>
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                Génération en cours...
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-4 w-4" />
-                Générer le reel ({cost} crédits)
-              </>
-            )}
-          </button>
-
-          {/* Free plan warning */}
-          <div className="flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2">
-            <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400" />
-            <p className="text-xs text-amber-300">
-              La génération de vidéo nécessite le plan Pro.{" "}
-              <Link href="/billing" className="underline hover:text-amber-200">
-                Upgrade →
-              </Link>
-            </p>
-          </div>
-        </div>
       </div>
     </div>
   );

@@ -21,6 +21,10 @@ import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import {
+  buildInstagramEmbedUrl,
+  buildTikTokEmbedUrl,
+} from "@/lib/trends/trend-video-items";
 
 // We keep the prop type local — the page is the single consumer and we want
 // to avoid a circular type import from the tRPC AppRouter.
@@ -42,6 +46,9 @@ export interface TrendCardProps {
     thumbnailUrl?: string | null;
     /** Optional 2nd image swapped on hover for a tiny "alive" effect. */
     thumbnailUrlAlt?: string | null;
+    /** Direct MP4 or platform embed for inline preview (no click required). */
+    inlinePreview?: { kind: "video" | "embed"; url: string } | null;
+    mediaUrls?: string[];
     /** Optional creator handle ("@username") for attribution. */
     authorHandle?: string | null;
     fetchedAt: Date | string;
@@ -64,6 +71,12 @@ export interface TrendCardProps {
   /** When true, the card shows a "personalize" CTA instead of "apply". */
   needsPersonalization: boolean;
   onApply: (recommendationId: string) => void;
+  /** 1-click: seed studio + auto-generate (photo only). */
+  onGenerate?: (recommendationId: string) => void;
+  /**
+   * No recommendation yet — personalize then auto-generate in one flow.
+   */
+  onGenerateFromTrend?: (trendItemId: string) => void;
   onSchedule?: (recommendationId: string) => void;
   onDismiss: (recommendationId: string) => void;
   /**
@@ -83,27 +96,20 @@ export interface TrendCardProps {
   formatAnalyzeCost?: number;
 }
 
-function platformBadgeColor(p: TrendCardProps["trend"]["platform"]): string {
+function platformLabel(p: TrendCardProps["trend"]["platform"]): string {
   switch (p) {
     case "TIKTOK":
-      return "bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30";
+      return "TikTok";
     case "INSTAGRAM":
-      return "bg-orange-500/15 text-orange-300 border-orange-500/30";
+      return "Instagram";
     default:
-      return "bg-slate-500/15 text-slate-300 border-slate-500/30";
+      return "OnlyFans";
   }
 }
 
-/** Niche-keyed gradient used when no thumbnail is available. */
-function fallbackGradient(platform: TrendCardProps["trend"]["platform"]): string {
-  switch (platform) {
-    case "TIKTOK":
-      return "bg-gradient-to-br from-fuchsia-600/40 via-rose-500/30 to-cyan-500/30";
-    case "INSTAGRAM":
-      return "bg-gradient-to-br from-orange-500/40 via-pink-500/30 to-violet-500/30";
-    default:
-      return "bg-gradient-to-br from-slate-700/40 via-slate-600/30 to-slate-800/40";
-  }
+/** Neutral placeholder surface used when no thumbnail is available. */
+function fallbackGradient(): string {
+  return "bg-gradient-to-b from-muted/60 to-background";
 }
 
 interface GeneratedFieldsLite {
@@ -124,6 +130,8 @@ export function TrendCard({
   trend,
   needsPersonalization,
   onApply,
+  onGenerate,
+  onGenerateFromTrend,
   onSchedule,
   onDismiss,
   onPersonalize,
@@ -135,18 +143,40 @@ export function TrendCard({
   formatAnalyzeCost = 0.2,
 }: TrendCardProps) {
   const t = useTranslations("trends");
+  const tCommon = useTranslations("common");
   const fields = readFields(trend.recommendation?.generatedFields);
   const hasRec = trend.recommendation !== null;
   const [hovered, setHovered] = useState(false);
-  const isVideo = trend.mediaKind === "video";
-  const heroLink = (isVideo && trend.embedUrl) || trend.sourceUrl || "#";
+  const [videoFailed, setVideoFailed] = useState(false);
+  const isVideo =
+    trend.mediaKind === "video" || Boolean(trend.inlinePreview);
+  const isReelTarget =
+    fields?.type === "REEL" || (isVideo && fields?.type !== "PHOTO");
+  const isPhotoTarget = !isReelTarget;
+  const inlinePreview = trend.inlinePreview;
+  const fallbackEmbedUrl =
+    trend.platform === "TIKTOK"
+      ? buildTikTokEmbedUrl(trend.embedUrl ?? trend.sourceUrl)
+      : trend.platform === "INSTAGRAM"
+        ? buildInstagramEmbedUrl(trend.embedUrl ?? trend.sourceUrl)
+        : null;
+  const showInlineVideo =
+    inlinePreview?.kind === "video" && !videoFailed;
+  const embedSrc =
+    inlinePreview?.kind === "embed"
+      ? inlinePreview.url
+      : videoFailed
+        ? fallbackEmbedUrl
+        : !inlinePreview
+          ? fallbackEmbedUrl
+          : null;
+  const showInlineEmbed = Boolean(embedSrc) && !showInlineVideo;
+  const heroLink = trend.sourceUrl || "#";
 
-  // Pick which thumbnail to render — alt on hover, primary at rest.
-  // Both come from Unsplash (curated) or the provider (Apify), so they're
-  // already sized down via query params. Next/image still optimizes them.
-  const heroSrc = hovered && trend.thumbnailUrlAlt
-    ? trend.thumbnailUrlAlt
-    : trend.thumbnailUrl ?? null;
+  const heroSrc =
+    hovered && trend.thumbnailUrlAlt
+      ? trend.thumbnailUrlAlt
+      : trend.thumbnailUrl ?? null;
 
   return (
     <motion.article
@@ -157,20 +187,36 @@ export function TrendCard({
       transition={{ duration: 0.2 }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-800/60 bg-slate-900/40 backdrop-blur-xl transition-all hover:border-violet-500/40 hover:shadow-lg hover:shadow-violet-500/10"
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border/60 bg-card/40 backdrop-blur-xl transition-colors hover:border-foreground/25"
     >
-      {/* ── Hero (thumbnail + play overlay) ─────────────────────── */}
-      <a
-        href={heroLink}
-        target="_blank"
-        rel="noopener noreferrer"
+      {/* ── Hero (inline video / thumbnail) ─────────────────────── */}
+      <div
         className={cn(
-          "relative block aspect-[4/5] w-full overflow-hidden",
-          !heroSrc && fallbackGradient(trend.platform)
+          "relative block aspect-[4/5] w-full overflow-hidden bg-black",
+          !showInlineVideo && !showInlineEmbed && !heroSrc && fallbackGradient()
         )}
-        aria-label={t("openSource")}
       >
-        {heroSrc && (
+        {showInlineVideo ? (
+          <video
+            src={inlinePreview!.url}
+            poster={heroSrc ?? undefined}
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="metadata"
+            className="absolute inset-0 h-full w-full object-cover"
+            onError={() => setVideoFailed(true)}
+          />
+        ) : showInlineEmbed && embedSrc ? (
+          <iframe
+            src={embedSrc}
+            title={trend.title}
+            allow="autoplay; encrypted-media; picture-in-picture"
+            className="absolute inset-0 h-full w-full border-0"
+            loading="lazy"
+          />
+        ) : heroSrc ? (
           <Image
             src={heroSrc}
             alt={trend.title}
@@ -179,78 +225,99 @@ export function TrendCard({
             className="object-cover transition-transform duration-500 group-hover:scale-105"
             unoptimized
           />
+        ) : null}
+
+        {trend.sourceUrl && !showInlineVideo && !showInlineEmbed && (
+          <a
+            href={heroLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="absolute inset-0 z-[1]"
+            aria-label={t("openSource")}
+          />
         )}
 
         {/* Bottom dark gradient for text legibility */}
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/10 to-transparent" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
 
         {/* Top — platform badge + growth */}
-        <div className="absolute inset-x-0 top-0 flex items-center justify-between p-3">
+        <div className="absolute inset-x-0 top-0 z-[2] flex items-center justify-between p-3">
           <Badge
             variant="outline"
-            className={cn(
-              "text-xs backdrop-blur-md",
-              platformBadgeColor(trend.platform)
-            )}
+            className="border-white/20 bg-black/50 text-xs text-white backdrop-blur-md"
           >
-            {trend.platform}
+            {platformLabel(trend.platform)}
           </Badge>
           {isVideo && (
             <Badge
               variant="outline"
-              className="border-cyan-500/40 bg-cyan-500/15 text-[10px] text-cyan-200 backdrop-blur-md"
+              className="border-white/20 bg-black/50 text-[10px] text-white/90 backdrop-blur-md"
             >
               {t("videoTrendBadge")}
             </Badge>
           )}
           {typeof trend.growthScore === "number" && (
-            <span className="flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-300 backdrop-blur-md">
+            <span className="flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 text-xs font-medium text-emerald-300 backdrop-blur-md">
               <TrendingUp className="h-3 w-3" />
               {Math.round(trend.growthScore)}
             </span>
           )}
         </div>
 
-        {/* Center play overlay (visible on hover) */}
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/90 text-slate-900 shadow-xl">
-            <Play className="ml-0.5 h-6 w-6 fill-current" />
+        {/* Play overlay only when there's no inline preview */}
+        {!showInlineVideo && !showInlineEmbed && (
+          <div className="pointer-events-none absolute inset-0 z-[2] flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/90 text-slate-900 shadow-xl">
+              <Play className="ml-0.5 h-6 w-6 fill-current" />
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Bottom — author handle (Apify) */}
+        {/* Bottom — author handle */}
         {trend.authorHandle && (
-          <div className="absolute bottom-2 left-3 text-xs font-medium text-white/90 drop-shadow">
+          <div className="absolute bottom-2 left-3 z-[2] text-xs font-medium text-white/90 drop-shadow">
             {trend.authorHandle}
           </div>
         )}
-      </a>
+
+        {trend.sourceUrl && (showInlineVideo || showInlineEmbed) && (
+          <a
+            href={heroLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="absolute bottom-2 right-3 z-[2] flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors hover:bg-black/70"
+            aria-label={t("openSource")}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        )}
+      </div>
 
       {/* ── Body ────────────────────────────────────────────────── */}
       <div className="flex flex-1 flex-col p-4">
-        <h3 className="mb-1 line-clamp-2 text-base font-semibold text-white">
+        <h3 className="mb-1 line-clamp-2 text-base font-semibold text-foreground">
           {trend.title}
         </h3>
 
         {trend.description && (
-          <p className="mb-3 line-clamp-2 text-sm text-slate-400">
+          <p className="mb-3 line-clamp-2 text-sm text-muted-foreground">
             {trend.description}
           </p>
         )}
 
         <div className="mb-3 space-y-1.5">
           {trend.hashtags.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1 text-xs text-slate-500">
+            <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
               <Hash className="h-3 w-3 shrink-0" />
               {trend.hashtags.slice(0, 4).map((h) => (
-                <span key={h} className="rounded bg-slate-800/60 px-1.5 py-0.5">
+                <span key={h} className="rounded bg-muted/60 px-1.5 py-0.5">
                   #{h}
                 </span>
               ))}
             </div>
           )}
           {trend.soundName && (
-            <div className="flex items-center gap-1.5 text-xs text-slate-500">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Music2 className="h-3 w-3 shrink-0" />
               <span className="truncate">{trend.soundName}</span>
             </div>
@@ -258,25 +325,30 @@ export function TrendCard({
         </div>
 
         {trend.formatBrief && (
-          <div className="mb-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
-            <p className="mb-1 text-xs font-medium text-emerald-300">
+          <div className="mb-3 rounded-xl border border-border/60 bg-muted/30 p-3">
+            <p className="mb-1 text-xs font-medium text-foreground">
               {t("formatBriefTitle")}
             </p>
-            <p className="line-clamp-3 text-[11px] leading-snug text-slate-300">
+            <p className="line-clamp-3 text-[11px] leading-snug text-foreground/80">
               {trend.formatBrief.sceneDescription}
             </p>
-            <p className="mt-1 text-[10px] text-slate-500">
+            <p className="mt-1 text-[10px] text-muted-foreground">
               {trend.formatBrief.analyzedFrom === "vision"
                 ? t("formatAnalyzedFromVision")
                 : t("formatAnalyzedFromText")}{" "}
-              · {trend.formatBrief.confidence}
+              ·{" "}
+              {trend.formatBrief.confidence === "high"
+                ? t("confidenceHigh")
+                : trend.formatBrief.confidence === "medium"
+                  ? t("confidenceMedium")
+                  : trend.formatBrief.confidence}
             </p>
           </div>
         )}
 
         {hasRec && trend.recommendation && (
-          <div className="mb-4 rounded-xl border border-violet-500/20 bg-violet-500/5 p-3">
-            <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-violet-300">
+          <div className="mb-4 rounded-xl border-l-2 border-rose-400/70 bg-muted/30 p-3">
+            <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-rose-300">
               <Sparkles className="h-3.5 w-3.5" />
               {t("personalized")}
               {fields?.confidence && (
@@ -285,11 +357,11 @@ export function TrendCard({
                 </Badge>
               )}
             </div>
-            <p className="text-sm font-medium text-white">
+            <p className="text-sm font-medium text-foreground">
               {trend.recommendation.generatedHook}
             </p>
             {fields && (
-              <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-400">
+              <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
                 {fields.type && (
                   <span className="flex items-center gap-1">
                     {fields.type === "REEL" ? (
@@ -297,7 +369,7 @@ export function TrendCard({
                     ) : (
                       <ImageIcon className="h-3 w-3" />
                     )}
-                    {fields.type}
+                    {fields.type === "REEL" ? tCommon("reel") : tCommon("photo")}
                   </span>
                 )}
                 {fields.scene && <span>• {fields.scene}</span>}
@@ -308,7 +380,7 @@ export function TrendCard({
               </p>
             )}
             {fields?.citations && fields.citations.length > 0 && (
-              <p className="mt-1.5 text-[10px] uppercase tracking-wider text-slate-500">
+              <p className="mt-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
                 {t("citations")}: {fields.citations.join(", ")}
               </p>
             )}
@@ -320,7 +392,7 @@ export function TrendCard({
             <Button
               size="sm"
               variant="outline"
-              className="w-full border-emerald-500/30 text-emerald-300"
+              className="w-full"
               disabled={isBusy || isAnalyzingFormat}
               onClick={() => onAnalyzeFormat(trend.id)}
             >
@@ -329,26 +401,38 @@ export function TrendCard({
               ) : (
                 <Sparkles className="mr-1.5 h-3.5 w-3.5" />
               )}
-              {t("analyzeFormatCta")} ({formatAnalyzeCost} cr)
+              {t("analyzeFormatCta", { cost: formatAnalyzeCost.toString() })}
             </Button>
           )}
           <div className="flex flex-col gap-2">
           {hasRec && trend.recommendation ? (
             <>
               <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  className="min-h-9 flex-1 bg-violet-500 hover:bg-violet-600"
-                  disabled={isBusy}
-                  onClick={() => onApply(trend.recommendation!.id)}
-                >
-                  <Wand2 className="mr-1.5 h-3.5 w-3.5" />
-                  {!fields?.type && isVideo
-                    ? t("applyReelCta")
-                    : fields?.type === "REEL" || (isVideo && fields?.type !== "PHOTO")
+                {isPhotoTarget && onGenerate ? (
+                  <Button
+                    size="sm"
+                    className="min-h-9 flex-1"
+                    disabled={isBusy}
+                    onClick={() => onGenerate(trend.recommendation!.id)}
+                  >
+                    <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                    {t("generatePhotoCta")}
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    className="min-h-9 flex-1"
+                    disabled={isBusy}
+                    onClick={() => onApply(trend.recommendation!.id)}
+                  >
+                    <Wand2 className="mr-1.5 h-3.5 w-3.5" />
+                    {!fields?.type && isVideo
                       ? t("applyReelCta")
-                      : t("applyPhotoCta")}
-                </Button>
+                      : isReelTarget
+                        ? t("applyReelCta")
+                        : t("applyPhotoCta")}
+                  </Button>
+                )}
                 <Button
                   size="icon"
                   variant="ghost"
@@ -360,11 +444,23 @@ export function TrendCard({
                   <X className="h-4 w-4" />
                 </Button>
               </div>
+              {isPhotoTarget && onGenerate ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="min-h-9 w-full"
+                  disabled={isBusy}
+                  onClick={() => onApply(trend.recommendation!.id)}
+                >
+                  <Wand2 className="mr-1.5 h-3.5 w-3.5" />
+                  {t("openStudioCta")}
+                </Button>
+              ) : null}
               {onSchedule && (
                 <Button
                   size="sm"
                   variant="outline"
-                  className="min-h-9 w-full border-slate-600 text-slate-300"
+                  className="min-h-9 w-full"
                   disabled={isBusy}
                   onClick={() => onSchedule(trend.recommendation!.id)}
                 >
@@ -374,41 +470,65 @@ export function TrendCard({
               )}
             </>
           ) : (
-            <Button
-              size="sm"
-              variant="outline"
-              className="flex-1"
-              disabled={
-                isBusy ||
-                isPersonalizing ||
-                !needsPersonalization ||
-                !onPersonalize
-              }
-              onClick={() => onPersonalize?.(trend.id)}
-            >
-              {isPersonalizing ? (
-                <>
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                  {t("personalizingThis")}
-                </>
-              ) : needsPersonalization && onPersonalize ? (
-                <>
-                  <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-                  {t("personalizeOneCta", {
-                    cost: personalizeOneCost.toString(),
-                  })}
-                </>
-              ) : (
-                t("noRecYet")
-              )}
-            </Button>
+            <div className="flex flex-col gap-2">
+              {onGenerateFromTrend && needsPersonalization ? (
+                <Button
+                  size="sm"
+                  className="min-h-9 w-full"
+                  disabled={isBusy || isPersonalizing}
+                  onClick={() => onGenerateFromTrend(trend.id)}
+                >
+                  {isPersonalizing ? (
+                    <>
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      {t("personalizingThis")}
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                      {t("generateFromTrendCta", {
+                        cost: personalizeOneCost.toString(),
+                      })}
+                    </>
+                  )}
+                </Button>
+              ) : null}
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full"
+                disabled={
+                  isBusy ||
+                  isPersonalizing ||
+                  !needsPersonalization ||
+                  !onPersonalize
+                }
+                onClick={() => onPersonalize?.(trend.id)}
+              >
+                {isPersonalizing && !onGenerateFromTrend ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    {t("personalizingThis")}
+                  </>
+                ) : needsPersonalization && onPersonalize ? (
+                  <>
+                    <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                    {t("personalizeOneCta", {
+                      cost: personalizeOneCost.toString(),
+                    })}
+                  </>
+                ) : (
+                  t("noRecYet")
+                )}
+              </Button>
+            </div>
           )}
           {trend.sourceUrl && (
             <a
               href={trend.sourceUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex h-9 w-9 items-center justify-center rounded-md text-slate-500 hover:bg-slate-800 hover:text-white"
+              className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
               aria-label={t("openSource")}
             >
               <ExternalLink className="h-4 w-4" />

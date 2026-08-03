@@ -32,9 +32,9 @@ function Providers({ children }: { children: React.ReactNode }) {
         theme="dark"
         toastOptions={{
           style: {
-            background: "rgb(15 23 42 / 0.9)",
-            border: "1px solid rgb(30 41 59 / 0.5)",
-            color: "white",
+            background: "oklch(0.14 0.006 285 / 0.95)",
+            border: "1px solid oklch(0.24 0.008 285 / 55%)",
+            color: "oklch(0.985 0 0)",
           },
         }}
       />
@@ -50,7 +50,7 @@ export default function RootLayout({
   const content = (
     <html lang="fr" className="dark">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased bg-slate-950 text-white`}
+        className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased bg-background text-foreground`}
       >
         <Providers>{children}</Providers>
       </body>

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { retryFailedDeliveries } from "@/server/services/webhook.service";
 
+// Up to 20 deliveries × 10s HTTP timeout worst case.
+export const maxDuration = 60;
+
 /**
  * Cron endpoint — re-attempts WebhookDelivery rows whose status is RETRYING
  * and whose nextRetryAt has elapsed. Runs every minute.

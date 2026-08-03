@@ -13,8 +13,6 @@ import {
 } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -33,11 +31,21 @@ import {
   lookLabel,
   type PhotoAgentTurnOutput,
 } from "@/lib/photo-studio-agent";
+import { viralBriefFromTrendPick, type TrendTopPick } from "@/lib/viral-brief";
 import { type InfluencerGender } from "@/lib/photo-niche-defaults";
 import { hasUserSceneDescription } from "@/lib/photo-scene-user";
 import { CREDIT_COSTS } from "@/lib/constants";
 import { trpc } from "@/lib/trpc";
+import { useInfluencers } from "@/hooks/use-influencers";
 import { cn } from "@/lib/utils";
+import {
+  ContentLanePicker,
+  ContentLaneBadge,
+} from "@/components/content/content-lane-picker";
+import {
+  getPhotoIntentMessage,
+  validatePhotoIntent,
+} from "@/lib/photo-intent-validation";
 
 const MAX_VISIBLE_MESSAGES = 3;
 
@@ -195,7 +203,7 @@ function UserBubble({ text }: { text: string }) {
 export function PhotoStudioAgentPanel() {
   const t = useTranslations("content");
   const locale = useLocale() as "fr" | "en";
-  const { params, updateParams, requestGenerate, isGenerating } =
+  const { params, updateParams, requestGenerate, isGenerating, applyViralBrief } =
     usePhotoCreator();
 
   const [messages, setMessages] = useState<UiMessage[]>([]);
@@ -205,12 +213,15 @@ export function PhotoStudioAgentPanel() {
   const [pendingLookId, setPendingLookId] = useState<string | null>(null);
   const threadRef = useRef<HTMLDivElement>(null);
 
-  const chatMutation = trpc.photoAgent.chatTurn.useMutation();
+  const chatMutation = trpc.agent.chatTurn.useMutation();
 
-  const { data: influencersData } = trpc.influencer.getAll.useQuery(
-    { limit: 50 },
-    { placeholderData: (prev) => prev }
+  const { data: topTrendsData } = trpc.trends.getTopForInfluencer.useQuery(
+    { influencerId: params.influencerId, limit: 3 },
+    { enabled: Boolean(params.influencerId) }
   );
+  const topTrends = topTrendsData?.items ?? [];
+
+  const { data: influencersData } = useInfluencers({ limit: 50 }, { placeholderData: (prev) => prev });
   const influencers = influencersData?.influencers ?? [];
   const selected = influencers.find((i) => i.id === params.influencerId);
   const gender = (selected?.gender as InfluencerGender | undefined) ?? "female";
@@ -231,17 +242,18 @@ export function PhotoStudioAgentPanel() {
     [messages]
   );
 
-  const resetConversation = useCallback(() => {
+  const conversationKey = `${params.influencerId ?? ""}:${params.contentMode}`;
+  const [storedConversationKey, setStoredConversationKey] =
+    useState(conversationKey);
+
+  if (conversationKey !== storedConversationKey) {
+    setStoredConversationKey(conversationKey);
     setMessages([]);
     setShowBrief(false);
     setAssistantTurnCount(0);
     setPendingLookId(null);
     setInput("");
-  }, []);
-
-  useEffect(() => {
-    resetConversation();
-  }, [params.influencerId, resetConversation]);
+  }
 
   useEffect(() => {
     threadRef.current?.scrollTo({
@@ -279,6 +291,7 @@ export function PhotoStudioAgentPanel() {
       userMessage?: string;
       selectedLookId?: string;
       selectedOutfit?: string;
+      selectedTrendId?: string;
     }) => {
       if (!hasInfluencer) {
         toast.error(t("selectInfluencerFirst"));
@@ -287,15 +300,26 @@ export function PhotoStudioAgentPanel() {
 
       try {
         const result = await chatMutation.mutateAsync({
-          locale,
-          gender,
-          userMessage: opts.userMessage,
-          selectedLookId: opts.selectedLookId ?? pendingLookId ?? undefined,
-          selectedOutfit: opts.selectedOutfit,
-          assistantTurnCount,
-          history: historyForApi,
+          domain: "photo",
+          messages: historyForApi,
+          context: {
+            influencerId: params.influencerId,
+            locale,
+            gender,
+            assistantTurnCount,
+            selectedLookId: opts.selectedLookId ?? pendingLookId ?? undefined,
+            selectedOutfit: opts.selectedOutfit,
+            contentMode: params.contentMode,
+            userMessage: opts.userMessage,
+            selectedTrendId: opts.selectedTrendId,
+          },
         });
-        appendAssistant(result);
+        const photoResult = result.photoAgentResult;
+        if (!photoResult) {
+          toast.error(t("agentError"));
+          return;
+        }
+        appendAssistant(photoResult);
       } catch (err) {
         const msg = err instanceof Error ? err.message : t("agentError");
         toast.error(msg);
@@ -310,6 +334,8 @@ export function PhotoStudioAgentPanel() {
       historyForApi,
       locale,
       pendingLookId,
+      params.contentMode,
+      params.influencerId,
       t,
     ]
   );
@@ -327,13 +353,24 @@ export function PhotoStudioAgentPanel() {
     await runAgentTurn({ userMessage: text });
   };
 
+  const handlePickTrend = async (pick: TrendTopPick) => {
+    if (chatMutation.isPending || !params.influencerId) return;
+    const brief = viralBriefFromTrendPick(pick, "studio_agent");
+    applyViralBrief(brief, params.influencerId);
+    setMessages((prev) => [
+      ...prev,
+      { id: newId(), role: "user", text: pick.title },
+    ]);
+    await runAgentTurn({ selectedTrendId: pick.id });
+  };
+
   const handlePickLook = async (lookId: string) => {
     if (chatMutation.isPending) return;
     const look = getLookById(lookId);
     if (!look) return;
 
     setPendingLookId(lookId);
-    updateParams(applyStudioLook(lookId, gender, params.sceneDetail));
+    updateParams(applyStudioLook(lookId, gender, params.sceneDetail, params.contentMode));
 
     const label = lookLabel(look, locale);
     setMessages((prev) => [...prev, { id: newId(), role: "user", text: label }]);
@@ -361,6 +398,24 @@ export function PhotoStudioAgentPanel() {
       else toast.error(t("selectInfluencerFirst"));
       return;
     }
+
+    const issues = validatePhotoIntent({
+      contentMode: params.contentMode,
+      sceneDescription: params.sceneDescription,
+      outfit: params.outfit,
+      scene: params.scene,
+      locale,
+    });
+    const warnings = issues.filter((i) => i.severity === "warning");
+    for (const issue of warnings) {
+      toast.warning(getPhotoIntentMessage(issue, locale), { duration: 7000 });
+    }
+    const errors = issues.filter((i) => i.severity === "error");
+    if (errors.length > 0) {
+      toast.error(getPhotoIntentMessage(errors[0]!, locale));
+      return;
+    }
+
     requestGenerate();
   };
 
@@ -369,14 +424,17 @@ export function PhotoStudioAgentPanel() {
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden border-r border-neutral-800/60 bg-neutral-950/40">
       {/* Zone 1 — Influencer (~120px, no scroll) */}
-      <div className="flex h-[120px] shrink-0 flex-col justify-center gap-2 overflow-hidden border-b border-neutral-800/60 px-4">
+      <div className="flex min-h-[120px] shrink-0 flex-col justify-center gap-2 overflow-hidden border-b border-neutral-800/60 px-4 py-2">
         <div className="flex items-center justify-between gap-2">
           <p className="truncate text-sm font-semibold text-white">{t("studioTitle")}</p>
-          {selected && portraitUrl ? (
-            <div className="relative h-8 w-7 shrink-0 overflow-hidden rounded-md border border-rose-400/30">
-              <Image src={portraitUrl} alt="" fill className="object-cover" unoptimized />
-            </div>
-          ) : null}
+          <div className="flex items-center gap-2">
+            {hasInfluencer ? <ContentLaneBadge /> : null}
+            {selected && portraitUrl ? (
+              <div className="relative h-8 w-7 shrink-0 overflow-hidden rounded-md border border-rose-400/30">
+                <Image src={portraitUrl} alt="" fill className="object-cover" unoptimized />
+              </div>
+            ) : null}
+          </div>
         </div>
 
         {influencers.length === 0 ? (
@@ -404,19 +462,35 @@ export function PhotoStudioAgentPanel() {
           </Select>
         )}
 
-        <div className="flex items-center justify-between gap-2">
-          <Label className="truncate text-[11px] text-neutral-400">{t("faceReferenceLabel")}</Label>
-          <Switch
-            checked={params.useFaceReference}
-            disabled={!portraitUrl || params.contentMode === "NSFW" || !hasInfluencer}
-            onCheckedChange={(v) =>
-              updateParams({
-                useFaceReference: v,
-                sceneFirst: v ? params.sceneFirst : false,
-              })
-            }
-          />
-        </div>
+        {hasInfluencer ? (
+          <ContentLanePicker variant="studio" showSceneFirst={false} />
+        ) : null}
+
+        {hasInfluencer && topTrends.length > 0 ? (
+          <div className="space-y-1">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-500">
+              {t("studioTrendsTitle")}
+            </p>
+            <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-thin">
+              {topTrends.map((trend) => (
+                <button
+                  key={trend.id}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void handlePickTrend(trend)}
+                  className={cn(
+                    "shrink-0 rounded-full border px-2.5 py-1 text-[10px] transition-colors",
+                    params.trendItemId === trend.id
+                      ? "border-rose-400/60 bg-rose-500/15 text-rose-100"
+                      : "border-neutral-700 bg-neutral-900/80 text-neutral-300 hover:border-rose-400/40"
+                  )}
+                >
+                  {trend.title.length > 36 ? `${trend.title.slice(0, 34)}…` : trend.title}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {/* Zone 2 — Chat thread (flex-1, internal scroll, last 3 messages) */}
@@ -500,6 +574,11 @@ export function PhotoStudioAgentPanel() {
             <p className="text-[10px] font-medium uppercase tracking-wide text-rose-300/90">
               {t("agentBriefTitle")}
             </p>
+            {params.trendContext?.title ? (
+              <p className="mt-1 text-[10px] text-amber-200/90">
+                {t("studioTrendInspired", { title: params.trendContext.title })}
+              </p>
+            ) : null}
 
             {showBrief ? (
               <>

@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
+import { useInfluencers } from "@/hooks/use-influencers";
 import { useReelCreator } from "@/hooks/use-reel-creator";
 import { cn } from "@/lib/utils";
 import { presetDefaultVideoModelLabel } from "@/lib/prompts/video-prompts";
@@ -67,10 +68,7 @@ export function ReelParams() {
   const [activeExampleId, setActiveExampleId] = useState<string | null>(null);
   const { expert: expertMode } = useCreatorExpertMode("reel");
 
-  const { data: influencersData } = trpc.influencer.getAll.useQuery(
-    { limit: 50 },
-    { placeholderData: (prev) => prev }
-  );
+  const { data: influencersData } = useInfluencers({ limit: 50 }, { placeholderData: (prev) => prev });
 
   const influencers = influencersData?.influencers ?? [];
   const selectedInfluencer = influencers.find((i) => i.id === params.influencerId);

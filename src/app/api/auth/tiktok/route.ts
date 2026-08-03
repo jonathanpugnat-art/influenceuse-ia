@@ -5,13 +5,15 @@ import { encrypt } from "@/lib/encryption";
 import * as tiktok from "@/server/services/tiktok.service";
 import { defaultLocale } from "@/i18n";
 import { getAppUrl } from "@/lib/app-url";
+import { verifySignedOAuthState } from "@/lib/oauth-state";
 
 const APP_URL = getAppUrl();
 
 /**
  * GET /api/auth/tiktok
- * Callback OAuth TikTok : ?code=...&state=influencerId
- * Échange le code, chiffre les tokens, sauvegarde dans SocialAccount, redirige.
+ * Callback OAuth TikTok : ?code=...&state=<signed state>
+ * Vérifie le state signé (anti-CSRF), échange le code, chiffre les tokens,
+ * sauvegarde dans SocialAccount, redirige.
  */
 export async function GET(req: NextRequest) {
   const { userId } = await auth();
@@ -37,13 +39,19 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const influencerId = state;
   const redirectUri = `${APP_URL}/api/auth/tiktok`;
 
   const user = await db.user.findUnique({ where: { clerkId: userId } });
   if (!user) {
     return NextResponse.redirect(
       new URL(`/${defaultLocale}/influencers?tiktok_error=user_not_found`, APP_URL)
+    );
+  }
+
+  const influencerId = verifySignedOAuthState(state, user.id);
+  if (!influencerId) {
+    return NextResponse.redirect(
+      new URL(`/${defaultLocale}/influencers?tiktok_error=invalid_state`, APP_URL)
     );
   }
 

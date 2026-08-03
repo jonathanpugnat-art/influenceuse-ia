@@ -9,7 +9,7 @@ type Bucket = { count: number; resetAt: number };
 const buckets = new Map<string, Bucket>();
 
 const AI_GENERATION_PATH_RE =
-  /\.(generatePhoto|generateBaseImage|generatePhotoScenePlate|generateReel|generateBatch|suggestPersona|analyzeFormat|personalizeOne|refreshForInfluencer)$/;
+  /\.(generatePhoto|generateBaseImage|generatePhotoScenePlate|generateWizardAppearancePreview|generateReel|generateReelNarration|generateIdentityPack|generateCaption|generateCaptionVariants|generateHashtags|generateContentPlan|generateIdeas|processBatchSlice|approveBatch|analyzeFormat|personalizeOne|refreshForInfluencer|chatTurn)$/;
 
 export function isAiGenerationPath(path: string): boolean {
   return AI_GENERATION_PATH_RE.test(path);

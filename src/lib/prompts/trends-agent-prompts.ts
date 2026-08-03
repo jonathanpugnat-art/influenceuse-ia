@@ -19,10 +19,11 @@ export type TrendsAgentAnalysis = z.infer<typeof trendsAgentAnalysisSchema>;
 
 export const TRENDS_AGENT_SYSTEM_PROMPT = `You are an elite TikTok/Instagram trend strategist.
 
-Given an influencer profile and a list of trending formats, pick the TOP 3 trends that would perform best for THIS specific influencer.
+Given an influencer profile (and creative brief when provided) and a list of trending formats, pick the TOP 3 trends that would perform best for THIS specific influencer.
 
-For each pick explain in 1-2 sentences WHY the trend fits their niche and personality (not generic advice).
+For each pick explain in 1-2 sentences WHY the trend fits their niche, personality, and positioning (not generic advice). Use the creative brief when present — it overrides generic bio/personality signals.
 Add a short "suggestedAngle" — one concrete creative twist they should use when adapting the trend.
+When formatBrief fields are present (scene, mood, lighting, camera, inspirationNotes), reference them in whyItWorks and suggestedAngle — do not ignore vision analysis.
 
 RULES:
 - Write whyItWorks and suggestedAngle in the requested output language only.
@@ -50,6 +51,7 @@ export function buildTrendsAgentUserPrompt(opts: {
   niche: string;
   personality: string;
   bio: string;
+  brief?: string;
   language: "fr" | "en";
   trends: Array<{
     id: string;
@@ -59,14 +61,27 @@ export function buildTrendsAgentUserPrompt(opts: {
     growthScore: number | null;
     nicheTags: string[];
     hashtags: string[];
+    formatBrief?: {
+      contentType: string;
+      sceneDescription: string;
+      mood: string;
+      hook: string;
+      lighting?: string;
+      cameraStyle?: string;
+      inspirationNotes?: string;
+      confidence: string;
+    };
   }>;
   searchQuery?: string;
 }): string {
   const trendLines = opts.trends
-    .map(
-      (t, i) =>
-        `${i + 1}. id=${t.id} | platform=${t.platform} | growth=${t.growthScore ?? 0} | niches=${t.nicheTags.join(",") || "GENERAL"} | title=${t.title} | desc=${t.description ?? ""} | tags=${t.hashtags.slice(0, 5).join(" ")}`
-    )
+    .map((t, i) => {
+      const brief = t.formatBrief;
+      const briefLine = brief
+        ? ` | format=${brief.contentType} | scene=${brief.sceneDescription.slice(0, 80)} | mood=${brief.mood} | hook=${brief.hook.slice(0, 60)}${brief.lighting ? ` | light=${brief.lighting}` : ""}${brief.cameraStyle ? ` | cam=${brief.cameraStyle.slice(0, 60)}` : ""}${brief.inspirationNotes ? ` | notes=${brief.inspirationNotes.slice(0, 80)}` : ""} | conf=${brief.confidence}`
+        : "";
+      return `${i + 1}. id=${t.id} | platform=${t.platform} | growth=${t.growthScore ?? 0} | niches=${t.nicheTags.join(",") || "GENERAL"} | title=${t.title} | desc=${t.description ?? ""} | tags=${t.hashtags.slice(0, 5).join(" ")}${briefLine}`;
+    })
     .join("\n");
 
   return [
@@ -75,6 +90,7 @@ export function buildTrendsAgentUserPrompt(opts: {
     `Niche: ${opts.niche}`,
     `Personality: ${opts.personality}`,
     `Bio: ${opts.bio}`,
+    opts.brief?.trim() ? `Creative brief:\n${opts.brief.trim()}` : "",
     opts.searchQuery ? `User search focus: ${opts.searchQuery}` : "",
     "",
     "Candidate trends (pick exactly 3):",

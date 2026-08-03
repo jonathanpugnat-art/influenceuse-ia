@@ -3,6 +3,9 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { WIZARD_PERSIST_STORAGE_KEY } from "@/lib/wizard-draft";
+import { defaultWizardAppearanceV2 } from "@/lib/appearance-v2";
+import type { NicheProfile } from "@/lib/niche-profile";
+import type { NicheShotIdea } from "@/lib/niche-shot-ideas";
 
 export interface WizardData {
   // Step 1 — Identity
@@ -10,6 +13,22 @@ export interface WizardData {
   gender: "female" | "male" | "nonbinary";
   bio: string;
   personality: string;
+  /** Creative director brief from wizard agent step 1. */
+  brief?: string;
+  /**
+   * Structured niche understanding from the "niche brain" agent. Not a form
+   * field the user edits directly — it captures the agent's comprehension and
+   * drives niche-specific realistic content generation downstream.
+   */
+  nicheProfile?: NicheProfile;
+  /** Shot idea picked in the niche brain panel — applied to photo studio after create. */
+  pendingNicheShotId?: string;
+  pendingNicheShot?: NicheShotIdea;
+  /**
+   * Freeform positioning angle (e.g. "coach running Paris").
+   * Primary day-1 signal — niche enum stays a coarse bucket.
+   */
+  angle: string;
   niche: string;
   age: number;
   isNsfw: boolean;
@@ -20,6 +39,16 @@ export interface WizardData {
   hairTexture: string;
   bodyType: string;
   fashionStyles: string[];
+  skinTone: string;
+  height: string;
+  bustLevel: number;
+  hipsLevel: number;
+  shouldersLevel: number;
+  tattoos: string[];
+  makeupLevel: string;
+  bodyGenerationMode: "standard" | "extended";
+  /** Free-text morphology direction baked into the base portrait. */
+  morphologyNotes: string;
   /** URL de l'image de base sélectionnée (parmi les 4 variantes générées) */
   baseImageUrl: string;
   /**
@@ -52,8 +81,8 @@ interface WizardState {
   generatedImages: string[];
   selectedImageIndex: number;
   isGenerating: boolean;
-  /** One-shot express flow: auto-generate portrait then jump to summary. */
-  expressMode: boolean;
+  /** Set after draft create on step 3 (OAuth) or final create on step 4. */
+  createdInfluencerId: string | null;
   setStep: (step: number) => void;
   nextStep: () => void;
   prevStep: () => void;
@@ -61,7 +90,7 @@ interface WizardState {
   setGeneratedImages: (images: string[]) => void;
   setSelectedImageIndex: (index: number) => void;
   setIsGenerating: (val: boolean) => void;
-  setExpressMode: (val: boolean) => void;
+  setCreatedInfluencerId: (id: string | null) => void;
   reset: () => void;
 }
 
@@ -70,6 +99,7 @@ const initialData: WizardData = {
   gender: "female",
   bio: "",
   personality: "",
+  angle: "",
   niche: "",
   age: 24,
   isNsfw: false,
@@ -77,8 +107,8 @@ const initialData: WizardData = {
   hairColor: "",
   hairLength: "",
   hairTexture: "",
-  bodyType: "",
   fashionStyles: [],
+  ...defaultWizardAppearanceV2(),
   baseImageUrl: "",
   instagramEnabled: false,
   instagramUsername: "",
@@ -107,7 +137,7 @@ export const useInfluencerWizard = create<WizardState>()(
       generatedImages: [],
       selectedImageIndex: 0,
       isGenerating: false,
-      expressMode: false,
+      createdInfluencerId: null,
       setStep: (step) => set({ step }),
       nextStep: () => set((s) => ({ step: Math.min(s.step + 1, 4) })),
       prevStep: () => set((s) => ({ step: Math.max(s.step - 1, 1) })),
@@ -116,7 +146,7 @@ export const useInfluencerWizard = create<WizardState>()(
       setGeneratedImages: (images) => set({ generatedImages: images }),
       setSelectedImageIndex: (index) => set({ selectedImageIndex: index }),
       setIsGenerating: (val) => set({ isGenerating: val }),
-      setExpressMode: (val) => set({ expressMode: val }),
+      setCreatedInfluencerId: (id) => set({ createdInfluencerId: id }),
       reset: () =>
         set({
           step: 1,
@@ -124,7 +154,7 @@ export const useInfluencerWizard = create<WizardState>()(
           generatedImages: [],
           selectedImageIndex: 0,
           isGenerating: false,
-          expressMode: false,
+          createdInfluencerId: null,
         }),
     }),
     {
@@ -136,8 +166,37 @@ export const useInfluencerWizard = create<WizardState>()(
         data: s.data,
         generatedImages: s.generatedImages,
         selectedImageIndex: s.selectedImageIndex,
+        createdInfluencerId: s.createdInfluencerId,
       }),
-      version: 1,
+      version: 6,
+      migrate: (persisted: unknown, version: number) => {
+        const state = persisted as {
+          data?: Partial<WizardData>;
+          entryMode?: unknown;
+          expressMode?: unknown;
+        };
+        if (version < 3 && state.data) {
+          state.data = {
+            ...initialData,
+            ...state.data,
+            ...defaultWizardAppearanceV2(),
+          };
+        }
+        // v5 — the Guided/Express choice + express mode were removed in favour
+        // of a single linear flow. Drop the stale fields from older drafts.
+        if (version < 5) {
+          delete state.entryMode;
+          delete state.expressMode;
+        }
+        // v6 — angle field (niche positioning) for simplified identity step.
+        if (version < 6 && state.data) {
+          state.data = {
+            ...state.data,
+            angle: state.data.angle ?? state.data.brief ?? "",
+          };
+        }
+        return persisted as typeof persisted;
+      },
     }
   )
 );

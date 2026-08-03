@@ -4,6 +4,7 @@ import { randomBytes } from "crypto";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import { db } from "@/server/db";
 import { getDbUser } from "@/server/helpers/get-db-user";
+import { requireAdmin } from "@/server/helpers/admin";
 
 const REWARD_CREDITS = 50;
 
@@ -121,50 +122,60 @@ export const referralRouter = createTRPCRouter({
     }),
 
   /**
-   * markConverted — admin/webhook callable. We expose it through tRPC so
-   * the Stripe webhook can flip the state once the new user pays for the
-   * first time and credit both parties.
+   * markConverted — admin only. The nominal path is the Stripe webhook
+   * (`rewardReferralOnFirstPayment`) which flips the state when the referred
+   * user pays for the first time; this mutation is a manual escape hatch.
+   * Never expose it to regular users: it mints credits.
    */
   markConverted: protectedProcedure
     .input(z.object({ referredUserId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const user = await getDbUser(ctx.userId);
-      // Only the referrer themself or the referred user can call this.
+      await requireAdmin(ctx.userId);
       const ref = await db.referral.findUnique({
         where: { referredId: input.referredUserId },
       });
       if (!ref) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Referral not found" });
       }
-      if (ref.referrerId !== user.id && ref.referredId !== user.id) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Not your referral" });
-      }
       if (ref.status === "REWARDED") return { alreadyRewarded: true };
 
+      // Guarded claim inside the transaction: the Stripe webhook
+      // (rewardReferralOnFirstPayment) can flip the same referral
+      // concurrently — whoever claims first wins, the other is a no-op.
       const now = new Date();
-      await db.$transaction([
-        db.referral.update({
-          where: { id: ref.id },
+      const rewarded = await db.$transaction(async (tx) => {
+        const claimed = await tx.referral.updateMany({
+          where: { id: ref.id, status: { not: "REWARDED" } },
           data: {
             status: "REWARDED",
             convertedAt: ref.convertedAt ?? now,
             rewardedAt: now,
           },
-        }),
-        db.user.update({
-          where: { id: ref.referrerId },
-          data: { creditsLimit: { increment: ref.rewardCredits } },
-        }),
-        ...(ref.referredId
-          ? [
-              db.user.update({
-                where: { id: ref.referredId },
-                data: { creditsLimit: { increment: ref.rewardCredits } },
-              }),
-            ]
-          : []),
-      ]);
+        });
+        if (claimed.count === 0) return false;
 
+        // bonusCredits tracks non-plan grants so future plan changes
+        // recompute creditsLimit without wiping the reward.
+        await tx.user.update({
+          where: { id: ref.referrerId },
+          data: {
+            creditsLimit: { increment: ref.rewardCredits },
+            bonusCredits: { increment: ref.rewardCredits },
+          },
+        });
+        if (ref.referredId) {
+          await tx.user.update({
+            where: { id: ref.referredId },
+            data: {
+              creditsLimit: { increment: ref.rewardCredits },
+              bonusCredits: { increment: ref.rewardCredits },
+            },
+          });
+        }
+        return true;
+      });
+
+      if (!rewarded) return { alreadyRewarded: true };
       return { rewarded: true, credits: ref.rewardCredits };
     }),
 });

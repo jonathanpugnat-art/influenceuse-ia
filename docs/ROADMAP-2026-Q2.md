@@ -13,9 +13,9 @@ Objectif : boucle créateur/agence **propre et fiable** — pas de features « b
 | S1 | Reels parlants (lip-sync UI) | ✅ Livré |
 | S2 | Voix TTS + bibliothèque audio | ✅ Livré (Replicate Kokoro) |
 | S2b | Photos scène en 2 étapes (valider décor) | ✅ Livré |
-| S3 | Instagram bout-en-bout + confiance | 🟡 OAuth + publisher existants, UX à polir |
-| S4 | Trends → création (photo/reel) | 🟡 Apply existant, calendrier à lier |
-| S5 | Agent 30 jours + validation | ⬜ |
+| S3 | Instagram bout-en-bout + confiance | 🟡 Preview/checklist + heatmap OK ; OAuth E2E = Meta Dev |
+| S4 | Trends → création (photo/reel) | ✅ Apply + planifier + deep link jour |
+| S5 | Agent 30 jours + validation | ✅ Caps 30j + validation lot + batch approuvés |
 | S6 | Agence / transparence crédits | ⬜ |
 
 ---
@@ -44,10 +44,11 @@ Objectif : boucle créateur/agence **propre et fiable** — pas de features « b
 
 **Livrable** : parcours rassurant et complet.
 
-- [ ] Onboarding OAuth testé de bout en bout (Business + Page FB)
-- [ ] Preview + checklist avant publish
-- [ ] Créneaux suggérés depuis heatmap → planification
+- [ ] Onboarding OAuth testé de bout en bout (Business + Page FB) — **nécessite app Meta Dev**
+- [x] Preview + checklist avant publish (`PublishConfirmDialog` + readiness calendrier/studio)
+- [x] Créneaux suggérés depuis heatmap → planification (`schedule-for-day-dialog`)
 - [x] Copy « API officielle, pas de bots » (`influencer-social.tsx`)
+- [x] OAuth polish : locale i18n, toast succès wizard, disable si credentials absents
 
 **Hors scope** : proxies, likes auto, DMs auto.
 
@@ -57,15 +58,16 @@ Objectif : boucle créateur/agence **propre et fiable** — pas de features « b
 
 - [x] Apply → photo ou reel (`recommendationToCreatorParams`)
 - [x] Reels talking → preset lip_sync auto depuis Trends
-- [ ] Bouton « Planifier au calendrier » + deep link
+- [x] Bouton « Planifier au calendrier » + deep link jour (`date` depuis `dayHint` / formats semaine)
 
 ---
 
 ## S5 — Agent 30 jours
 
-- [ ] Plan éditorial 30 posts (LLM)
-- [ ] Validation par lot dans le calendrier
-- [ ] Batch sur posts approuvés uniquement
+- [x] Plan éditorial 30 posts (LLM) — caps `days`/`dayIndex` → 30, maxTokens ↑
+- [x] Validation par lot dans le calendrier (`BatchReviewPanel` + `approveBatch`)
+- [x] Batch sur posts approuvés uniquement (`approvedForBatch` gate)
+- [x] Pont weekly formats → plan 30j (`proposeTrendAnchorsForPlanRange` + `useTrendAnchors`)
 
 ---
 

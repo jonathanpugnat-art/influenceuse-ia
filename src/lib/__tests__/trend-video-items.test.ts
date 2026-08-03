@@ -3,7 +3,10 @@ import {
   inferStudioLookFromBrief,
   mapInstagramVideoPost,
   mapTikTokVideoRow,
+  pickPosterUrlFromTrend,
+  pickVideoUrlFromTrend,
   pickVisionUrlsFromTrend,
+  resolveTrendInlinePreview,
 } from "@/lib/trends/trend-video-items";
 import type { TrendFormatBrief } from "@/lib/trends/trend-format-brief";
 
@@ -49,6 +52,31 @@ describe("trend-video-items", () => {
     expect(urls).toContain("https://cdn.example.com/a.jpg");
     expect(urls).toContain("https://cdn.example.com/b.webp");
     expect(urls.some((u) => u.includes(".mp4"))).toBe(false);
+  });
+
+  it("pickVideoUrlFromTrend and resolveTrendInlinePreview", () => {
+    expect(
+      pickVideoUrlFromTrend({
+        mediaUrls: ["https://cdn.example.com/v.mp4", "https://cdn.example.com/a.jpg"],
+      })
+    ).toBe("https://cdn.example.com/v.mp4");
+
+    expect(
+      resolveTrendInlinePreview({
+        platform: "TIKTOK",
+        sourceUrl: "https://www.tiktok.com/@luna/video/7123",
+        mediaUrls: [],
+      })
+    ).toEqual({
+      kind: "embed",
+      url: "https://www.tiktok.com/embed/v2/7123",
+    });
+
+    expect(
+      pickPosterUrlFromTrend({
+        mediaUrls: ["https://cdn.example.com/v.mp4", "https://cdn.example.com/cover.jpg"],
+      })
+    ).toBe("https://cdn.example.com/cover.jpg");
   });
 
   it("inferStudioLookFromBrief maps cafe and gym", () => {

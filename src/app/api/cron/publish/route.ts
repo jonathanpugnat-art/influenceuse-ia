@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkAndPublish } from "@/server/services/scheduler.service";
 
+// IG Reels publishing polls Meta up to ~60s per reel; leave headroom.
+export const maxDuration = 300;
+
 /**
  * Cron endpoint — called every minute by Vercel Cron or external scheduler.
  * Checks for SCHEDULED content and publishes them.

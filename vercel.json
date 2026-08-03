@@ -1,23 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npx prisma generate && PRISMA_MIGRATE=1 npx prisma migrate deploy && npx next build",
+  "ignoreCommand": "[ \"$VERCEL_ENV\" != \"production\" ]",
   "crons": [
-    {
-      "path": "/api/cron/publish",
-      "schedule": "0 9 * * *"
-    },
-    {
-      "path": "/api/cron/process-batches",
-      "schedule": "30 9 * * *"
-    },
-    {
-      "path": "/api/cron/retry-webhooks",
-      "schedule": "0 10 * * *"
-    },
-    {
-      "path": "/api/cron/fetch-analytics",
-      "schedule": "0 4 * * *"
-    },
     {
       "path": "/api/cron/fetch-trends",
       "schedule": "0 5 * * *"

@@ -10,11 +10,14 @@ import {
   clampPlatform,
   clampPose,
   clampScene,
+  dedupeTrendFeedItems,
   hashPayload,
   KNOWN_NICHE_TAGS,
   matchesNiche,
   normalizeHashtags,
   normalizeNicheTags,
+  recommendationToPhotoParams,
+  resolveTrendCreatorTarget,
   trendRecommendationFieldsSchema,
 } from "@/server/services/trends.service";
 
@@ -133,6 +136,168 @@ describe("trends.service / pure helpers", () => {
     it("rejects an empty hook", () => {
       const r = trendRecommendationFieldsSchema.safeParse({ ...valid, hook: "" });
       expect(r.success).toBe(false);
+    });
+  });
+
+  describe("recommendationToPhotoParams", () => {
+    const baseFields = {
+      trendId: "t1",
+      hook: "Hook test",
+      concept: "Concept",
+      type: "PHOTO" as const,
+      platform: "INSTAGRAM" as const,
+      scene: "bedroom",
+      pose: "portrait",
+      expression: "natural",
+      outfit: "black sports bra",
+      customPrompt: "miroir chambre, lumière matinale, préparation avant run",
+      confidence: "high" as const,
+      citations: ["trend.title"],
+    };
+
+    it("uses customPrompt alone without generic bedroom sceneBase", () => {
+      const blob = recommendationToPhotoParams(
+        {
+          id: "rec1",
+          trendItemId: "t1",
+          generatedFields: baseFields,
+        },
+        "inf1",
+        ["grwm", "fitness"]
+      );
+      expect(blob.sceneDescription).toBe(baseFields.customPrompt);
+      expect(blob.sceneDescription).not.toMatch(/bedroom.*miroir/i);
+    });
+
+    it("falls back to sceneBase when customPrompt is empty", () => {
+      const blob = recommendationToPhotoParams(
+        {
+          id: "rec1",
+          trendItemId: "t1",
+          generatedFields: { ...baseFields, customPrompt: "" },
+        },
+        "inf1",
+        ["grwm"]
+      );
+      expect(blob.sceneDescription.length).toBeGreaterThan(0);
+      expect(blob.sceneDescription).not.toBe(baseFields.customPrompt);
+    });
+
+    it("returns trendContext from stored fields", () => {
+      const blob = recommendationToPhotoParams(
+        {
+          id: "rec1",
+          trendItemId: "t1",
+          generatedFields: {
+            ...baseFields,
+            trendTitle: "GRWM morning routine",
+            trendHashtags: ["grwm", "morning"],
+          },
+        },
+        "inf1",
+        ["fallback"]
+      );
+      expect(blob.trendContext?.title).toBe("GRWM morning routine");
+      expect(blob.trendContext?.hashtags).toEqual(["grwm", "morning"]);
+    });
+  });
+
+  describe("dedupeTrendFeedItems", () => {
+    const base = {
+      snapshotId: "snap",
+      description: null,
+      hashtags: ["fitness"],
+      soundName: null,
+      growthScore: 50,
+      sourceUrl: null,
+      thumbnailUrl: null,
+      thumbnailUrlAlt: null,
+      embedUrl: null,
+      authorHandle: null,
+      nicheTags: ["FITNESS"],
+      isNsfw: false,
+      locale: null,
+      region: null,
+      mediaUrls: [],
+      formatBrief: null,
+      fetchedAt: new Date("2026-07-01"),
+      expiresAt: new Date("2026-07-04"),
+      sourceVideoUrl: null,
+      videoFrameUrls: [],
+      formatAnalyzedAt: null,
+      formatAnalysisModel: null,
+      contentHash: null,
+    };
+
+    it("keeps video post over hashtag signal for same tag", () => {
+      const signal = {
+        ...base,
+        id: "signal",
+        platform: "TIKTOK" as const,
+        title: "#fitness",
+        mediaKind: "hashtag_signal",
+        growthScore: 90,
+      };
+      const video = {
+        ...base,
+        id: "video",
+        platform: "TIKTOK" as const,
+        title: "Leg day mirror",
+        mediaKind: "video",
+        thumbnailUrl: "https://cdn.example.com/cover.jpg",
+        growthScore: 70,
+      };
+      const out = dedupeTrendFeedItems([signal, video]);
+      expect(out).toHaveLength(1);
+      expect(out[0]?.id).toBe("video");
+    });
+
+    it("keeps distinct video posts even when they share a niche tag", () => {
+      const a = {
+        ...base,
+        id: "a",
+        platform: "TIKTOK" as const,
+        title: "Leg day mirror",
+        hashtags: ["legday"],
+        mediaKind: "video",
+        growthScore: 80,
+      };
+      const b = {
+        ...base,
+        id: "b",
+        platform: "TIKTOK" as const,
+        title: "Gym GRWM",
+        hashtags: ["grwm"],
+        mediaKind: "video",
+        growthScore: 75,
+      };
+      const out = dedupeTrendFeedItems([a, b]);
+      expect(out).toHaveLength(2);
+    });
+  });
+
+  describe("resolveTrendCreatorTarget", () => {
+    it("routes REEL formatBrief to reel studio", () => {
+      expect(
+        resolveTrendCreatorTarget({
+          mediaKind: "image",
+          formatBrief: {
+            contentType: "REEL",
+            mood: "x",
+            sceneDescription: "gym",
+            pose: "selfie",
+            expression: "natural",
+            outfit: "leggings",
+            lighting: "fluorescent",
+            cameraStyle: "iphone",
+            hook: "leg day",
+            customPrompt: "",
+            inspirationNotes: "mirror",
+            confidence: "high",
+            analyzedFrom: "vision",
+          },
+        })
+      ).toBe("reel");
     });
   });
 });

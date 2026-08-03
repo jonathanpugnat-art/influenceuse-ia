@@ -4,6 +4,17 @@
 
 import { LANGUAGE_LABELS, NICHE_TONES } from "@/lib/prompts/caption-prompts";
 
+export interface ContentPlanTrendAnchor {
+  trendId: string;
+  dayIndex: number;
+  dayHint: string;
+  date: string;
+  title: string;
+  whyItWorks: string;
+  suggestedAngle: string;
+  preferredStudio: "photo" | "reel";
+}
+
 export interface ContentPlanContext {
   influencerName: string;
   influencerGender: "female" | "male" | "nonbinary";
@@ -12,11 +23,13 @@ export interface ContentPlanContext {
   bio: string;
   language: "fr" | "en";
   platforms: string[]; // e.g. ["INSTAGRAM", "TIKTOK"]
-  days: number; // 1..14
+  days: number; // 1..30
   postsPerDay: number; // 1..5
   postingHours?: number[]; // optional preferred hours UTC, e.g. [9, 18]
   goals?: string; // "growth", "engagement", "brand awareness"
   tone?: string;
+  /** Scraped trend anchors (Mon/Wed/Fri × weeks) to ground the plan. */
+  trendAnchors?: ContentPlanTrendAnchor[];
 }
 
 export interface IdeasContext {
@@ -39,17 +52,39 @@ const PLAN_JSON_SCHEMA_DESCRIPTION = `Return STRICT JSON. Schema:
       "type": "PHOTO" | "REEL" | "CAROUSEL",
       "hook": string,            // first sentence that stops the scroll, max 90 chars
       "concept": string,         // 1-2 sentences describing the visual content
+      "sceneDescription": string, // 1-3 English sentences: concrete setting, lighting, mood, props
       "scene": string,           // one of: studio, beach, urban, gym, bedroom, restaurant, nature, cafe, rooftop, pool
       "pose": string,            // one of: portrait, fullBody, selfie, action, candid, sitting, profile
       "expression": string,      // one of: smile, seductive, serious, playful, mysterious, natural, laughing, surprised
       "outfit": string,          // short outfit description (gender-appropriate)
       "caption": string,         // ready-to-post caption with the influencer's voice
       "hashtags": string[],      // 8-15 hashtags WITH '#' prefix
-      "cta": string              // short call to action
+      "cta": string,             // short call to action
+      "trendId": string | null   // OPTIONAL — set when this post is grounded on a TREND ANCHOR below
     }
   ]
 }
 ONLY output valid JSON. No markdown fences, no commentary.`;
+
+function formatTrendAnchorsBlock(
+  anchors: ContentPlanTrendAnchor[]
+): string {
+  if (anchors.length === 0) return "";
+  const lines = anchors.map((a, i) => {
+    const studio = a.preferredStudio === "reel" ? "REEL" : "PHOTO";
+    return `${i + 1}. dayIndex=${a.dayIndex} (${a.dayHint} ${a.date}) | trendId=${a.trendId} | studio=${studio} | title=${a.title} | why=${a.whyItWorks.slice(0, 160)} | angle=${a.suggestedAngle.slice(0, 120)}`;
+  });
+  return [
+    "TREND ANCHORS (scraped formats that already perform — ground matching posts on these):",
+    "- For EACH anchor, create ONE post on that exact dayIndex (slotIndex 0 preferred).",
+    "- Set trendId to the anchor's trendId on those posts. Adapt the trend to the influencer — do not copy the original creator.",
+    "- preferredStudio PHOTO → type PHOTO; preferredStudio REEL → type REEL when platform allows.",
+    "- Fill remaining dayIndexes with original ideas that keep the same weekly rhythm.",
+    "- Reference anchors in the summary (how many trends you used).",
+    "",
+    ...lines,
+  ].join("\n");
+}
 
 export function buildContentPlanSystemPrompt(ctx: ContentPlanContext): string {
   const langLabel = LANGUAGE_LABELS[ctx.language] ?? ctx.language;
@@ -60,6 +95,7 @@ export function buildContentPlanSystemPrompt(ctx: ContentPlanContext): string {
     ctx.postingHours && ctx.postingHours.length > 0
       ? `Preferred posting hours (UTC): ${ctx.postingHours.join(", ")}. Spread slots across morning/midday/evening when possible.`
       : "Space posts across the week — avoid clustering similar formats or angles on consecutive slots.";
+  const anchorsBlock = formatTrendAnchorsBlock(ctx.trendAnchors ?? []);
 
   return [
     `You are a senior social media manager and editorial strategist — not a generic content generator.`,
@@ -78,6 +114,7 @@ export function buildContentPlanSystemPrompt(ctx: ContentPlanContext): string {
     `Plan size: ${ctx.days} days × ${ctx.postsPerDay} post(s)/day = ${totalPosts} posts.`,
     slotHint,
     "",
+    anchorsBlock,
     "Strategic requirements:",
     "- FORMAT MIX: Rotate PHOTO, REEL, and CAROUSEL across the plan. Do NOT default every slot to PHOTO.",
     "  • REEL → TikTok-first or high-motion Instagram; strong 60–90 char hooks, trend-aware angles.",
@@ -88,6 +125,7 @@ export function buildContentPlanSystemPrompt(ctx: ContentPlanContext): string {
     "- WEEKLY RHYTHM: Distribute formats and moods across dayIndex — e.g. lighter/relatable mid-week, aspirational on weekends, value carousel early week, reel peak engagement days.",
     "- PLATFORM FIT: TikTok → prefer REEL; Instagram → mix PHOTO/CAROUSEL/REEL; OnlyFans → intimate opt-in tone (still SFW unless asked).",
     "- VISUAL VARIETY: Vary scenes, poses, expressions, and outfits across the week — no copy-paste setups.",
+    "- sceneDescription: write concrete English visual direction (setting, lighting, mood, props) used by the image generator. Must align with concept, scene, outfit, and pose — never a generic preset.",
     "- VOICE: Captions must sound like one consistent person. Match personality in word choice, humor, and CTA style.",
     "- SAFETY: Stay SFW. Outfits MUST match the influencer gender. NEVER suggest dresses/skirts/heels/makeup for male influencers.",
     "",

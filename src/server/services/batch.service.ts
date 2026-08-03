@@ -1,6 +1,8 @@
 import { db } from "@/server/db";
 import { generateContentImage } from "@/server/services/ai-image.service";
 import { emitEvent } from "@/server/services/webhook.service";
+import { refundCredits } from "@/server/services/credits.service";
+import { CREDIT_COSTS } from "@/lib/constants";
 import type { Gender } from "@/lib/prompts/image-prompts";
 
 // ──────────────────────────────────────────────
@@ -31,6 +33,7 @@ export interface BatchSliceResult {
 interface DraftToProcess {
   id: string;
   scene: string;
+  sceneDescription?: string;
   pose: string;
   outfit: string;
   expression: string;
@@ -57,24 +60,63 @@ function pickStringParam(
  * Errors on a single draft never abort the whole slice — they mark that draft
  * FAILED and continue.
  */
+function isApprovedForBatch(
+  generationParams: unknown
+): boolean {
+  // S5: new plans set approvedForBatch:false until user validates the lot.
+  // Legacy drafts without the flag stay processable.
+  if (!generationParams || typeof generationParams !== "object") return true;
+  const flag = (generationParams as Record<string, unknown>).approvedForBatch;
+  return flag !== false;
+}
+
+/**
+ * Batch drafts stuck in GENERATING (function killed mid-generation) are never
+ * re-picked because the slice query only looks at DRAFT. Reclaim them as
+ * FAILED after this delay so the user can see them and hit "retry failures".
+ * We only touch batch items without media — publisher-claimed contents keep
+ * their mediaUrls and are recovered by the publish cron instead.
+ */
+const STUCK_GENERATING_MS = 30 * 60 * 1000;
+
+async function reclaimStuckGeneratingDrafts(): Promise<void> {
+  const cutoff = new Date(Date.now() - STUCK_GENERATING_MS);
+  const { count } = await db.content.updateMany({
+    where: {
+      status: "GENERATING",
+      type: "PHOTO",
+      batchId: { not: null },
+      mediaUrls: { isEmpty: true },
+      updatedAt: { lt: cutoff },
+    },
+    data: { status: "FAILED" },
+  });
+  if (count > 0) {
+    console.warn(`[batch] Reclaimed ${count} stuck GENERATING draft(s) → FAILED`);
+  }
+}
+
 export async function processNextBatchSlice(opts?: {
   sliceSize?: number;
   timeBudgetMs?: number;
+  /** When set, only process drafts from this batch. */
+  batchId?: string;
 }): Promise<BatchSliceResult> {
   const sliceSize = opts?.sliceSize ?? DEFAULT_SLICE_SIZE;
   const timeBudgetMs = opts?.timeBudgetMs ?? DEFAULT_TIME_BUDGET_MS;
   const startedAt = Date.now();
 
-  // Pick oldest DRAFT rows linked to a batch; PHOTO only for now.
-  // (Phase 5 may extend this to REEL.)
-  const drafts = await db.content.findMany({
+  await reclaimStuckGeneratingDrafts();
+
+  // Over-fetch then filter approval — Prisma JSON path filters vary by DB.
+  const candidates = await db.content.findMany({
     where: {
       status: "DRAFT",
       type: "PHOTO",
-      batchId: { not: null },
+      batchId: opts?.batchId ? opts.batchId : { not: null },
     },
     orderBy: { createdAt: "asc" },
-    take: sliceSize,
+    take: Math.max(sliceSize * 4, 12),
     include: {
       influencer: {
         select: {
@@ -90,6 +132,10 @@ export async function processNextBatchSlice(opts?: {
     },
   });
 
+  const drafts = candidates
+    .filter((d) => isApprovedForBatch(d.generationParams))
+    .slice(0, sliceSize);
+
   if (drafts.length === 0) {
     return {
       batchesTouched: 0,
@@ -100,7 +146,7 @@ export async function processNextBatchSlice(opts?: {
     };
   }
 
-  console.log(`[batch] Slice picked ${drafts.length} drafts`);
+  console.log(`[batch] Slice picked ${drafts.length} approved drafts`);
 
   const touchedBatches = new Set<string>();
   let generated = 0;
@@ -129,6 +175,13 @@ export async function processNextBatchSlice(opts?: {
     const draftParams: DraftToProcess = {
       id: draft.id,
       scene: pickStringParam(params, "scene", "studio"),
+      sceneDescription:
+        typeof params.sceneDescription === "string" &&
+        params.sceneDescription.trim().length > 0
+          ? params.sceneDescription.trim()
+          : typeof params.concept === "string" && params.concept.trim().length > 0
+            ? params.concept.trim()
+            : undefined,
       pose: pickStringParam(params, "pose", "portrait"),
       outfit: pickStringParam(params, "outfit", ""),
       expression: pickStringParam(params, "expression", "natural"),
@@ -148,11 +201,14 @@ export async function processNextBatchSlice(opts?: {
     const referenceImageUrl =
       inf.baseImageUrl?.trim() || inf.avatarUrl?.trim() || undefined;
 
-    // Mark the draft GENERATING so concurrent ticks don't pick it up.
-    await db.content.update({
-      where: { id: draft.id },
+    // Atomic claim DRAFT → GENERATING: the status condition guarantees only
+    // one concurrent tick (cron + approveBatch kick, or overlapping crons)
+    // generates — and charges credits for — this draft.
+    const claimed = await db.content.updateMany({
+      where: { id: draft.id, status: "DRAFT" },
       data: { status: "GENERATING" },
     });
+    if (claimed.count === 0) continue;
 
     try {
       const result = await generateContentImage(
@@ -171,6 +227,7 @@ export async function processNextBatchSlice(opts?: {
           baseImageUrl: referenceImageUrl,
           useReferenceFace: true,
           scene: draftParams.scene,
+          sceneDescription: draftParams.sceneDescription,
           pose: draftParams.pose,
           outfit: draftParams.outfit,
           expression: draftParams.expression,
@@ -189,21 +246,28 @@ export async function processNextBatchSlice(opts?: {
           ? "SCHEDULED"
           : "READY";
 
-      await db.content.update({
-        where: { id: draft.id },
-        data: {
-          status: nextStatus,
-          mediaUrls: result.imageUrls,
-          thumbnailUrl: result.imageUrls[0] ?? null,
-          promptUsed: result.promptUsed,
-          negativePrompt: result.negativePrompt,
-          generationParams: {
-            ...params,
-            modelParams: result.parameters as object,
-            batchProcessedAt: new Date().toISOString(),
-          } as object,
-        },
-      });
+      try {
+        await db.content.update({
+          where: { id: draft.id },
+          data: {
+            status: nextStatus,
+            mediaUrls: result.imageUrls,
+            thumbnailUrl: result.imageUrls[0] ?? null,
+            promptUsed: result.promptUsed,
+            negativePrompt: result.negativePrompt,
+            generationParams: {
+              ...params,
+              modelParams: result.parameters as object,
+              batchProcessedAt: new Date().toISOString(),
+            } as object,
+          },
+        });
+      } catch (persistErr) {
+        // Credits were charged inside generateContentImage but the result was
+        // never persisted — refund so the user isn't billed for nothing.
+        await refundCredits(inf.userId, CREDIT_COSTS.PHOTO);
+        throw persistErr;
+      }
       generated++;
     } catch (err) {
       console.error(`[batch] Draft ${draft.id} failed:`, err);
@@ -215,10 +279,19 @@ export async function processNextBatchSlice(opts?: {
     }
   }
 
-  // Count remaining drafts after this slice for UX/monitoring.
-  const remaining = await db.content.count({
-    where: { status: "DRAFT", type: "PHOTO", batchId: { not: null } },
+  // Remaining = approved DRAFTs still waiting for image generation.
+  const remainingCandidates = await db.content.findMany({
+    where: {
+      status: "DRAFT",
+      type: "PHOTO",
+      batchId: opts?.batchId ? opts.batchId : { not: null },
+    },
+    select: { generationParams: true },
+    take: 200,
   });
+  const remaining = remainingCandidates.filter((d) =>
+    isApprovedForBatch(d.generationParams)
+  ).length;
 
   // Emit BATCH_COMPLETED for any touched batch that has no DRAFT/GENERATING
   // contents left (Phase 5 distribution event).
@@ -273,6 +346,10 @@ export interface BatchStatus {
   name: string;
   total: number;
   draft: number;
+  /** DRAFTs still waiting for lot validation (approvedForBatch === false). */
+  pendingReview: number;
+  /** DRAFTs approved and eligible for image batch. */
+  approvedDraft: number;
   generating: number;
   ready: number;
   scheduled: number;
@@ -298,6 +375,15 @@ export async function getBatchStatus(batchId: string): Promise<BatchStatus | nul
     grouped.map((g) => [g.status, g._count._all])
   );
 
+  const draftRows = await db.content.findMany({
+    where: { batchId, status: "DRAFT" },
+    select: { generationParams: true },
+  });
+  const pendingReview = draftRows.filter(
+    (d) => !isApprovedForBatch(d.generationParams)
+  ).length;
+  const approvedDraft = draftRows.length - pendingReview;
+
   const draft = counts["DRAFT"] ?? 0;
   const generating = counts["GENERATING"] ?? 0;
   const ready = counts["READY"] ?? 0;
@@ -310,6 +396,8 @@ export async function getBatchStatus(batchId: string): Promise<BatchStatus | nul
     name: batch.name,
     total: draft + generating + ready + scheduled + published + failed,
     draft,
+    pendingReview,
+    approvedDraft,
     generating,
     ready,
     scheduled,

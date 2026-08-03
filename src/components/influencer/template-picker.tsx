@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { Sparkles, ChevronDown, PenLine } from "lucide-react";
+import { ChevronDown, PenLine, Check } from "lucide-react";
 import { toast } from "sonner";
 import { useInfluencerWizard } from "@/hooks/use-influencer-wizard";
 import {
@@ -10,15 +10,22 @@ import {
   filterTemplates,
   type InfluencerTemplate,
 } from "@/lib/templates/influencer-templates";
+import {
+  Eyebrow,
+  nicheDotClass,
+  wizardCardClass,
+  wizardCardHoverClass,
+  wizardChipActiveClass,
+  wizardChipIdleClass,
+} from "@/components/influencer/wizard-ui";
 import { trpc } from "@/lib/trpc";
+import { useCurrentPlan } from "@/hooks/use-current-plan";
 import { cn } from "@/lib/utils";
 
 /**
- * Template gallery rendered at the top of wizard step 1 (Sprint 7).
- *
- * One click pre-fills every wizard field (name stays empty so the user
- * still chooses a name). NSFW templates are hidden unless the current
- * plan allows it.
+ * Template gallery at the top of wizard step 1.
+ * Styled to match the editorial/luxe wizard — hairline borders, niche dots,
+ * no loud gradient tiles. One click pre-fills persona fields (name stays empty).
  */
 export function TemplatePicker() {
   const t = useTranslations("wizard.templates");
@@ -27,7 +34,7 @@ export function TemplatePicker() {
   const [expanded, setExpanded] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const { data: plan } = trpc.billing.getCurrentPlan.useQuery();
+  const { data: plan } = useCurrentPlan();
   const allowNsfw = plan?.features.hasNsfw ?? false;
 
   const templates = filterTemplates({ allowNsfw });
@@ -70,103 +77,113 @@ export function TemplatePicker() {
     selectedId === null && data.niche === "" && !data.bio && !data.personality;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5">
+      {/* Custom path — default, agent-first */}
       <button
         type="button"
         onClick={startWithoutTemplate}
         className={cn(
-          "flex w-full items-center gap-3 rounded-2xl border-2 p-4 text-left transition-all",
+          "flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition-all",
           onCustomPath
-            ? "border-emerald-500/50 bg-emerald-500/10 ring-2 ring-emerald-500/20"
-            : "border-slate-700 bg-slate-800/30 hover:border-violet-500/40 hover:bg-slate-800/50"
+            ? wizardChipActiveClass
+            : cn(wizardChipIdleClass, wizardCardHoverClass)
         )}
       >
         <div
           className={cn(
-            "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
-            onCustomPath ? "bg-emerald-500/20" : "bg-slate-700/50"
+            "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border",
+            onCustomPath
+              ? "border-primary/30 bg-primary/10"
+              : "border-border bg-card"
           )}
         >
           <PenLine
             className={cn(
-              "h-5 w-5",
-              onCustomPath ? "text-emerald-400" : "text-slate-400"
+              "h-4 w-4",
+              onCustomPath ? "text-foreground" : "text-muted-foreground"
             )}
           />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-white">{t("customTitle")}</p>
-          <p className="mt-0.5 text-xs text-slate-400">{t("customSubtitle")}</p>
+          <p className="text-sm font-medium text-white">{t("customTitle")}</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+            {t("customSubtitle")}
+          </p>
         </div>
-        {onCustomPath && (
-          <span className="shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-300">
+        {onCustomPath ? (
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-[10px] font-medium text-foreground">
+            <Check className="h-3 w-3" />
             {t("customActive")}
           </span>
-        )}
+        ) : null}
       </button>
 
-      <div className="rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-500/5 via-slate-900/40 to-indigo-500/5 p-4">
+      {/* Template gallery — collapsed by default, sober cards */}
+      <div className={cn(wizardCardClass, "p-4")}>
         <button
           type="button"
           onClick={() => setExpanded((e) => !e)}
           className="flex w-full items-center justify-between gap-3 text-left"
         >
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-violet-400" />
-            <span className="text-sm font-semibold text-white">{t("title")}</span>
-            <span className="text-xs text-slate-400">{t("subtitle")}</span>
+          <div className="min-w-0">
+            <Eyebrow>{t("title")}</Eyebrow>
+            <p className="mt-1 text-xs text-slate-500">{t("subtitle")}</p>
           </div>
           <ChevronDown
             className={cn(
-              "h-4 w-4 shrink-0 text-slate-400 transition-transform",
+              "h-4 w-4 shrink-0 text-slate-500 transition-transform",
               expanded && "rotate-180"
             )}
           />
         </button>
 
-        {expanded && (
-          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+        {expanded ? (
+          <div className="mt-4 grid grid-cols-2 gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {templates.map((tpl) => {
               const isSelected = selectedId === tpl.id;
+              const nicheLabel = tNiche(
+                `niche${capitalize(tpl.niche.toLowerCase())}` as "nicheFashion"
+              );
               return (
                 <button
                   key={tpl.id}
                   type="button"
                   onClick={() => apply(tpl)}
                   className={cn(
-                    "group relative overflow-hidden rounded-xl border p-3 text-left transition-all",
+                    "relative rounded-xl border p-3 text-left transition-all",
                     isSelected
-                      ? "border-violet-500 ring-2 ring-violet-500/40"
-                      : "border-slate-800 hover:border-violet-500/50"
+                      ? wizardChipActiveClass
+                      : cn(wizardChipIdleClass, "hover:bg-white/[0.04]")
                   )}
                 >
-                  <div
-                    className={cn(
-                      "absolute inset-0 bg-gradient-to-br opacity-25 transition-opacity group-hover:opacity-40",
-                      tpl.gradient
-                    )}
-                  />
-                  <div className="relative">
-                    <p className="text-sm font-semibold text-white">
-                      {t(`${tpl.labelKey}.label`)}
-                    </p>
-                    <p className="mt-0.5 text-[11px] uppercase tracking-wide text-slate-400">
-                      {tNiche(`niche${capitalize(tpl.niche.toLowerCase())}`)}
-                    </p>
-                    <p className="mt-2 line-clamp-2 text-xs text-slate-300">
-                      {t(`${tpl.descriptionKey}`)}
-                    </p>
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={cn(
+                        "h-2 w-2 shrink-0 rounded-full",
+                        nicheDotClass[tpl.niche] ?? "bg-violet-400"
+                      )}
+                    />
+                    <span className="truncate text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                      {nicheLabel}
+                    </span>
                   </div>
-                  {isSelected && (
-                    <span className="absolute right-2 top-2 rounded-full bg-violet-500 px-1.5 py-0.5 text-[9px] font-bold uppercase text-white">
+                  <p className="mt-2 text-sm font-medium leading-snug text-white">
+                    {t(`${tpl.labelKey}.label`)}
+                  </p>
+                  <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-slate-500">
+                    {t(`${tpl.descriptionKey}`)}
+                  </p>
+                  {isSelected ? (
+                    <span className="absolute right-2 top-2 inline-flex items-center gap-0.5 rounded-full border border-primary/30 bg-background/80 px-1.5 py-0.5 text-[9px] font-medium text-foreground">
+                      <Check className="h-2.5 w-2.5" />
                       {t("applied")}
                     </span>
-                  )}
+                  ) : null}
                 </button>
               );
             })}
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

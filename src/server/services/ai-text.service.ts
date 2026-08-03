@@ -19,6 +19,20 @@ import {
   renderFingerprintPrompt,
 } from "@/server/services/personality-memory.service";
 import { CREDIT_COSTS } from "@/lib/constants";
+import { WIZARD_AGENT_MODEL } from "@/lib/prompts/wizard-prompts";
+import { PHOTO_AGENT_MODEL } from "@/lib/photo-studio-agent";
+import {
+  assertAuraTextAllowed,
+  looksLikeProviderRefusal,
+  type AuraContentLane,
+} from "@/lib/content-safety/aura-content-policy";
+import { extractJsonPayload } from "@/lib/llm-json";
+import {
+  resolveAdultTextModel,
+  resolveAgentTextBackend,
+} from "@/lib/text-provider-config";
+
+export type { AuraContentLane };
 
 // ──────────────────────────────────────────────
 // Types
@@ -107,6 +121,213 @@ interface ChatMessage {
   content: string;
 }
 
+async function callDeepSeekWithModel(
+  messages: ChatMessage[],
+  model: string,
+  maxTokens: number,
+  temperature: number
+): Promise<string> {
+  if (!process.env.DEEPSEEK_API_KEY) {
+    throw new Error(
+      "DEEPSEEK_API_KEY is not configured. Set it in your .env file."
+    );
+  }
+
+  try {
+    const response = await getOpenAI().chat.completions.create({
+      model,
+      messages,
+      max_tokens: maxTokens,
+      temperature,
+    });
+
+    const content = response.choices?.[0]?.message?.content;
+    if (!content) {
+      throw new Error("DeepSeek returned empty response");
+    }
+
+    return content.trim();
+  } catch (error) {
+    if (error instanceof OpenAI.APIError) {
+      console.error("[ai-text] DeepSeek API error:", error.message);
+      throw new Error(`DeepSeek API error: ${error.message}`);
+    }
+    throw error;
+  }
+}
+
+async function callOpenRouter(
+  messages: ChatMessage[],
+  model: string,
+  maxTokens: number,
+  temperature: number
+): Promise<string> {
+  const apiKey = process.env.OPENROUTER_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("OPENROUTER_API_KEY is not configured.");
+  }
+
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+      "X-Title": "Aura Influencer IA",
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      max_tokens: maxTokens,
+      temperature,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`OpenRouter error (${res.status}): ${text.slice(0, 200)}`);
+  }
+
+  const json = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  const content = json.choices?.[0]?.message?.content?.trim();
+  if (!content) {
+    throw new Error("OpenRouter returned empty response");
+  }
+  return content;
+}
+
+async function callAgentCompletion(
+  messages: ChatMessage[],
+  opts: {
+    contentLane: AuraContentLane;
+    maxTokens: number;
+    temperature: number;
+    anthropicModel?: string;
+    cacheSystemPrompt?: boolean;
+  }
+): Promise<string> {
+  const backend = resolveAgentTextBackend(opts.contentLane);
+
+  if (backend === "openrouter") {
+    return callOpenRouter(
+      messages,
+      resolveAdultTextModel(),
+      opts.maxTokens,
+      opts.temperature
+    );
+  }
+
+  if (backend === "deepseek") {
+    const model =
+      opts.contentLane === "adult"
+        ? resolveAdultTextModel()
+        : DEEPSEEK_MODEL;
+    return callDeepSeekWithModel(
+      messages,
+      model,
+      opts.maxTokens,
+      opts.temperature
+    );
+  }
+
+  return callAnthropicWithModel(
+    messages,
+    opts.anthropicModel ?? ANTHROPIC_MODEL,
+    opts.maxTokens,
+    opts.temperature,
+    opts.cacheSystemPrompt ?? false
+  );
+}
+
+/**
+ * Unified agent JSON LLM — routes adult/OF content to uncensored backend (DeepSeek/OpenRouter),
+ * SFW to Claude when available. Applies Aura content policy before calling providers.
+ */
+export async function callAgentJsonLLM<T>(opts: {
+  contentLane?: AuraContentLane;
+  systemPrompt: string;
+  userPrompt: string;
+  maxTokens?: number;
+  temperature?: number;
+  cacheSystemPrompt?: boolean;
+  anthropicModel?: string;
+  validate: (raw: unknown) => T;
+  repairInstruction?: string;
+}): Promise<T> {
+  const contentLane = opts.contentLane ?? "sfw";
+  assertAuraTextAllowed(opts.userPrompt, { lane: contentLane });
+
+  const { systemPrompt, userPrompt, validate } = opts;
+  const maxTokens = opts.maxTokens ?? 400;
+  const temperature = opts.temperature ?? 0.4;
+  const baseMessages: ChatMessage[] = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userPrompt },
+  ];
+
+  let activeLane: AuraContentLane = contentLane;
+  let lastRawText = "";
+
+  const tryParse = (text: string): T | null => {
+    if (looksLikeProviderRefusal(text)) return null;
+    const payload = extractJsonPayload(text);
+    if (payload === null) return null;
+    try {
+      return validate(payload);
+    } catch {
+      return null;
+    }
+  };
+
+  const runPass = async (
+    messages: ChatMessage[],
+    lane: AuraContentLane,
+    isRepair = false
+  ): Promise<T | null> => {
+    const text = await callAgentCompletion(messages, {
+      contentLane: lane,
+      maxTokens,
+      temperature: isRepair ? Math.min(temperature, 0.35) : temperature,
+      // Adult backends ignore anthropicModel; only pass Haiku/Sonnet on SFW.
+      anthropicModel: lane === "sfw" ? opts.anthropicModel : undefined,
+      cacheSystemPrompt: lane === "sfw" ? opts.cacheSystemPrompt : false,
+    });
+    lastRawText = text;
+    return tryParse(text);
+  };
+
+  const firstParsed = await runPass(baseMessages, contentLane);
+  if (firstParsed !== null) return firstParsed;
+
+  // Refusal or bad JSON on SFW → uncensored backend, then repair stays there.
+  if (contentLane === "sfw") {
+    console.warn(
+      "[callAgentJsonLLM] SFW parse/refusal failed, retrying on uncensored backend…"
+    );
+    const fallbackParsed = await runPass(baseMessages, "adult");
+    if (fallbackParsed !== null) return fallbackParsed;
+    activeLane = "adult";
+  }
+
+  const repair: ChatMessage[] = [
+    ...baseMessages,
+    { role: "assistant", content: lastRawText },
+    {
+      role: "user",
+      content:
+        opts.repairInstruction ??
+        "Return only valid JSON matching the requested schema.",
+    },
+  ];
+
+  const secondParsed = await runPass(repair, activeLane, true);
+  if (secondParsed !== null) return secondParsed;
+
+  throw new Error("Agent LLM returned invalid JSON after repair pass.");
+}
+
 async function callDeepSeek(
   messages: ChatMessage[],
   maxTokens: number = 300,
@@ -153,7 +374,8 @@ async function callAnthropicWithModel(
   messages: ChatMessage[],
   model: string,
   maxTokens: number,
-  temperature: number
+  temperature: number,
+  cacheSystemPrompt: boolean = false
 ): Promise<string> {
   const client = getAnthropic();
   const system = messages.find((m) => m.role === "system")?.content;
@@ -164,13 +386,30 @@ async function callAnthropicWithModel(
       content: m.content,
     }));
 
-  const response = await client.messages.create({
-    model,
-    max_tokens: maxTokens,
-    temperature,
-    system,
-    messages: userTurns,
-  });
+  const response = await client.messages.create(
+    {
+      model,
+      max_tokens: maxTokens,
+      temperature,
+      ...(system
+        ? cacheSystemPrompt
+          ? {
+              system: [
+                {
+                  type: "text" as const,
+                  text: system,
+                  cache_control: { type: "ephemeral" as const },
+                },
+              ],
+            }
+          : { system }
+        : {}),
+      messages: userTurns,
+    },
+    cacheSystemPrompt
+      ? { headers: { "anthropic-beta": "prompt-caching-2024-07-31" } }
+      : undefined
+  );
 
   // Concatenate all text blocks (Claude returns an array of content blocks)
   const text = response.content
@@ -206,6 +445,62 @@ async function callLLM(
   return callDeepSeek(messages, maxTokens, temperature);
 }
 
+const TREND_PERSONALIZATION_MODEL_DEFAULT = "claude-haiku-4-5-20251001";
+
+function resolveTrendPersonalizationAnthropicModel(): string {
+  return (
+    process.env.TREND_PERSONALIZATION_MODEL?.trim() ||
+    TREND_PERSONALIZATION_MODEL_DEFAULT
+  );
+}
+
+function resolveTrendPersonalizationLlmLabel(
+  isNsfw: boolean,
+  anthropicModel?: string
+): string {
+  if (isNsfw) {
+    const backend = resolveAgentTextBackend("adult");
+    return `${backend}:${resolveAdultTextModel()}`;
+  }
+  return `anthropic:${anthropicModel ?? resolveTrendPersonalizationAnthropicModel()}`;
+}
+
+/**
+ * Trend personalization — Haiku (SFW) or uncensored backend (NSFW accounts).
+ * Returns the model label stored on TrendRecommendation.llmModel.
+ */
+export async function callTrendPersonalizationJsonLLM<T>(opts: {
+  isNsfw: boolean;
+  systemPrompt: string;
+  userPrompt: string;
+  maxTokens?: number;
+  temperature?: number;
+  validate: (raw: unknown) => T;
+  repairInstruction?: string;
+}): Promise<{ result: T; llmModel: string }> {
+  const contentLane: AuraContentLane = opts.isNsfw ? "adult" : "sfw";
+  const anthropicModel = opts.isNsfw
+    ? undefined
+    : resolveTrendPersonalizationAnthropicModel();
+
+  const result = await callAgentJsonLLM({
+    contentLane,
+    systemPrompt: opts.systemPrompt,
+    userPrompt: opts.userPrompt,
+    maxTokens: opts.maxTokens ?? 2000,
+    temperature: opts.temperature ?? 0.55,
+    anthropicModel,
+    cacheSystemPrompt: !opts.isNsfw,
+    validate: opts.validate,
+    repairInstruction: opts.repairInstruction,
+  });
+
+  return {
+    result,
+    llmModel: resolveTrendPersonalizationLlmLabel(opts.isNsfw, anthropicModel),
+  };
+}
+
 /**
  * Photo prompt enrichment — Claude Sonnet only (no DeepSeek fallback).
  * Callers should catch failures and fall back to raw user text.
@@ -215,65 +510,47 @@ export async function callPhotoEnrichmentJsonLLM<T>(opts: {
   userPrompt: string;
   maxTokens?: number;
   temperature?: number;
+  contentLane?: AuraContentLane;
   validate: (raw: unknown) => T;
   repairInstruction?: string;
 }): Promise<T> {
-  if (!process.env.ANTHROPIC_API_KEY?.trim()) {
-    throw new Error(
-      "ANTHROPIC_API_KEY is not configured — photo prompt enrichment requires Claude."
-    );
-  }
+  return callAgentJsonLLM({
+    contentLane: opts.contentLane ?? "sfw",
+    systemPrompt: opts.systemPrompt,
+    userPrompt: opts.userPrompt,
+    maxTokens: opts.maxTokens ?? 500,
+    temperature: opts.temperature ?? 0.25,
+    anthropicModel: PHOTO_ENRICHMENT_MODEL,
+    cacheSystemPrompt: opts.contentLane !== "adult",
+    validate: opts.validate,
+    repairInstruction: opts.repairInstruction,
+  });
+}
 
-  const { systemPrompt, userPrompt, validate } = opts;
-  const maxTokens = opts.maxTokens ?? 500;
-  const temperature = opts.temperature ?? 0.25;
-  const baseMessages: ChatMessage[] = [
-    { role: "system", content: systemPrompt },
-    { role: "user", content: userPrompt },
-  ];
-
-  const tryParse = (text: string): T | null => {
-    const cleaned = text
-      .trim()
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/```\s*$/i, "")
-      .trim();
-    try {
-      return validate(JSON.parse(cleaned));
-    } catch {
-      return null;
-    }
-  };
-
-  const first = await callAnthropicWithModel(
-    baseMessages,
-    PHOTO_ENRICHMENT_MODEL,
-    maxTokens,
-    temperature
-  );
-  const parsed = tryParse(first);
-  if (parsed !== null) return parsed;
-
-  const repair: ChatMessage[] = [
-    ...baseMessages,
-    { role: "assistant", content: first },
-    {
-      role: "user",
-      content:
-        opts.repairInstruction ??
-        "Return only valid JSON matching the requested schema.",
-    },
-  ];
-  const second = await callAnthropicWithModel(
-    repair,
-    PHOTO_ENRICHMENT_MODEL,
-    maxTokens,
-    Math.min(temperature, 0.4)
-  );
-  const repaired = tryParse(second);
-  if (repaired !== null) return repaired;
-
-  throw new Error("Photo enrichment: Claude returned invalid JSON after repair pass.");
+/**
+ * Wizard agent JSON — routes adult lane away from Claude refusals.
+ */
+export async function callWizardJsonLLM<T>(opts: {
+  systemPrompt: string;
+  userPrompt: string;
+  maxTokens?: number;
+  temperature?: number;
+  cacheSystemPrompt?: boolean;
+  contentLane?: AuraContentLane;
+  validate: (raw: unknown) => T;
+  repairInstruction?: string;
+}): Promise<T> {
+  return callAgentJsonLLM({
+    contentLane: opts.contentLane ?? "sfw",
+    systemPrompt: opts.systemPrompt,
+    userPrompt: opts.userPrompt,
+    maxTokens: opts.maxTokens ?? 400,
+    temperature: opts.temperature ?? 0.4,
+    cacheSystemPrompt: opts.cacheSystemPrompt ?? false,
+    anthropicModel: WIZARD_AGENT_MODEL,
+    validate: opts.validate,
+    repairInstruction: opts.repairInstruction,
+  });
 }
 
 /**
@@ -284,56 +561,31 @@ export async function callPhotoPromptJsonLLM<T>(opts: {
   userPrompt: string;
   maxTokens?: number;
   temperature?: number;
+  contentLane?: AuraContentLane;
+  cacheSystemPrompt?: boolean;
   validate: (raw: unknown) => T;
   repairInstruction?: string;
 }): Promise<T> {
-  const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim();
-  if (anthropicKey) {
-    const { systemPrompt, userPrompt, validate } = opts;
-    const maxTokens = opts.maxTokens ?? 500;
-    const temperature = opts.temperature ?? 0.25;
-    const baseMessages: ChatMessage[] = [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ];
+  const hasAnyKey =
+    Boolean(process.env.ANTHROPIC_API_KEY?.trim()) ||
+    Boolean(process.env.DEEPSEEK_API_KEY?.trim()) ||
+    Boolean(process.env.OPENROUTER_API_KEY?.trim());
 
-    const tryParse = (text: string): T | null => {
-      const cleaned = text
-        .trim()
-        .replace(/^```(?:json)?\s*/i, "")
-        .replace(/```\s*$/i, "")
-        .trim();
-      try {
-        return validate(JSON.parse(cleaned));
-      } catch {
-        return null;
-      }
-    };
-
+  if (hasAnyKey) {
     try {
-      const first = await callAnthropic(baseMessages, maxTokens, temperature);
-      const parsed = tryParse(first);
-      if (parsed !== null) return parsed;
-
-      const repair: ChatMessage[] = [
-        ...baseMessages,
-        { role: "assistant", content: first },
-        {
-          role: "user",
-          content:
-            opts.repairInstruction ??
-            "Return only valid JSON matching the requested schema.",
-        },
-      ];
-      const second = await callAnthropic(
-        repair,
-        maxTokens,
-        Math.min(temperature, 0.4)
-      );
-      const repaired = tryParse(second);
-      if (repaired !== null) return repaired;
+      return await callAgentJsonLLM({
+        contentLane: opts.contentLane ?? "sfw",
+        systemPrompt: opts.systemPrompt,
+        userPrompt: opts.userPrompt,
+        maxTokens: opts.maxTokens ?? 500,
+        temperature: opts.temperature ?? 0.25,
+        cacheSystemPrompt: opts.cacheSystemPrompt ?? true,
+        anthropicModel: PHOTO_AGENT_MODEL,
+        validate: opts.validate,
+        repairInstruction: opts.repairInstruction,
+      });
     } catch (error) {
-      console.warn("[ai-text] callPhotoPromptJsonLLM Claude failed, fallback:", error);
+      console.warn("[ai-text] callPhotoPromptJsonLLM agent failed, fallback:", error);
     }
   }
 
@@ -363,15 +615,10 @@ export async function callJsonLLM<T>(opts: {
   ];
 
   const tryParse = (text: string): T | null => {
-    const cleaned = text
-      .trim()
-      // Strip code fences if model added them despite instructions.
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/```\s*$/i, "")
-      .trim();
+    const payload = extractJsonPayload(text);
+    if (payload === null) return null;
     try {
-      const json = JSON.parse(cleaned);
-      return validate(json);
+      return validate(payload);
     } catch {
       return null;
     }
@@ -637,12 +884,13 @@ const PLATFORM_ENUM = z.enum(["INSTAGRAM", "TIKTOK", "ONLYFANS"]);
 const CONTENT_TYPE_ENUM = z.enum(["PHOTO", "REEL", "CAROUSEL"]);
 
 const contentPlanPostSchema = z.object({
-  dayIndex: z.number().int().min(0).max(13),
+  dayIndex: z.number().int().min(0).max(29),
   slotIndex: z.number().int().min(0).max(9),
   platform: PLATFORM_ENUM,
   type: CONTENT_TYPE_ENUM,
   hook: z.string().min(1).max(200),
   concept: z.string().min(1).max(500),
+  sceneDescription: z.string().min(10).max(800),
   scene: z.string().min(1).max(60),
   pose: z.string().min(1).max(60),
   expression: z.string().min(1).max(60),
@@ -650,6 +898,8 @@ const contentPlanPostSchema = z.object({
   caption: z.string().min(1).max(2000),
   hashtags: z.array(z.string()).max(40),
   cta: z.string().min(0).max(200),
+  /** Scraped trend id when the post is grounded on a TREND ANCHOR. */
+  trendId: z.string().nullish(),
 });
 
 const contentPlanSchema = z.object({
@@ -680,6 +930,16 @@ export async function generateContentPlan(
   ctx: ContentPlanContext
 ): Promise<ContentPlan> {
   const totalPosts = ctx.days * ctx.postsPerDay;
+  // contentPlanSchema caps posts at 70 and a single LLM call can't reliably
+  // emit more (output-token ceiling → truncated JSON → hard fail after
+  // repair). Reject upfront with an actionable message instead of failing
+  // after a long, doomed generation.
+  if (totalPosts > 70) {
+    throw new Error(
+      `Plan trop grand : ${ctx.days} jours × ${ctx.postsPerDay} posts/jour = ${totalPosts} posts (maximum 70 par plan). ` +
+        `Réduis le nombre de posts par jour ou génère le plan en deux fois.`
+    );
+  }
   const cost = +(CREDIT_COSTS.CONTENT_PLAN_PER_POST * totalPosts).toFixed(2);
   const hasCredits = await checkCredits(userId, cost);
   if (!hasCredits) {
@@ -696,7 +956,8 @@ export async function generateContentPlan(
   const plan = await callJsonLLM<ContentPlan>({
     systemPrompt,
     userPrompt,
-    maxTokens: 6000,
+    // 30-day plans need more room for structured JSON posts.
+    maxTokens: totalPosts > 20 ? 14000 : totalPosts > 10 ? 10000 : 6000,
     temperature: 0.7,
     repairInstruction: JSON_REPAIR_INSTRUCTION,
     validate: (raw) => contentPlanSchema.parse(raw),
@@ -708,7 +969,12 @@ export async function generateContentPlan(
     posts: plan.posts.slice(0, totalPosts),
   };
 
-  await deductCredits(userId, cost);
+  // Bill on posts actually delivered — a lazy model that returns 40/60
+  // posts must not charge for 60.
+  const billedCost = +(
+    CREDIT_COSTS.CONTENT_PLAN_PER_POST * trimmed.posts.length
+  ).toFixed(2);
+  await deductCredits(userId, billedCost);
   return trimmed;
 }
 

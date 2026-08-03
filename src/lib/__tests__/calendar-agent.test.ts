@@ -57,6 +57,21 @@ describe("calendar-agent", () => {
       expect(result.params.platforms).toEqual(["INSTAGRAM"]);
       expect(result.readyToExecute).toBe(true);
     });
+
+    it("maps 30 posts / 1 post per day to weekly cadence", () => {
+      const monthPlan = buildFallbackCalendarTurn(
+        userTurn("30 posts sur 30 jours ce mois sur Instagram"),
+        "fr"
+      );
+      expect(monthPlan.params.postsPerWeek).toBe(7);
+      expect(monthPlan.readyToExecute).toBe(true);
+
+      const daily = buildFallbackCalendarTurn(
+        userTurn("1 post/jour ce mois sur Instagram"),
+        "fr"
+      );
+      expect(daily.params.postsPerWeek).toBe(7);
+    });
   });
 
   describe("missing field detection", () => {

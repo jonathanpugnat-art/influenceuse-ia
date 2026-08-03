@@ -17,7 +17,8 @@ export type UpgradeReason =
   | "advanced_analytics_required"
   | "content_plan_required"
   | "batch_required"
-  | "webhooks_required";
+  | "webhooks_required"
+  | "character_lora_required";
 
 interface UpgradeModalState {
   open: boolean;
@@ -82,6 +83,7 @@ export function UpgradeModal() {
     content_plan_required: { icon: Sparkles, key: "contentPlanRequired" },
     batch_required: { icon: Crown, key: "batchRequired" },
     webhooks_required: { icon: ShieldCheck, key: "webhooksRequired" },
+    character_lora_required: { icon: Sparkles, key: "characterLoraRequired" },
   }[reason];
 
   const Icon = reasonContent.icon;

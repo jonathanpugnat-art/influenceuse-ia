@@ -20,6 +20,8 @@ export type AgentPanelProps = {
   emptyHint?: string;
   thinkingLabel?: string;
   className?: string;
+  /** When set, choice pills call this instead of sending the label as chat text. */
+  onPickChoice?: (choice: string, message: AgentMessage) => void | Promise<void>;
 };
 
 function ChoicePills({
@@ -60,7 +62,7 @@ function AssistantBubble({
 }: {
   message: AgentMessage;
   busy?: boolean;
-  onPickChoice: (choice: string) => void;
+  onPickChoice: (choice: string, message: AgentMessage) => void;
 }) {
   return (
     <div className="flex gap-2">
@@ -73,7 +75,7 @@ function AssistantBubble({
           <ChoicePills
             choices={message.choices}
             disabled={busy}
-            onPick={onPickChoice}
+            onPick={(choice) => onPickChoice(choice, message)}
           />
         ) : null}
       </div>
@@ -104,6 +106,7 @@ export function AgentPanel({
   emptyHint = "Décris ce que tu veux créer ou planifier.",
   thinkingLabel = "Réflexion…",
   className,
+  onPickChoice,
 }: AgentPanelProps) {
   const [input, setInput] = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
@@ -128,6 +131,15 @@ export function AgentPanel({
   const handleQuickReply = async (reply: string) => {
     if (busy) return;
     await onSend(reply);
+  };
+
+  const handlePickChoice = async (choice: string, message: AgentMessage) => {
+    if (busy) return;
+    if (onPickChoice) {
+      await onPickChoice(choice, message);
+      return;
+    }
+    await onSend(choice);
   };
 
   return (
@@ -158,7 +170,7 @@ export function AgentPanel({
                   key={`${msg.timestamp}-${index}`}
                   message={msg}
                   busy={busy}
-                  onPickChoice={handleQuickReply}
+                  onPickChoice={handlePickChoice}
                 />
               )
             )

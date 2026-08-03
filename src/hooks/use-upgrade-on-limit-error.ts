@@ -14,6 +14,7 @@ const REASON_TO_PLAN: Record<UpgradeReason, "STARTER" | "PRO" | "ENTERPRISE"> = 
   content_plan_required: "STARTER",
   batch_required: "PRO",
   webhooks_required: "PRO",
+  character_lora_required: "PRO",
 };
 
 /**

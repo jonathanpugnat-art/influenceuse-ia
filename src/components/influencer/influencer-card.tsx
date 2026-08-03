@@ -90,7 +90,7 @@ export function InfluencerCard({
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      className="group relative rounded-2xl border border-slate-800/50 bg-slate-900/50 backdrop-blur-xl transition-all hover:border-slate-700 hover:shadow-lg hover:shadow-violet-500/10"
+      className="group relative surface transition-all hover:border-border hover:shadow-lg hover:shadow-black/30"
     >
       {/* Menu */}
       <div className="absolute right-3 top-3 z-10">
@@ -98,7 +98,7 @@ export function InfluencerCard({
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 opacity-100 transition-all hover:bg-slate-800 hover:text-white md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
+              className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground opacity-100 transition-all hover:bg-accent hover:text-foreground md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               aria-label="Menu"
             >
               <MoreHorizontal className="h-4 w-4" />
@@ -106,12 +106,12 @@ export function InfluencerCard({
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align="end"
-            className="w-48 border-slate-800 bg-slate-900"
+            className="w-48 border-border bg-popover"
           >
             <DropdownMenuItem asChild>
               <Link
                 href={`/influencers/${influencer.id}`}
-                className="text-slate-300 focus:bg-slate-800 focus:text-white"
+                className="text-foreground focus:bg-accent"
               >
                 <Eye className="mr-2 h-4 w-4" />
                 {t("viewProfile")}
@@ -120,17 +120,17 @@ export function InfluencerCard({
             <DropdownMenuItem asChild>
               <Link
                 href={`/content?influencer=${influencer.id}`}
-                className="text-slate-300 focus:bg-slate-800 focus:text-white"
+                className="text-foreground focus:bg-accent"
               >
                 <ImagePlus className="mr-2 h-4 w-4" />
                 {t("createContent")}
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuSeparator className="bg-slate-800" />
+            <DropdownMenuSeparator className="bg-border" />
             {influencer.status === "ACTIVE" ? (
               <DropdownMenuItem
                 onClick={() => onStatusChange?.(influencer.id, "PAUSED")}
-                className="text-yellow-400 focus:bg-slate-800 focus:text-yellow-300"
+                className="text-yellow-400 focus:bg-accent focus:text-yellow-300"
               >
                 <Pause className="mr-2 h-4 w-4" />
                 {t("pauseAction")}
@@ -138,7 +138,7 @@ export function InfluencerCard({
             ) : influencer.status === "PAUSED" ? (
               <DropdownMenuItem
                 onClick={() => onStatusChange?.(influencer.id, "ACTIVE")}
-                className="text-emerald-400 focus:bg-slate-800 focus:text-emerald-300"
+                className="text-emerald-400 focus:bg-accent focus:text-emerald-300"
               >
                 <Play className="mr-2 h-4 w-4" />
                 {t("reactivateAction")}
@@ -146,7 +146,7 @@ export function InfluencerCard({
             ) : null}
             <DropdownMenuItem
               onClick={() => onStatusChange?.(influencer.id, "ARCHIVED")}
-              className="text-red-400 focus:bg-slate-800 focus:text-red-300"
+              className="text-red-400 focus:bg-accent focus:text-red-300"
             >
               <Archive className="mr-2 h-4 w-4" />
               {t("archiveAction")}
@@ -160,8 +160,7 @@ export function InfluencerCard({
         {/* Avatar + Info */}
         <div className="flex items-start gap-4">
           <div className="relative h-[72px] w-[72px] shrink-0">
-            <div className="absolute -inset-0.5 rounded-full bg-gradient-to-br from-violet-500 to-indigo-500 opacity-50" />
-            <div className="relative flex h-full w-full items-center justify-center rounded-full bg-slate-800">
+            <div className="relative flex h-full w-full items-center justify-center rounded-full border border-border bg-muted">
               {influencer.avatarUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -170,7 +169,7 @@ export function InfluencerCard({
                   className="h-full w-full rounded-full object-cover"
                 />
               ) : (
-                <span className="text-xl font-bold text-white">
+                <span className="text-xl font-bold text-foreground">
                   {influencer.name.charAt(0)}
                 </span>
               )}

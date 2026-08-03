@@ -70,6 +70,7 @@ export function useAgent({ domain, context }: UseAgentOptions) {
             content: result.message,
             timestamp: Date.now(),
             choices: result.choices,
+            trendStudioActions: result.trendStudioActions,
           },
         ]);
       } catch {

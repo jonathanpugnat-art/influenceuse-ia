@@ -35,6 +35,9 @@ export interface VideoGenerationInput {
   sceneDescription?: string;
   /** Scene still already contains the face — do not attach a second identity ref. */
   sceneFrameOnly?: boolean;
+  /** Persisted trend MP4 — enables Kling Motion Control when set. */
+  motionSourceVideoUrl?: string;
+  fromTrend?: boolean;
   isNsfw: boolean;
   /**
    * Sprint 10 — when `reelStylePreset === "lip_sync"`, this audio URL is
@@ -207,6 +210,15 @@ export async function generateVideo(
         startImageUrl: firstFrame,
         durationSec: input.duration,
       },
+      motionInput: input.motionSourceVideoUrl
+        ? {
+            imageUrl: firstFrame,
+            referenceVideoUrl: input.motionSourceVideoUrl,
+            prompt,
+            durationSec: input.duration,
+          }
+        : undefined,
+      fromTrend: input.fromTrend,
       replicateRunner,
     });
 
@@ -254,6 +266,7 @@ export async function generateVideo(
         replicateModel: routed.provider === "replicate" ? model : undefined,
         videoProvider: routed.provider,
         videoModel: routed.model,
+        motionMode: routed.motionMode,
         durationRequestedSec: input.duration,
         lipSyncApplied,
         lipSyncModel,

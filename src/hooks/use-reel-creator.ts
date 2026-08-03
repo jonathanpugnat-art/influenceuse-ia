@@ -1,6 +1,10 @@
 "use client";
 
 import { create } from "zustand";
+import {
+  reelBriefToReelCreatorParams,
+  type ReelBrief,
+} from "@/lib/viral-brief";
 
 export interface ReelParams {
   influencerId: string;
@@ -27,6 +31,9 @@ export interface ReelParams {
   audioUrl: string;
   /** Generate a scene photo before animating (recommended). */
   generateSceneFrame: boolean;
+  /** Trend source MP4 for motion control reels. */
+  motionSourceVideoUrl?: string;
+  fromTrend?: boolean;
 }
 
 interface ReelCreatorState {
@@ -55,6 +62,10 @@ interface ReelCreatorState {
   setHashtags: (val: string[]) => void;
   setPlatforms: (val: string[]) => void;
   setScheduledAt: (val: Date | null) => void;
+  generateNonce: number;
+  requestGenerate: () => void;
+  applyParamsAndGenerate: (partial: Partial<ReelParams>) => void;
+  applyReelBrief: (brief: ReelBrief, influencerId: string) => void;
   reset: () => void;
 }
 
@@ -102,6 +113,24 @@ export const useReelCreator = create<ReelCreatorState>()((set) => ({
   setHashtags: (val) => set({ hashtags: val }),
   setPlatforms: (val) => set({ platforms: val }),
   setScheduledAt: (val) => set({ scheduledAt: val }),
+  generateNonce: 0,
+  requestGenerate: () =>
+    set((s) => ({ generateNonce: s.generateNonce + 1 })),
+  applyParamsAndGenerate: (partial) =>
+    set((s) => ({
+      params: { ...s.params, ...partial },
+      generateNonce: s.generateNonce + 1,
+      videoUrl: null,
+    })),
+  applyReelBrief: (brief, influencerId) => {
+    const partial = reelBriefToReelCreatorParams(brief, influencerId);
+    set((s) => ({
+      params: { ...s.params, ...partial },
+      caption: brief.hook ?? s.caption,
+      hashtags: brief.hashtags ?? s.hashtags,
+      videoUrl: null,
+    }));
+  },
   reset: () =>
     set({
       params: { ...defaultParams },
@@ -116,6 +145,7 @@ export const useReelCreator = create<ReelCreatorState>()((set) => ({
       hashtags: [],
       platforms: [],
       scheduledAt: null,
+      generateNonce: 0,
     }),
 }));
 

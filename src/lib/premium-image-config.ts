@@ -10,9 +10,104 @@ export type PremiumModerationMode = "auto" | "sightengine" | "off";
 
 export const DEFAULT_TOGETHER_FLUX_MODEL = "black-forest-labs/FLUX.2-dev";
 
-/** Replicate fallback when Together/self-host unavailable. */
+/** Replicate uncensored model for Premium lane (community FLUX — version resolved at runtime). */
 export const DEFAULT_REPLICATE_PREMIUM_MODEL =
-  "lucataco/flux-dev-uncensored" as const;
+  "aisha-ai-official/flux.1dev-uncensored-msfluxnsfw-v3" as const;
+
+export function resolveReplicatePremiumModel(
+  env: Record<string, string | undefined> = process.env
+): string {
+  return (
+    env.PREMIUM_REPLICATE_MODEL?.trim() ||
+    env.PREMIUM_FLUX_MODEL?.trim() ||
+    DEFAULT_REPLICATE_PREMIUM_MODEL
+  );
+}
+
+export function isReplicatePremiumConfigured(
+  env: Record<string, string | undefined> = process.env
+): boolean {
+  return Boolean(env.REPLICATE_API_TOKEN?.trim());
+}
+
+/**
+ * Novita InstantID — face-locked engine for the NSFW `explicit` tier.
+ * Flux/PuLID is weak on explicit anatomy, so explicit runs on an uncensored
+ * SDXL checkpoint + InstantID (face from a single frontal portrait). Default
+ * checkpoint is a documented Novita SDXL slug; override with PREMIUM_NOVITA_MODEL
+ * to pick a realistic NSFW checkpoint from Novita's model library.
+ */
+export const DEFAULT_NOVITA_INSTANTID_MODEL =
+  "epicrealismXL_v10_247189.safetensors" as const;
+
+export function resolveNovitaApiKey(
+  env: Record<string, string | undefined> = process.env
+): string | undefined {
+  return env.NOVITA_API_KEY?.trim() || undefined;
+}
+
+export function isNovitaConfigured(
+  env: Record<string, string | undefined> = process.env
+): boolean {
+  return Boolean(resolveNovitaApiKey(env));
+}
+
+export function resolveNovitaInstantIdModel(
+  env: Record<string, string | undefined> = process.env
+): string {
+  return env.PREMIUM_NOVITA_MODEL?.trim() || DEFAULT_NOVITA_INSTANTID_MODEL;
+}
+
+function resolveUnitInterval(
+  raw: string | undefined,
+  fallback: number
+): number {
+  const n = raw ? Number(raw) : NaN;
+  return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : fallback;
+}
+
+/** InstantID identity lock strength (0–1). Higher = closer to the face. Default 0.8. */
+export function resolveNovitaIdStrength(
+  env: Record<string, string | undefined> = process.env
+): number {
+  return resolveUnitInterval(env.PREMIUM_NOVITA_ID_STRENGTH?.trim(), 0.72);
+}
+
+/** InstantID IP-Adapter strength (0–1). Higher = stronger face features. Default 0.75. */
+export function resolveNovitaAdapterStrength(
+  env: Record<string, string | undefined> = process.env
+): number {
+  return resolveUnitInterval(env.PREMIUM_NOVITA_ADAPTER_STRENGTH?.trim(), 0.75);
+}
+
+export function resolvePremiumTogetherFluxModel(
+  env: Record<string, string | undefined> = process.env
+): string {
+  const model =
+    env.PREMIUM_TOGETHER_FLUX_MODEL?.trim() || env.PREMIUM_FLUX_MODEL?.trim();
+  if (!model) {
+    throw new Error(
+      "PREMIUM_TOGETHER_FLUX_MODEL is required for Together premium images. " +
+        "Use PREMIUM_IMAGE_PROVIDER=replicate (flux-dev-uncensored) instead."
+    );
+  }
+  return model;
+}
+
+/** Post-gen Sightengine — skip for soft/explicit tiers (Aura pre-check only). */
+export function shouldPostModeratePremiumGeneration(
+  nsfwLevel: string | undefined,
+  env: Record<string, string | undefined> = process.env
+): boolean {
+  const mode = resolvePremiumModerationMode(env);
+  if (mode === "off") return false;
+  if (mode === "sightengine") {
+    return isSightengineConfigured(env);
+  }
+  if (!isSightengineConfigured(env)) return false;
+  const tier = nsfwLevel === "explicit" || nsfwLevel === "soft" ? nsfwLevel : "suggestive";
+  return tier === "suggestive";
+}
 
 export function resolvePremiumImageProviderMode(
   env: Record<string, string | undefined> = process.env
@@ -47,6 +142,12 @@ export function resolvePremiumSelfHostUrl(
 ): string | null {
   const url = env.PREMIUM_SELFHOST_URL?.trim();
   return url || null;
+}
+
+export function resolvePremiumSelfHostModelLabel(
+  env: Record<string, string | undefined> = process.env
+): string {
+  return env.PREMIUM_SELFHOST_MODEL_LABEL?.trim() || "selfhost/flux";
 }
 
 export function resolvePremiumModerationMode(

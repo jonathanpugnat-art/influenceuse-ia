@@ -23,6 +23,8 @@ function makeReq(qs: string) {
 describe("GET /api/auth/instagram/start", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Required to sign the OAuth state (src/lib/oauth-state.ts).
+    process.env.ENCRYPTION_SECRET = "test-secret";
     mockGetAuthUrl.mockReturnValue(
       "https://www.facebook.com/v21.0/dialog/oauth?client_id=fake"
     );
@@ -61,9 +63,10 @@ describe("GET /api/auth/instagram/start", () => {
       userId: "u-1",
     });
     const res = await GET(makeReq("?influencerId=inf-1"));
+    // State is HMAC-signed and bound to the user: "inf-1.<expiry>.<signature>"
     expect(mockGetAuthUrl).toHaveBeenCalledWith(
       expect.stringMatching(/\/api\/auth\/instagram$/),
-      "inf-1"
+      expect.stringMatching(/^inf-1\.\d+\.[\w-]+$/)
     );
     expect(res.headers.get("location")).toBe(
       "https://www.facebook.com/v21.0/dialog/oauth?client_id=fake"

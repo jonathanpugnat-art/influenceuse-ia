@@ -2,15 +2,49 @@
  * Turn raw Replicate / storage / config errors into short French messages
  * for the photo/reel preview UI.
  */
-export function formatGenerationErrorForUser(raw: string | null | undefined): string {
+
+export type GenerationErrorContext = {
+  contentMode?: "SFW" | "NSFW";
+};
+
+/** Social lane — Google Nano / Kontext safety block. */
+export const SOCIAL_SAFETY_USER_MESSAGE =
+  "Le moteur Social a filtré cette scène. Reformule en anglais, style éditorial mode (ex. « lace lounge outfit », « bathroom mirror fashion ») — ou passe en mode Premium (🔒) pour FLUX uncensored.";
+
+/** Premium lane — FLUX uncensored failure. */
+export const PREMIUM_GENERATION_USER_MESSAGE =
+  "La génération Premium (FLUX uncensored) a échoué. Vérifie REPLICATE_API_TOKEN et PREMIUM_IMAGE_PROVIDER=replicate. Monte le niveau NSFW (Soft / Explicite) ou reformule si Aura bloque un terme interdit.";
+
+export const SUGGESTIVE_REQUIRES_PREMIUM_MESSAGE =
+  "Contenu suggestif en mode Social — passe en mode Premium (🔒) pour générer avec FLUX uncensored (plan Creator requis).";
+
+/** @deprecated Use SOCIAL_SAFETY_USER_MESSAGE */
+export const NSFW_USER_MESSAGE = SOCIAL_SAFETY_USER_MESSAGE;
+
+const PREMIUM_GEN_PREFIX = "[premium-gen]";
+const SOCIAL_SAFETY_PREFIX = "[social-safety]";
+
+export function formatGenerationErrorForUser(
+  raw: string | null | undefined,
+  opts?: GenerationErrorContext
+): string {
   if (!raw?.trim()) {
     return "La génération a échoué. Réessayez ou modifiez la scène.";
   }
 
   const msg = raw.trim();
 
-  if (msg.includes("REPLICATE_API_TOKEN")) {
-    return "Replicate n'est pas configuré sur le serveur (REPLICATE_API_TOKEN manquant).";
+  if (msg.startsWith(PREMIUM_GEN_PREFIX)) {
+    const detail = msg.slice(PREMIUM_GEN_PREFIX.length).trim();
+    return detail.length > 20 ? detail : PREMIUM_GENERATION_USER_MESSAGE;
+  }
+
+  if (msg.startsWith(SOCIAL_SAFETY_PREFIX)) {
+    return SOCIAL_SAFETY_USER_MESSAGE;
+  }
+
+  if (isReplicateTokenMissingError(msg)) {
+    return "Replicate n'est pas configuré sur le serveur (REPLICATE_API_TOKEN manquant). Redémarre le serveur après avoir ajouté la clé dans `.env` ou `.env.local`.";
   }
 
   if (
@@ -20,8 +54,14 @@ export function formatGenerationErrorForUser(raw: string | null | undefined): st
     return msg;
   }
 
+  if (msg.includes(SUGGESTIVE_REQUIRES_PREMIUM_MESSAGE)) {
+    return SUGGESTIVE_REQUIRES_PREMIUM_MESSAGE;
+  }
+
   if (isContentSafetyFilterError(msg)) {
-    return NSFW_USER_MESSAGE;
+    return opts?.contentMode === "NSFW"
+      ? PREMIUM_GENERATION_USER_MESSAGE
+      : SOCIAL_SAFETY_USER_MESSAGE;
   }
 
   if (msg.includes("PremiumPromptBlockedError") || msg.includes("termes interdits")) {
@@ -55,7 +95,14 @@ export function formatGenerationErrorForUser(raw: string | null | undefined): st
     return "Le stockage des images n'expose pas d'URL publique (R2_PUBLIC_URL). Contactez le support ou réessayez sans verrouillage visage.";
   }
 
-  // Strip noisy Error: prefix and Replicate stack blobs
+  if (/Premium image generation is not configured/i.test(msg)) {
+    return PREMIUM_GENERATION_USER_MESSAGE;
+  }
+
+  if (/Premium image generation requires/i.test(msg)) {
+    return PREMIUM_GENERATION_USER_MESSAGE;
+  }
+
   const cleaned = msg.replace(/^Error:\s*/i, "").slice(0, 280);
   return cleaned.length > 20 ? cleaned : "La génération a échoué. Réessayez.";
 }
@@ -89,8 +136,14 @@ export function formatPhotoSceneErrorForUser(
   return "Le décor n'a pas donné le résultat espéré. Simplifiez la scène (lieu + lumière), évitez les foules, puis regénérez le décor (1 crédit).";
 }
 
-export const NSFW_USER_MESSAGE =
-  "Le moteur IA a refusé cette scène (filtre de sécurité). Réessaie en anglais avec des termes « mode / éditorial » : ex. « lace lounge outfit », « bathroom mirror fashion », « fully clothed » — évite les mots explicites.";
+/** Google Nano / Replicate E005 and similar moderation blocks. */
+export function isReplicateTokenMissingError(msg: string): boolean {
+  return (
+    /REPLICATE_API_TOKEN is not configured/i.test(msg) ||
+    /REPLICATE_API_TOKEN is missing/i.test(msg) ||
+    /but REPLICATE_API_TOKEN is missing/i.test(msg)
+  );
+}
 
 /** Google Nano / Replicate E005 and similar moderation blocks. */
 export function isContentSafetyFilterError(error: unknown): boolean {
@@ -103,7 +156,8 @@ export function isContentSafetyFilterError(error: unknown): boolean {
     lower.includes("content filtered") ||
     lower.includes("flagged") ||
     /\be005\b/i.test(msg) ||
-    msg.includes(NSFW_USER_MESSAGE)
+    msg.includes(SOCIAL_SAFETY_USER_MESSAGE) ||
+    msg.includes(SOCIAL_SAFETY_PREFIX)
   );
 }
 
@@ -117,4 +171,16 @@ export function isReplicateAccessibleImageUrl(url: string | undefined | null): b
   if (!u.startsWith("http://") && !u.startsWith("https://")) return false;
   if (/localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(u)) return false;
   return true;
+}
+
+export function throwSocialSafetyError(): never {
+  throw new Error(SOCIAL_SAFETY_PREFIX);
+}
+
+export function throwPremiumGenerationError(detail?: string): never {
+  throw new Error(
+    detail?.trim()
+      ? `${PREMIUM_GEN_PREFIX} ${detail.trim()}`
+      : PREMIUM_GEN_PREFIX
+  );
 }

@@ -3,7 +3,14 @@
 import { useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { motion } from "framer-motion";
-import { Loader2, Play, RefreshCw, AlertTriangle, CheckCircle2 } from "lucide-react";
+import {
+  Loader2,
+  Play,
+  RefreshCw,
+  AlertTriangle,
+  CheckCircle2,
+  Sparkles,
+} from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -16,7 +23,11 @@ import { cn } from "@/lib/utils";
  * batches automatically every minute, but the user can also trigger a
  * slice immediately via "Lancer maintenant".
  */
-export function BatchProgressPanel() {
+export function BatchProgressPanel({
+  onReviewBatch,
+}: {
+  onReviewBatch?: (batchId: string) => void;
+}) {
   const t = useTranslations("calendar.batch");
   const utils = trpc.useUtils();
 
@@ -62,8 +73,8 @@ export function BatchProgressPanel() {
 
   if (isLoading) {
     return (
-      <div className="rounded-2xl border border-slate-800/50 bg-slate-900/50 p-4">
-        <div className="flex items-center gap-2 text-sm text-slate-400">
+      <div className="rounded-2xl border border-border/50 bg-card/50 p-4">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" /> {t("loading")}
         </div>
       </div>
@@ -76,11 +87,11 @@ export function BatchProgressPanel() {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="rounded-2xl border border-slate-800/50 bg-slate-900/50 p-4"
+      className="rounded-2xl border border-border/50 bg-card/50 p-4"
     >
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-white">{t("title")}</h3>
-        <span className="text-xs text-slate-500">{t("subtitle")}</span>
+        <h3 className="text-sm font-semibold text-foreground">{t("title")}</h3>
+        <span className="text-xs text-muted-foreground">{t("subtitle")}</span>
       </div>
 
       <div className="space-y-3">
@@ -91,25 +102,42 @@ export function BatchProgressPanel() {
           const total = s.total || 1;
           const done = s.ready + s.scheduled + s.published;
           const pct = Math.round((done / total) * 100);
-          const isActive = s.draft > 0 || s.generating > 0;
-          const isDone = !isActive && s.failed === 0 && done >= s.total;
+          const pendingReview = s.pendingReview ?? 0;
+          const approvedDraft = s.approvedDraft ?? 0;
+          const isActive = approvedDraft > 0 || s.generating > 0;
+          const needsReview = pendingReview > 0;
+          const isDone =
+            !isActive &&
+            !needsReview &&
+            s.failed === 0 &&
+            done >= s.total;
 
           return (
             <div
               key={batch.id}
-              className="rounded-xl border border-slate-800/50 bg-slate-950/50 p-3"
+              className="rounded-xl border border-border/50 bg-background/50 p-3"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-white">
+                  <p className="truncate text-sm font-medium text-foreground">
                     {batch.name}
                   </p>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-muted-foreground">
                     {batch.influencer?.name ?? "—"} · {s.total} {t("posts")}
                   </p>
                 </div>
 
                 <div className="flex shrink-0 items-center gap-2">
+                  {needsReview && onReviewBatch && (
+                    <button
+                      type="button"
+                      onClick={() => onReviewBatch(batch.id)}
+                      className="flex min-h-8 items-center gap-1 rounded-lg border border-rose-400/40 bg-rose-500/10 px-2 py-1 text-xs text-rose-200 transition-colors hover:bg-rose-500/20"
+                    >
+                      <Sparkles className="h-3 w-3" />
+                      {t("reviewLot", { count: pendingReview })}
+                    </button>
+                  )}
                   {s.failed > 0 && (
                     <button
                       type="button"
@@ -126,7 +154,7 @@ export function BatchProgressPanel() {
                       type="button"
                       onClick={() => processSlice.mutate({ batchId: batch.id })}
                       disabled={processSlice.isPending}
-                      className="flex items-center gap-1 rounded-lg border border-violet-500/40 bg-violet-500/10 px-2 py-1 text-xs text-violet-200 hover:bg-violet-500/20 disabled:opacity-50"
+                      className="flex min-h-8 items-center gap-1 rounded-lg border border-border bg-muted/40 px-2 py-1 text-xs text-foreground/90 transition-colors hover:bg-accent/60 disabled:opacity-50"
                     >
                       {processSlice.isPending ? (
                         <Loader2 className="h-3 w-3 animate-spin" />
@@ -140,29 +168,32 @@ export function BatchProgressPanel() {
               </div>
 
               {/* Progress bar */}
-              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-800">
+              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
                 <div
                   className={cn(
                     "h-full transition-all duration-500",
-                    isDone
-                      ? "bg-emerald-500"
-                      : "bg-gradient-to-r from-violet-500 to-indigo-500"
+                    isDone ? "bg-emerald-500" : "bg-foreground"
                   )}
                   style={{ width: `${pct}%` }}
                 />
               </div>
 
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <span>{pct}%</span>
                 {s.generating > 0 && (
-                  <span className="flex items-center gap-1 text-violet-300">
+                  <span className="flex items-center gap-1 text-foreground/80">
                     <Loader2 className="h-3 w-3 animate-spin" />
                     {s.generating} {t("statuses.generating")}
                   </span>
                 )}
-                {s.draft > 0 && (
+                {pendingReview > 0 && (
+                  <span className="text-rose-300">
+                    {pendingReview} {t("statuses.pendingReview")}
+                  </span>
+                )}
+                {approvedDraft > 0 && (
                   <span>
-                    {s.draft} {t("statuses.draft")}
+                    {approvedDraft} {t("statuses.draft")}
                   </span>
                 )}
                 {(s.ready > 0 || s.scheduled > 0) && (

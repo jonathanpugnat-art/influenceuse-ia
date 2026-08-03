@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { processNextBatchSlice } from "@/server/services/batch.service";
+import { failStaleGenerations } from "@/server/services/stale-generation.service";
+
+// The slice budgets 45s of image generation; leave headroom for Replicate retries.
+export const maxDuration = 300;
 
 /**
  * Cron endpoint — processes pending DRAFT content from editorial batches
@@ -29,10 +33,18 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    // Watchdog: fail zombie generations (function killed mid-`after()`)
+    // so the studio UI stops spinning and shows an actionable error.
+    const swept = await failStaleGenerations().catch((err) => {
+      console.error("[cron/process-batches] stale sweep failed:", err);
+      return { failedContents: 0, failedJobs: 0 };
+    });
+
     const result = await processNextBatchSlice();
     return NextResponse.json({
       ok: true,
       ...result,
+      staleSwept: swept.failedContents,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

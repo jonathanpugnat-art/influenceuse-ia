@@ -14,6 +14,7 @@ import { adminRouter } from "./routers/admin";
 import { trendsRouter } from "./routers/trends";
 import { photoAgentRouter } from "./routers/photo-agent";
 import { agentRouter } from "./routers/agent";
+import { basePortraitRouter } from "./routers/base-portrait";
 
 export const appRouter = createTRPCRouter({
   influencer: influencerRouter,
@@ -34,6 +35,8 @@ export const appRouter = createTRPCRouter({
   admin: adminRouter,
   // v0.12 — TikTok / Instagram trends intelligence
   trends: trendsRouter,
+  // Sprint B — pre-generated base portraits gallery (wizard step 2)
+  basePortrait: basePortraitRouter,
 });
 
 export type AppRouter = typeof appRouter;

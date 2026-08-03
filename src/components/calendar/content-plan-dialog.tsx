@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
+import { useInfluencers } from "@/hooks/use-influencers";
 import { CREDIT_COSTS } from "@/lib/constants";
 
 const PLATFORM_OPTIONS = [
@@ -59,10 +60,7 @@ export function ContentPlanDialog({
   const [language, setLanguage] = useState<"fr" | "en">("fr");
   const [goals, setGoals] = useState<string>("");
 
-  const { data: influencersData } = trpc.influencer.getAll.useQuery(
-    { limit: 50 },
-    { placeholderData: (prev) => prev }
-  );
+  const { data: influencersData } = useInfluencers({ limit: 50 }, { placeholderData: (prev) => prev });
   const influencers = influencersData?.influencers ?? [];
   const lockInfluencer = !!defaultInfluencerId;
 

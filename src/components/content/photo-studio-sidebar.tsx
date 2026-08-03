@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronUp,
   Dna,
+  Lock,
   SlidersHorizontal,
   Sparkles,
   Users,
@@ -36,6 +37,8 @@ import { PhotoStudioSceneSection } from "@/components/content/photo-studio-scene
 import { type InfluencerGender } from "@/lib/photo-niche-defaults";
 import { PLANS } from "@/lib/constants";
 import { trpc } from "@/lib/trpc";
+import { useInfluencers } from "@/hooks/use-influencers";
+import { useCurrentPlan } from "@/hooks/use-current-plan";
 
 function Pillar({
   icon: Icon,
@@ -73,15 +76,12 @@ export function PhotoStudioSidebar() {
   const { expert, setExpert, hydrated } = useCreatorExpertMode("photo");
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
-  const planQuery = trpc.billing.getCurrentPlan.useQuery();
+  const planQuery = useCurrentPlan();
   const canSceneFirst = planQuery.data
     ? PLANS[planQuery.data.plan as keyof typeof PLANS].hasSceneFirstPipeline
     : false;
 
-  const { data: influencersData } = trpc.influencer.getAll.useQuery(
-    { limit: 50 },
-    { placeholderData: (prev) => prev }
-  );
+  const { data: influencersData } = useInfluencers({ limit: 50 }, { placeholderData: (prev) => prev });
   const influencers = influencersData?.influencers ?? [];
   const selected = influencers.find((i) => i.id === params.influencerId);
   const gender = (selected?.gender as InfluencerGender | undefined) ?? "female";
@@ -136,16 +136,16 @@ export function PhotoStudioSidebar() {
 
           <div className="flex items-center justify-between gap-2 rounded-xl border border-slate-800/50 bg-slate-800/20 px-3 py-2">
             <Label className="text-xs text-slate-300">{t("faceReferenceLabel")}</Label>
-            <Switch
-              checked={params.useFaceReference}
-              disabled={!portraitUrl || params.contentMode === "NSFW"}
-              onCheckedChange={(v) =>
-                updateParams({
-                  useFaceReference: v,
-                  sceneFirst: v ? params.sceneFirst : false,
-                })
-              }
-            />
+            {params.contentMode === "NSFW" ? (
+              <span className="text-[11px] text-amber-500/90">
+                {t("faceReferencePremiumShort")}
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 text-[11px] font-medium text-violet-300">
+                <Lock className="h-3 w-3" />
+                {t("faceReferenceAlwaysOn")}
+              </span>
+            )}
           </div>
         </Pillar>
 

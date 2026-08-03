@@ -22,12 +22,15 @@ export function WizardAppearanceGenerationProgress({
     [t]
   );
   const [messageIndex, setMessageIndex] = useState(0);
+  const [wasActive, setWasActive] = useState(active);
+
+  if (active !== wasActive) {
+    setWasActive(active);
+    if (!active) setMessageIndex(0);
+  }
 
   useEffect(() => {
-    if (!active) {
-      setMessageIndex(0);
-      return;
-    }
+    if (!active) return;
     const timer = setInterval(() => {
       setMessageIndex((i) => (i + 1) % messages.length);
     }, 2000);
@@ -38,14 +41,14 @@ export function WizardAppearanceGenerationProgress({
 
   return (
     <div className={cn("w-full space-y-2", className)}>
-      <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-neutral-800/80">
+      <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-muted">
         <div
-          className="absolute inset-y-0 w-2/5 rounded-full bg-gradient-to-r from-rose-500 via-pink-400 to-rose-500 wizard-appearance-progress-bar"
+          className="absolute inset-y-0 w-2/5 rounded-full bg-foreground wizard-appearance-progress-bar"
           aria-hidden
         />
       </div>
       <p
-        className="text-center text-xs font-medium text-rose-200/90 transition-opacity duration-300"
+        className="text-center text-xs font-medium text-muted-foreground transition-opacity duration-300"
         aria-live="polite"
       >
         {messages[messageIndex]}

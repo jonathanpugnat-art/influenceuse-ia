@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockDb = vi.hoisted(() => ({
-  content: { findMany: vi.fn() },
+  content: { findMany: vi.fn(), updateMany: vi.fn() },
 }));
 
 const mockPublishContent = vi.hoisted(() => vi.fn());
@@ -19,6 +19,8 @@ describe("scheduler.service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSavePublishResults.mockResolvedValue(undefined);
+    // Stuck-publishing reclaim returns 0; per-content claim acquires the lock.
+    mockDb.content.updateMany.mockResolvedValue({ count: 1 });
   });
 
   it("calls publishContent twice when 2 contents are due", async () => {
@@ -64,6 +66,30 @@ describe("scheduler.service", () => {
     expect(mockPublishContent).not.toHaveBeenCalled();
     expect(mockSavePublishResults).not.toHaveBeenCalled();
     expect(result).toEqual({ processed: 0, published: 0, failed: 0 });
+  });
+
+  it("skips a content whose claim was already taken by a concurrent tick", async () => {
+    const dueContents = [
+      {
+        id: "c1",
+        status: "SCHEDULED",
+        scheduledAt: new Date(Date.now() - 60000),
+        platforms: ["INSTAGRAM"],
+        influencer: { id: "i1", name: "Inf1", socialAccounts: [] },
+      },
+    ];
+    mockDb.content.findMany.mockResolvedValue(dueContents);
+    // First updateMany call = stuck reclaim, second = the per-content claim
+    // which fails because another tick already flipped the status.
+    mockDb.content.updateMany
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 0 });
+
+    const result = await checkAndPublish();
+
+    expect(mockPublishContent).not.toHaveBeenCalled();
+    expect(mockSavePublishResults).not.toHaveBeenCalled();
+    expect(result.published).toBe(0);
   });
 
   it("continues with next content when publishContent throws for one", async () => {

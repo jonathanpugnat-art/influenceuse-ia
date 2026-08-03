@@ -17,6 +17,7 @@ import {
   checkCredits,
   deductCredits,
   getCredits,
+  refundCredits,
   resetCredits,
 } from "@/server/services/credits.service";
 
@@ -121,6 +122,33 @@ describe("credits.service", () => {
       mockDb.$executeRaw.mockResolvedValue(1);
       await deductCredits("user-1", 20);
       expect(mockDb.$executeRaw).toHaveBeenCalled();
+    });
+  });
+
+  describe("refundCredits", () => {
+    it("runs a floored SQL update (GREATEST 0) instead of a blind decrement", async () => {
+      mockDb.$executeRaw.mockResolvedValue(1);
+      await refundCredits("user-1", 3);
+      expect(mockDb.$executeRaw).toHaveBeenCalledTimes(1);
+      // The raw template must floor at 0 so a double refund can't mint credits.
+      const templateParts = mockDb.$executeRaw.mock.calls[0][0] as {
+        raw?: string[];
+      } & string[];
+      const sql = Array.isArray(templateParts)
+        ? templateParts.join("?")
+        : String(templateParts);
+      expect(sql).toMatch(/GREATEST\(0,/i);
+      expect(mockDb.user.update).not.toHaveBeenCalled();
+    });
+
+    it("is a no-op for cost <= 0", async () => {
+      await refundCredits("user-1", 0);
+      expect(mockDb.$executeRaw).not.toHaveBeenCalled();
+    });
+
+    it("swallows DB errors (best-effort, never masks the original failure)", async () => {
+      mockDb.$executeRaw.mockRejectedValue(new Error("db down"));
+      await expect(refundCredits("user-1", 2)).resolves.toBeUndefined();
     });
   });
 

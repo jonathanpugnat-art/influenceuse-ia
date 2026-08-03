@@ -5,18 +5,56 @@ import {
   isSightengineConfigured,
   shouldUsePremiumModeration,
   resolvePremiumModerationRawThreshold,
+  resolveReplicatePremiumModel,
+  isReplicatePremiumConfigured,
+  shouldPostModeratePremiumGeneration,
 } from "@/lib/premium-image-config";
 import {
   findBlockedPremiumTerms,
   assertPremiumPromptAllowed,
   PremiumPromptBlockedError,
 } from "@/lib/prompts/premium-prompt-guard";
-import { buildPremiumNegativePrompt } from "@/lib/prompts/premium-negative";
+import { buildPremiumNegativePromptForTier } from "@/lib/prompts/premium-negative";
 import { softenPremiumPrompt } from "@/lib/prompts/premium-soften";
 
 describe("premium-image-config", () => {
   it("defaults provider to auto", () => {
     expect(resolvePremiumImageProviderMode({})).toBe("auto");
+  });
+
+  it("resolves replicate uncensored model", () => {
+    expect(resolveReplicatePremiumModel({})).toBe(
+      "aisha-ai-official/flux.1dev-uncensored-msfluxnsfw-v3"
+    );
+    expect(
+      resolveReplicatePremiumModel({ PREMIUM_REPLICATE_MODEL: "custom/model" })
+    ).toBe("custom/model");
+  });
+
+  it("detects Replicate token for premium", () => {
+    expect(isReplicatePremiumConfigured({})).toBe(false);
+    expect(isReplicatePremiumConfigured({ REPLICATE_API_TOKEN: "r8_x" })).toBe(true);
+  });
+
+  it("skips post-moderation for soft and explicit tiers in auto mode", () => {
+    expect(
+      shouldPostModeratePremiumGeneration("soft", {
+        SIGHTENGINE_API_USER: "u",
+        SIGHTENGINE_API_SECRET: "s",
+      })
+    ).toBe(false);
+    expect(
+      shouldPostModeratePremiumGeneration("explicit", {
+        SIGHTENGINE_API_USER: "u",
+        SIGHTENGINE_API_SECRET: "s",
+      })
+    ).toBe(false);
+    expect(
+      shouldPostModeratePremiumGeneration("suggestive", {
+        SIGHTENGINE_API_USER: "u",
+        SIGHTENGINE_API_SECRET: "s",
+      })
+    ).toBe(true);
   });
 
   it("detects Together API key", () => {
@@ -50,7 +88,7 @@ describe("premium-prompt-guard", () => {
   });
 
   it("blocks explicit porn terms", () => {
-    expect(findBlockedPremiumTerms("hardcore porn scene")).toContain("porn");
+    expect(findBlockedPremiumTerms("hardcore porn scene")).toEqual(["blocked"]);
     expect(() =>
       assertPremiumPromptAllowed({ customPrompt: "fully nude explicit sex" })
     ).toThrow(PremiumPromptBlockedError);
@@ -58,10 +96,16 @@ describe("premium-prompt-guard", () => {
 });
 
 describe("premium-negative", () => {
-  it("includes anti-explicit negatives", () => {
-    const neg = buildPremiumNegativePrompt("female");
+  it("includes anti-explicit negatives for suggestive/soft", () => {
+    const neg = buildPremiumNegativePromptForTier("soft", "female");
     expect(neg).toContain("nipples");
     expect(neg).toContain("pornography");
+  });
+
+  it("drops anti-nude negatives on explicit tier", () => {
+    const neg = buildPremiumNegativePromptForTier("explicit", "female");
+    expect(neg).not.toContain("pornography");
+    expect(neg).toContain("plastic skin");
   });
 });
 

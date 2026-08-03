@@ -86,6 +86,13 @@ enum JobStatus {
   FAILED
 }
 
+enum LoraStatus {
+  NONE
+  TRAINING
+  READY
+  FAILED
+}
+
 // ──────────────────────────────────────────────
 // MODELS
 // ──────────────────────────────────────────────
@@ -104,6 +111,13 @@ model User {
   stripeCurrentPeriodEnd DateTime?
   creditsUsed            Float     @default(0)
   creditsLimit           Float     @default(50)
+  /**
+   * Crédits acquis hors plan (packs one-shot, rewards referral). Persistés
+   * séparément pour que les changements de plan (checkout, upgrade,
+   * downgrade, cancel) recalculent creditsLimit = planLimit + bonusCredits
+   * au lieu d'écraser ce que l'utilisateur a payé.
+   */
+  bonusCredits           Float     @default(0)
   locale                 String    @default("fr")
 
   influencers    Influencer[]
@@ -132,6 +146,14 @@ model Influencer {
   name         String
   slug         String           @unique
   bio          String           @db.Text
+  /// Brief narratif complet généré par l'agent wizard —
+  /// décrit le positionnement, la personnalité, le but et la vision contenu.
+  /// Utilisé comme contexte dans tous les agents en aval.
+  brief        String?          @db.Text
+  /// Profil de niche structuré produit par l'agent "cerveau de niche"
+  /// (voir NicheProfile dans src/lib/niche-profile.ts). Pilote le rendu
+  /// réaliste spécifique à la niche dans la génération photo/contenu.
+  nicheProfile Json?
   personality  String           @db.Text
   gender       String           @default("female")
   niche        Niche
@@ -152,6 +174,16 @@ model Influencer {
   appearanceFingerprint String?
   /// Multi-angle 2D reference stills (see `IdentityPackRecord` in identity-pack.ts).
   identityPack          Json?
+  /// Character LoRA weights URL (FLUX) when training succeeded.
+  loraUrl               String?
+  loraStatus            LoraStatus @default(NONE)
+  /// Trigger token baked into prompts when LoRA is active (e.g. AURA_x7k2m9).
+  loraTriggerWord       String?
+  loraTrainedAt         DateTime?
+  /// Async training job id (FAL / Replicate) while status = TRAINING.
+  loraTrainingJobId     String?
+  /// Dataset metadata: { status, imageUrls[], zipUrl?, error? }
+  loraDataset           Json?
 
   user           User                 @relation(fields: [userId], references: [id])
   socialAccounts SocialAccount[]
@@ -169,6 +201,30 @@ model Influencer {
   @@index([slug])
   @@index([userId, status])
   @@index([appearanceFingerprint])
+}
+
+/// Portrait de base pré-généré, proposé dans la galerie du wizard (étape 2).
+/// L'utilisateur choisit une base au lieu de générer from scratch — cohérence
+/// et onboarding plus rapides. Peuplé hors-ligne via scripts/seed-base-portraits.ts.
+model BasePortrait {
+  id           String   @id @default(cuid())
+  niche        Niche
+  gender       String   @default("female")
+  ethnicity    String
+  bodyType     String
+  imageUrl     String
+  thumbnailUrl String?
+  isNsfw       Boolean  @default(false)
+  /// Mots-clés de positionnement ("premium", "soft", "sporty"…) — servent au
+  /// matching avec le brief Aura pour mettre en avant les bases pertinentes.
+  tags         String[]
+  active       Boolean  @default(true)
+  /// Tri manuel optionnel (plus petit = affiché en premier).
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@index([niche, gender, active])
+  @@index([active, isNsfw])
 }
 
 /// Compte social connecté à une influenceuse
@@ -508,6 +564,17 @@ model Referral {
   @@index([status])
 }
 
+/// Événements webhook entrants (Stripe/Clerk) déjà traités — idempotence
+/// sur les retries providers (un retry Stripe ne doit pas re-créditer un
+/// pack de crédits, par ex.). `id` = event.id Stripe ou svix-id Clerk.
+model ProcessedWebhookEvent {
+  id        String   @id
+  source    String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 /// Trace d'une tentative de livraison de webhook
 model WebhookDelivery {
   id           String                @id @default(cuid())
@@ -670,6 +737,10 @@ model TrendItem {
   /// Public media URLs from top scraped posts (images / video posters). Never
   /// sent to image models as identity reference — only analyzed for format.
   mediaUrls       String[] @default([])
+  /// Persisted copy of the source trend MP4 (R2) for motion-control reels.
+  sourceVideoUrl  String?
+  /// Keyframe stills extracted from sourceVideoUrl for vision analysis.
+  videoFrameUrls  String[] @default([])
   /// image | video | carousel | hashtag_signal (TikTok hashtag stats only).
   mediaKind       String?
   /// Vision/text-derived format inspiration (scene, reel storyboard, etc.).
