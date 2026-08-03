@@ -23,10 +23,22 @@ export function encrypt(text: string, secret?: string): string {
  */
 export function decrypt(encrypted: string, secret?: string): string {
   const key = getSecret(secret);
-  const bytes = CryptoJS.AES.decrypt(encrypted, key);
-  const decoded = bytes.toString(CryptoJS.enc.Utf8);
-  if (!decoded) {
+  try {
+    const bytes = CryptoJS.AES.decrypt(encrypted, key);
+    // CryptoJS may return "" OR throw "Malformed UTF-8 data" depending on
+    // runtime / version when the key is wrong — normalize both to one error.
+    const decoded = bytes.toString(CryptoJS.enc.Utf8);
+    if (!decoded) {
+      throw new Error("Decryption failed: invalid key or corrupted data");
+    }
+    return decoded;
+  } catch (err) {
+    if (
+      err instanceof Error &&
+      err.message.startsWith("Decryption failed")
+    ) {
+      throw err;
+    }
     throw new Error("Decryption failed: invalid key or corrupted data");
   }
-  return decoded;
 }
