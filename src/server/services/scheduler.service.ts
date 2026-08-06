@@ -54,8 +54,9 @@ export async function checkAndPublish(): Promise<{
       },
       include: {
         influencer: {
-          select: { id: true, name: true },
-          include: {
+          select: {
+            id: true,
+            name: true,
             socialAccounts: {
               select: {
                 id: true,
