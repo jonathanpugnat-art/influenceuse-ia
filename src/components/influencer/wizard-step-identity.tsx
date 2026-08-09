@@ -33,6 +33,8 @@ import {
   clearNsfwWizardDefaults,
   getNsfwWizardDefaults,
 } from "@/lib/wizard-of-flow";
+import { buildMinimalNicheProfile } from "@/lib/wizard-quick-defaults";
+import { isWizardAngleChipNiche } from "@/lib/wizard-angle-chips";
 import { useCurrentPlan } from "@/hooks/use-current-plan";
 import { cn } from "@/lib/utils";
 
@@ -158,9 +160,20 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
   const selectedNiche = watch("niche");
   const isNsfw = watch("isNsfw");
   const age = watch("age");
+  const angleValue = watch("angle");
+
+  const angleChips = useMemo(() => {
+    if (!selectedNiche || !isWizardAngleChipNiche(selectedNiche)) return [];
+    const raw = t.raw(`angleChips.${selectedNiche}`);
+    return Array.isArray(raw)
+      ? raw.filter((item): item is string => typeof item === "string")
+      : [];
+  }, [selectedNiche, t]);
 
   const onSubmit = (formData: FormData) => {
+    const name = formData.name.trim();
     const angle = formData.angle.trim();
+    // angle === brief: one creative signal for the whole pipeline
     const bio =
       formData.bio?.trim() && formData.bio.trim().length >= 10
         ? formData.bio.trim()
@@ -168,17 +181,20 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
     const personality =
       formData.personality?.trim() && formData.personality.trim().length >= 10
         ? formData.personality.trim()
-        : angle;
+        : `${name} : ${angle}`;
     updateData({
-      name: formData.name,
+      name,
       gender: formData.gender,
       angle,
+      brief: angle,
       bio,
       personality,
-      brief: data.brief?.trim() || angle,
       niche: formData.niche,
       age: formData.age,
       isNsfw: formData.isNsfw,
+      nicheProfile:
+        data.nicheProfile ??
+        buildMinimalNicheProfile(formData.niche, angle),
     });
     onNext();
   };
@@ -267,10 +283,44 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
         <p className="text-[11px] leading-relaxed text-slate-500">
           {t("angleHint")}
         </p>
+        {angleChips.length > 0 ? (
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-slate-600">
+              {t("angleChipsHint")}
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {angleChips.map((chip) => {
+                const active = angleValue === chip;
+                return (
+                  <button
+                    key={chip}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() =>
+                      setValue("angle", chip, {
+                        shouldValidate: true,
+                        shouldDirty: true,
+                      })
+                    }
+                    className={cn(
+                      "rounded-full border px-3 py-1.5 text-xs font-medium transition-all",
+                      active
+                        ? "border-primary/50 bg-primary/15 text-foreground"
+                        : "border-border bg-card text-muted-foreground hover:border-foreground/25 hover:text-foreground"
+                    )}
+                  >
+                    {chip}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
         <Input
           {...register("angle")}
           placeholder={t("anglePlaceholder")}
           className={wizardInputClass}
+          maxLength={120}
         />
         {errors.angle && (
           <p className="text-xs text-red-400">{errors.angle.message}</p>
@@ -302,10 +352,15 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
 
       <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
         <CollapsibleTrigger className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-left text-sm text-slate-300 hover:border-white/20">
-          {t("identityDetailsOptional")}
+          <span>
+            {t("identityDetailsOptional")}
+            <span className="mt-0.5 block text-[11px] font-normal text-slate-500">
+              {t("identityDetailsAutoHint")}
+            </span>
+          </span>
           <ChevronDown
             className={cn(
-              "h-4 w-4 text-slate-500 transition-transform",
+              "h-4 w-4 shrink-0 text-slate-500 transition-transform",
               detailsOpen && "rotate-180"
             )}
           />

@@ -872,6 +872,57 @@
     "bioMax": "Max. 300 characters",
     "personalityMin": "Min. 10 characters",
     "personalityMax": "Max. 500 characters",
+    "angleLabel": "Her universe in 1 line",
+    "angleHint": "The positioning that guides bio, personality, and every photo. One clear line is enough.",
+    "anglePlaceholder": "e.g. Parisian fashion, accessible chic…",
+    "angleMin": "Min. 5 characters",
+    "angleMax": "Max. 120 characters",
+    "angleChipsHint": "Suggestions for this niche:",
+    "angleChips": {
+      "FASHION": [
+        "parisian accessible chic",
+        "urban street fashion",
+        "quiet everyday luxury"
+      ],
+      "FITNESS": [
+        "motivational running coach",
+        "soft yoga lifestyle",
+        "aesthetic gym girl"
+      ],
+      "TRAVEL": [
+        "solo Europe traveler",
+        "aesthetic city breaks",
+        "soft weekend adventure"
+      ],
+      "GAMING": [
+        "cozy streaming setup",
+        "gamer girl lifestyle",
+        "casual tech & games"
+      ],
+      "FOOD": [
+        "paris brunch foodie",
+        "easy everyday recipes",
+        "café aesthetic"
+      ],
+      "LIFESTYLE": [
+        "soft morning routine",
+        "paris apartment girl",
+        "slow living aesthetic"
+      ],
+      "TECH": [
+        "accessible tech girl",
+        "gadgets & productivity",
+        "soft digital nomad"
+      ],
+      "ADULT": [
+        "discreet chic sensuality",
+        "soft glam boudoir",
+        "mysterious premium"
+      ]
+    },
+    "nicheSimpleHint": "Pick the main niche — we'll refine the rest next.",
+    "identityDetailsOptional": "Optional details (bio & personality)",
+    "identityDetailsAutoHint": "Leave empty and we'll fill them from her universe.",
     "chooseNiche": "Choose a niche",
     "namePlaceholder": "e.g. Sarah, Emma, Alex…",
     "namePlaceholderRotating": "e.g. {name}",

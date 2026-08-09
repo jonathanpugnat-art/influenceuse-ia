@@ -1,6 +1,8 @@
 import type { WizardData } from "@/hooks/use-influencer-wizard";
 
 export function isIdentityStepComplete(data: WizardData): boolean {
+  // Primary signal: creative universe (angle/brief). Bio+personality remain a
+  // legacy escape hatch for older drafts.
   const angle = (data.angle ?? data.brief ?? "").trim();
   const hasAngleOrBio =
     angle.length >= 5 ||
