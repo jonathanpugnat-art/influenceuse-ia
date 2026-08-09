@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertTriangle, ArrowRight, ChevronDown } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { AlertTriangle, ArrowRight, ChevronDown, Sparkles } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -34,7 +34,7 @@ import {
   getNsfwWizardDefaults,
 } from "@/lib/wizard-of-flow";
 import { buildMinimalNicheProfile } from "@/lib/wizard-quick-defaults";
-import { isWizardAngleChipNiche } from "@/lib/wizard-angle-chips";
+import { inspireWizardAngle } from "@/lib/wizard-angle-inspire";
 import { useCurrentPlan } from "@/hooks/use-current-plan";
 import { cn } from "@/lib/utils";
 
@@ -52,6 +52,7 @@ const NICHE_KEYS: Record<string, string> = {
 export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
   const t = useTranslations("wizard");
   const tInfluencer = useTranslations("influencer");
+  const locale = useLocale();
   const { data, updateData } = useInfluencerWizard();
   const { data: plan } = useCurrentPlan();
   const allowNsfw = plan?.features.hasNsfw ?? false;
@@ -162,13 +163,14 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
   const age = watch("age");
   const angleValue = watch("angle");
 
-  const angleChips = useMemo(() => {
-    if (!selectedNiche || !isWizardAngleChipNiche(selectedNiche)) return [];
-    const raw = t.raw(`angleChips.${selectedNiche}`);
-    return Array.isArray(raw)
-      ? raw.filter((item): item is string => typeof item === "string")
-      : [];
-  }, [selectedNiche, t]);
+  const onInspireAngle = () => {
+    const next = inspireWizardAngle(
+      selectedNiche,
+      locale.startsWith("en") ? "en" : "fr",
+      angleValue
+    );
+    setValue("angle", next, { shouldValidate: true, shouldDirty: true });
+  };
 
   const onSubmit = (formData: FormData) => {
     const name = formData.name.trim();
@@ -279,49 +281,29 @@ export function WizardStepIdentity({ onNext }: { onNext: () => void }) {
       </div>
 
       <div className="space-y-2">
-        <Eyebrow>{t("angleLabel")}</Eyebrow>
-        <p className="text-[11px] leading-relaxed text-slate-500">
-          {t("angleHint")}
-        </p>
-        {angleChips.length > 0 ? (
-          <div className="space-y-1.5">
-            <p className="text-[10px] font-medium uppercase tracking-wide text-slate-600">
-              {t("angleChipsHint")}
+        <div className="flex items-end justify-between gap-3">
+          <div className="min-w-0 space-y-1">
+            <Eyebrow>{t("angleLabel")}</Eyebrow>
+            <p className="text-[11px] leading-relaxed text-slate-500">
+              {t("angleHint")}
             </p>
-            <div className="flex flex-wrap gap-1.5">
-              {angleChips.map((chip) => {
-                const active = angleValue === chip;
-                return (
-                  <button
-                    key={chip}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() =>
-                      setValue("angle", chip, {
-                        shouldValidate: true,
-                        shouldDirty: true,
-                      })
-                    }
-                    className={cn(
-                      "rounded-full border px-3 py-1.5 text-xs font-medium transition-all",
-                      active
-                        ? "border-primary/50 bg-primary/15 text-foreground"
-                        : "border-border bg-card text-muted-foreground hover:border-foreground/25 hover:text-foreground"
-                    )}
-                  >
-                    {chip}
-                  </button>
-                );
-              })}
-            </div>
           </div>
-        ) : null}
+          <button
+            type="button"
+            onClick={onInspireAngle}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-foreground/25 hover:text-foreground"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            {t("angleInspireCta")}
+          </button>
+        </div>
         <Input
           {...register("angle")}
           placeholder={t("anglePlaceholder")}
           className={wizardInputClass}
           maxLength={120}
         />
+        <p className="text-[11px] text-slate-600">{t("angleInspireHint")}</p>
         {errors.angle && (
           <p className="text-xs text-red-400">{errors.angle.message}</p>
         )}

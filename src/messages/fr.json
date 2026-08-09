@@ -872,53 +872,12 @@
     "personalityMin": "Min. 10 caractères",
     "personalityMax": "Max. 500 caractères",
     "angleLabel": "Son univers en 1 phrase",
-    "angleHint": "Le positionnement qui guide bio, personnalité et toutes les photos. Une ligne claire suffit.",
-    "anglePlaceholder": "Ex : parisienne mode, chic accessible…",
+    "angleHint": "Écris ce qui la rend unique — lieu, vibe, style de contenu. Ça guide bio, personnalité et photos.",
+    "anglePlaceholder": "Ex : Lille, street soft, looks café terrasse…",
     "angleMin": "Min. 5 caractères",
     "angleMax": "Max. 120 caractères",
-    "angleChipsHint": "Suggestions pour cette niche :",
-    "angleChips": {
-      "FASHION": [
-        "parisienne chic accessible",
-        "street fashion urbain",
-        "luxe discret quotidien"
-      ],
-      "FITNESS": [
-        "coach running motivation",
-        "yoga soft lifestyle",
-        "gym girl esthétique"
-      ],
-      "TRAVEL": [
-        "voyageuse solo Europe",
-        "city break esthétique",
-        "aventure douce weekend"
-      ],
-      "GAMING": [
-        "setup cozy streaming",
-        "gamer girl lifestyle",
-        "tech & jeux casual"
-      ],
-      "FOOD": [
-        "foodie paris brunch",
-        "recettes faciles du quotidien",
-        "café aesthetic"
-      ],
-      "LIFESTYLE": [
-        "soft morning routine",
-        "apartment girl paris",
-        "vie lente & esthétique"
-      ],
-      "TECH": [
-        "tech girl accessible",
-        "gadgets & productivité",
-        "digital nomad soft"
-      ],
-      "ADULT": [
-        "sensualité chic discrète",
-        "boudoir soft glam",
-        "mystérieuse premium"
-      ]
-    },
+    "angleInspireCta": "Surprends-moi",
+    "angleInspireHint": "Bloquée ? Tire une idée unique, puis modifie-la pour qu’elle te ressemble.",
     "nicheSimpleHint": "Choisis la niche principale — on affinera le reste ensuite.",
     "identityDetailsOptional": "Détails optionnels (bio & personnalité)",
     "identityDetailsAutoHint": "Si tu laisses vide, on les remplit depuis son univers.",
