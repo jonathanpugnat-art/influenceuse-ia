@@ -34,10 +34,16 @@ import {
 } from "./apify/mappers";
 import {
   resolveInstagramHashtags,
+  resolveMinVideoViews,
   resolveTikTokCountry,
   resolveTikTokPeriod,
   resolveTikTokVideoHashtags,
+  resolveTrendsFetchLimit,
 } from "./apify/env-config";
+import {
+  keepHighReachItem,
+  rankByReach,
+} from "./apify/apify-provider";
 
 /** Exported for unit tests. */
 export const __test__ = {
@@ -54,5 +60,9 @@ export const __test__ = {
   resolveTikTokPeriod,
   resolveInstagramHashtags,
   resolveTikTokVideoHashtags,
+  resolveTrendsFetchLimit,
+  resolveMinVideoViews,
+  keepHighReachItem,
+  rankByReach,
   dedupeTrendItems,
 };

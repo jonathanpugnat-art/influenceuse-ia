@@ -133,6 +133,7 @@ export function mapTikTokRow(
     description,
     hashtags: [name],
     growthScore: viewsToGrowthScore(views),
+    viewCount: typeof views === "number" ? views : undefined,
     sourceUrl: `https://www.tiktok.com/tag/${encodeURIComponent(name)}`,
     nicheTags: niches,
     isNsfw: false,

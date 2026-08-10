@@ -9,13 +9,16 @@ import {
   APIFY_INSTAGRAM_ACTOR_DEFAULT,
   APIFY_TIKTOK_ACTOR_DEFAULT,
   APIFY_TIKTOK_VIDEO_ACTOR_DEFAULT,
+  TIKTOK_RESULTS_PER_HASHTAG_CAP,
 } from "./constants";
 import {
   isTikTokVideoFetchEnabled,
   resolveInstagramHashtags,
+  resolveMinVideoViews,
   resolveTikTokCountry,
   resolveTikTokPeriod,
   resolveTikTokVideoHashtags,
+  resolveTrendsFetchLimit,
 } from "./env-config";
 import {
   aggregateInstagramPosts,
@@ -26,6 +29,30 @@ import {
 } from "./mappers";
 import { buildTikTokHashtagActorInput } from "./tiktok-hashtag-actor";
 import { runApifyActor } from "./run-actor";
+
+/** Prefer raw view counts, then growthScore. */
+export function rankByReach(a: RawTrendItem, b: RawTrendItem): number {
+  const av = a.viewCount ?? 0;
+  const bv = b.viewCount ?? 0;
+  if (bv !== av) return bv - av;
+  return (b.growthScore ?? 0) - (a.growthScore ?? 0);
+}
+
+export function keepHighReachItem(
+  item: RawTrendItem,
+  minViews: number
+): boolean {
+  if (minViews <= 0) return true;
+  // Hashtag-level signals are Creative Center aggregates — keep them.
+  if (item.mediaKind === "hashtag_signal" || item.mediaKind === "carousel") {
+    return true;
+  }
+  if (typeof item.viewCount === "number") {
+    return item.viewCount >= minViews;
+  }
+  // Unknown views: keep only if growthScore already looks viral (~100k+).
+  return (item.growthScore ?? 0) >= 50;
+}
 
 export class ApifyTrendsProvider implements TrendsProvider {
   readonly id = "apify";
@@ -39,14 +66,16 @@ export class ApifyTrendsProvider implements TrendsProvider {
       throw new Error("ApifyTrendsProvider is missing APIFY_TOKEN");
     }
     const token = process.env.APIFY_TOKEN!;
-    const limit = ctx?.limit ?? 60;
-    const videoTarget = Math.ceil(limit * 0.7);
-    const signalTarget = Math.max(0, limit - videoTarget);
+    const limit = resolveTrendsFetchLimit(ctx?.limit);
+    // Oversample videos so min-view filter still fills the feed.
+    const videoTarget = Math.ceil(limit * 0.85);
+    const signalTarget = Math.max(20, Math.ceil(limit * 0.25));
+    const minViews = resolveMinVideoViews();
 
     const hashtagSignals = await this.fetchTikTok(
       token,
       ctx,
-      Math.min(15, signalTarget)
+      Math.min(40, signalTarget)
     ).catch((err) => {
       console.error("[trends/apify] TikTok hashtag sub-fetch failed:", err);
       return [] as RawTrendItem[];
@@ -61,7 +90,7 @@ export class ApifyTrendsProvider implements TrendsProvider {
           ? this.fetchTikTokVideos(token, ctx, videoTarget, trendingTags)
           : Promise.resolve([]),
         this.fetchInstagramVideos(token, videoTarget),
-        this.fetchInstagram(token, Math.min(12, signalTarget)),
+        this.fetchInstagram(token, Math.min(24, signalTarget)),
       ]);
 
     const out: RawTrendItem[] = [];
@@ -102,9 +131,11 @@ export class ApifyTrendsProvider implements TrendsProvider {
     }
 
     const deduped = dedupeTrendItems(out);
-    return deduped
-      .sort((a, b) => (b.growthScore ?? 0) - (a.growthScore ?? 0))
-      .slice(0, limit);
+    const filtered = deduped.filter((item) => keepHighReachItem(item, minViews));
+    // If the bar was too high, fall back to unfiltered ranked list so cron
+    // never returns an empty feed after a successful scrape.
+    const pool = filtered.length >= Math.min(20, limit) ? filtered : deduped;
+    return pool.sort(rankByReach).slice(0, limit);
   }
 
   private async fetchTikTokVideos(
@@ -118,22 +149,31 @@ export class ApifyTrendsProvider implements TrendsProvider {
       process.env.APIFY_TIKTOK_VIDEO_ACTOR?.trim() ||
       APIFY_TIKTOK_VIDEO_ACTOR_DEFAULT;
     const hashtags = resolveTikTokVideoHashtags(trendingHashtagNames);
-    const perTag = Math.max(2, Math.ceil(limit / hashtags.length));
+    const perTag = Math.max(
+      5,
+      Math.min(
+        TIKTOK_RESULTS_PER_HASHTAG_CAP,
+        Math.ceil((limit * 1.5) / hashtags.length)
+      )
+    );
     const downloadVideos =
       process.env.TRENDS_DOWNLOAD_VIDEOS?.trim().toLowerCase() === "true";
     const downloadCovers =
       process.env.TRENDS_DOWNLOAD_COVERS?.trim().toLowerCase() !== "false";
+    const minViews = resolveMinVideoViews();
     const input: Record<string, unknown> = {
       hashtags,
-      resultsPerPage: Math.min(perTag, 8),
+      resultsPerPage: perTag,
       shouldDownloadVideos: downloadVideos,
       shouldDownloadCovers: downloadCovers,
       proxyConfiguration: { useApifyProxy: true },
     };
     const rows = await runApifyActor<TikTokVideoRow>(actorId, input, token);
     return rows
+      .filter((row) => minViews <= 0 || (row.playCount ?? 0) >= minViews)
       .map((row) => mapTikTokVideoRow(row))
       .filter((r): r is RawTrendItem => r !== null)
+      .sort(rankByReach)
       .slice(0, limit);
   }
 
@@ -145,7 +185,8 @@ export class ApifyTrendsProvider implements TrendsProvider {
     const actorId =
       process.env.APIFY_INSTAGRAM_ACTOR?.trim() || APIFY_INSTAGRAM_ACTOR_DEFAULT;
     const hashtags = resolveInstagramHashtags();
-    const perHashtag = Math.max(8, Math.ceil((limit * 3) / hashtags.length));
+    const perHashtag = Math.max(12, Math.ceil((limit * 4) / hashtags.length));
+    const minViews = resolveMinVideoViews();
     const input: Record<string, unknown> = {
       hashtags,
       resultsType: "posts",
@@ -157,9 +198,15 @@ export class ApifyTrendsProvider implements TrendsProvider {
       token
     );
     const videos = rows
+      .filter((row) => {
+        const views = row.videoViewCount ?? row.playCount ?? 0;
+        // Keep video posts; if views missing, map later and rely on final filter.
+        if (minViews > 0 && views > 0 && views < minViews) return false;
+        return true;
+      })
       .map((row) => mapInstagramVideoPost(row))
       .filter((r): r is RawTrendItem => r !== null)
-      .sort((a, b) => (b.growthScore ?? 0) - (a.growthScore ?? 0));
+      .sort(rankByReach);
     return videos.slice(0, limit);
   }
 
@@ -195,7 +242,7 @@ export class ApifyTrendsProvider implements TrendsProvider {
     const actorId =
       process.env.APIFY_INSTAGRAM_ACTOR?.trim() || APIFY_INSTAGRAM_ACTOR_DEFAULT;
     const hashtags = resolveInstagramHashtags();
-    const perHashtag = Math.max(5, Math.ceil((limit * 10) / hashtags.length));
+    const perHashtag = Math.max(8, Math.ceil((limit * 12) / hashtags.length));
     const input: Record<string, unknown> = {
       hashtags,
       resultsType: "posts",
@@ -203,9 +250,7 @@ export class ApifyTrendsProvider implements TrendsProvider {
     };
     const rows = await runApifyActor<InstagramPostRow>(actorId, input, token);
     const aggregated = aggregateInstagramPosts(rows);
-    return aggregated
-      .sort((a, b) => (b.growthScore ?? 0) - (a.growthScore ?? 0))
-      .slice(0, limit);
+    return aggregated.sort(rankByReach).slice(0, limit);
   }
 }
 

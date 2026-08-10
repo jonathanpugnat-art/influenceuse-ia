@@ -189,6 +189,7 @@ export function mapTikTokVideoRow(row: TikTokVideoRow): RawTrendItem | null {
     hashtags: tagNames.length > 0 ? tagNames : ["fyp"],
     soundName: row.musicMeta?.musicName?.slice(0, 200),
     growthScore: viewsToGrowthScore(views),
+    viewCount: typeof views === "number" ? views : undefined,
     sourceUrl: webUrl ?? `https://www.tiktok.com/video/${id}`,
     embedUrl: webUrl,
     thumbnailUrl: cover,
@@ -232,10 +233,11 @@ export function mapInstagramVideoPost(row: InstagramVideoPostRow): RawTrendItem 
     caption.split(/\n/)[0]?.slice(0, 80).trim() ||
     (tags[0] ? `#${tags[0]} reel` : "Instagram reel");
 
-  const engagement =
-    (row.likesCount ?? 0) +
-    5 * (row.commentsCount ?? 0) +
-    (row.videoViewCount ?? row.playCount ?? 0) / 100;
+  const views = row.videoViewCount ?? row.playCount;
+  const engagementProxy =
+    typeof views === "number" && views > 0
+      ? views
+      : (row.likesCount ?? 0) * 20 + (row.commentsCount ?? 0) * 100;
 
   const thumb = row.displayUrl ?? row.thumbnailSrc;
   const videoUrl = row.videoUrl?.startsWith("http") ? row.videoUrl : undefined;
@@ -245,11 +247,15 @@ export function mapInstagramVideoPost(row: InstagramVideoPostRow): RawTrendItem 
     externalId: `apify-instagram-video-${row.id ?? shortCode ?? postUrl}`,
     platform: "INSTAGRAM",
     title,
-    description: caption
-      ? `Caption: "${caption.slice(0, 220)}".`
-      : "Trending Instagram reel.",
+    description: [
+      caption ? `Caption: "${caption.slice(0, 220)}".` : "Trending Instagram reel.",
+      typeof views === "number" ? `${views.toLocaleString("en-US")} views.` : "",
+    ]
+      .filter(Boolean)
+      .join(" "),
     hashtags: tags.length > 0 ? tags : ["reels"],
-    growthScore: viewsToGrowthScore(Math.max(engagement, 1)),
+    growthScore: viewsToGrowthScore(Math.max(engagementProxy, 1)),
+    viewCount: typeof views === "number" ? views : undefined,
     sourceUrl: postUrl ?? `https://www.instagram.com/reel/${shortCode}/`,
     embedUrl: postUrl,
     thumbnailUrl: thumb,

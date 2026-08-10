@@ -231,12 +231,12 @@ describe("trend-provider", () => {
     });
 
     describe("env resolvers", () => {
-      it("resolveTikTokCountry uses ctx.region, then env, then US", () => {
+      it("resolveTikTokCountry uses ctx.region, then env, then FR", () => {
         expect(__test__.resolveTikTokCountry({ region: "fr" })).toBe("FR");
         process.env.APIFY_TIKTOK_COUNTRY = "de";
         expect(__test__.resolveTikTokCountry()).toBe("DE");
         delete process.env.APIFY_TIKTOK_COUNTRY;
-        expect(__test__.resolveTikTokCountry()).toBe("US");
+        expect(__test__.resolveTikTokCountry()).toBe("FR");
       });
       it("resolveTikTokPeriod clamps to allowed values", () => {
         expect(__test__.resolveTikTokPeriod()).toBe("7");
@@ -257,6 +257,85 @@ describe("trend-provider", () => {
         const list = __test__.resolveInstagramHashtags();
         expect(list.length).toBeGreaterThan(0);
         expect(list).toEqual(expect.arrayContaining(["fashion", "fitness"]));
+        expect(list).toEqual(expect.arrayContaining(["grwm", "viral"]));
+      });
+      it("resolveTrendsFetchLimit defaults to 120 and respects env/ctx", () => {
+        expect(__test__.resolveTrendsFetchLimit()).toBe(120);
+        expect(__test__.resolveTrendsFetchLimit(80)).toBe(80);
+        process.env.TRENDS_FETCH_LIMIT = "150";
+        expect(__test__.resolveTrendsFetchLimit()).toBe(150);
+        delete process.env.TRENDS_FETCH_LIMIT;
+      });
+      it("resolveMinVideoViews defaults to 100k", () => {
+        expect(__test__.resolveMinVideoViews()).toBe(100_000);
+        process.env.TRENDS_MIN_VIDEO_VIEWS = "0";
+        expect(__test__.resolveMinVideoViews()).toBe(0);
+        process.env.TRENDS_MIN_VIDEO_VIEWS = "250000";
+        expect(__test__.resolveMinVideoViews()).toBe(250_000);
+        delete process.env.TRENDS_MIN_VIDEO_VIEWS;
+      });
+      it("keepHighReachItem filters low-view videos but keeps hashtag signals", () => {
+        expect(
+          __test__.keepHighReachItem(
+            {
+              externalId: "v1",
+              platform: "TIKTOK",
+              title: "x",
+              hashtags: [],
+              mediaKind: "video",
+              viewCount: 50_000,
+            },
+            100_000
+          )
+        ).toBe(false);
+        expect(
+          __test__.keepHighReachItem(
+            {
+              externalId: "v2",
+              platform: "TIKTOK",
+              title: "x",
+              hashtags: [],
+              mediaKind: "video",
+              viewCount: 500_000,
+            },
+            100_000
+          )
+        ).toBe(true);
+        expect(
+          __test__.keepHighReachItem(
+            {
+              externalId: "h1",
+              platform: "TIKTOK",
+              title: "#fyp",
+              hashtags: ["fyp"],
+              mediaKind: "hashtag_signal",
+              viewCount: 1,
+            },
+            100_000
+          )
+        ).toBe(true);
+      });
+      it("rankByReach prefers higher viewCount", () => {
+        const a = {
+          externalId: "a",
+          platform: "TIKTOK" as const,
+          title: "a",
+          hashtags: [],
+          viewCount: 1_000_000,
+          growthScore: 10,
+        };
+        const b = {
+          externalId: "b",
+          platform: "TIKTOK" as const,
+          title: "b",
+          hashtags: [],
+          viewCount: 200_000,
+          growthScore: 90,
+        };
+        expect([a, b].sort(__test__.rankByReach).map((x) => x.externalId)).toEqual([
+          "a",
+          "b",
+        ]);
       });
     });
   });

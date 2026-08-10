@@ -26,6 +26,7 @@ describe("trend-video-items", () => {
     expect(item?.embedUrl).toContain("tiktok.com");
     expect(item?.mediaUrls).toContain("https://cdn.example.com/cover.jpg");
     expect(item?.hashtags).toEqual(["grwm", "cafe"]);
+    expect(item?.viewCount).toBe(500_000);
   });
 
   it("mapInstagramVideoPost requires video type or videoUrl", () => {

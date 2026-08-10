@@ -16,6 +16,8 @@ export interface RawTrendItem {
   soundName?: string;
   /** Generic "how hot is this" score, 0..100. */
   growthScore?: number;
+  /** Raw play/view count when the provider exposes it (used to rank viral posts). */
+  viewCount?: number;
   sourceUrl?: string;
   thumbnailUrl?: string;
   thumbnailUrlAlt?: string;
