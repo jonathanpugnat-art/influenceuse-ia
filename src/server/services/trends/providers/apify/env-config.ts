@@ -10,7 +10,7 @@ export function resolveTikTokCountry(ctx?: ProviderContext): string {
   if (fromCtx && fromCtx.length === 2) return fromCtx;
   const fromEnv = process.env.APIFY_TIKTOK_COUNTRY?.trim()?.toUpperCase();
   if (fromEnv && fromEnv.length === 2) return fromEnv;
-  return "FR";
+  return "US";
 }
 
 export function resolveTikTokPeriod(): "7" | "30" | "120" {

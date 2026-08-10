@@ -231,12 +231,12 @@ describe("trend-provider", () => {
     });
 
     describe("env resolvers", () => {
-      it("resolveTikTokCountry uses ctx.region, then env, then FR", () => {
+      it("resolveTikTokCountry uses ctx.region, then env, then US", () => {
         expect(__test__.resolveTikTokCountry({ region: "fr" })).toBe("FR");
         process.env.APIFY_TIKTOK_COUNTRY = "de";
         expect(__test__.resolveTikTokCountry()).toBe("DE");
         delete process.env.APIFY_TIKTOK_COUNTRY;
-        expect(__test__.resolveTikTokCountry()).toBe("FR");
+        expect(__test__.resolveTikTokCountry()).toBe("US");
       });
       it("resolveTikTokPeriod clamps to allowed values", () => {
         expect(__test__.resolveTikTokPeriod()).toBe("7");
