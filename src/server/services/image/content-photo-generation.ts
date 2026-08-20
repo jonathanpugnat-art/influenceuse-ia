@@ -24,8 +24,13 @@ import {
   enrichPremiumPhotoPrompt,
 } from "@/lib/prompts/premium-negative";
 import { buildPremiumFaceLockPrompt } from "@/lib/prompts/premium-face-lock-prompt";
-import { isNovitaConfigured, shouldPostModeratePremiumGeneration } from "@/lib/premium-image-config";
+import {
+  isNovitaConfigured,
+  isPremiumUpscaleEnabled,
+  shouldPostModeratePremiumGeneration,
+} from "@/lib/premium-image-config";
 import { runNovitaInstantIdBatch } from "@/server/services/image-providers/novita-instantid.provider";
+import { upscalePremiumImages } from "@/server/services/image-providers/upscale.provider";
 import {
   isContentSafetyFilterError,
   throwSocialSafetyError,
@@ -241,12 +246,15 @@ export async function generateContentImage(
           negativePrompt,
           numImages
         );
+        // Optional finishing pass (pure ESRGAN, no-op unless PREMIUM_UPSCALE).
+        // Runs before moderation so the delivered image is the moderated one.
+        const finalizedUrls = await upscalePremiumImages(novita.urls);
         if (shouldPostModeratePremiumGeneration(enrichedInput.nsfwLevel)) {
-          await assertPremiumImagesModerated(novita.urls);
+          await assertPremiumImagesModerated(finalizedUrls);
         }
 
         const storedUrls = await Promise.all(
-          novita.urls.map(async (url, i) => {
+          finalizedUrls.map(async (url, i) => {
             const filename = `content-${input.influencerId}-${nanoid(6)}-${i}.jpg`;
             return uploadFromUrl(url, filename);
           })
@@ -266,6 +274,7 @@ export async function generateContentImage(
             premiumModel: novita.model,
             nsfwLevel: enrichedInput.nsfwLevel,
             imageInputCount: 1,
+            upscaled: isPremiumUpscaleEnabled(),
           },
         };
       } catch (err) {
@@ -290,8 +299,9 @@ export async function generateContentImage(
         { nsfwLevel: enrichedInput.nsfwLevel }
       );
 
+      const finalizedPremiumUrls = await upscalePremiumImages(premium.urls);
       const storedUrls = await Promise.all(
-        premium.urls.map(async (url, i) => {
+        finalizedPremiumUrls.map(async (url, i) => {
           const filename = `content-${input.influencerId}-${nanoid(6)}-${i}.jpg`;
           return uploadFromUrl(url, filename);
         })
@@ -311,6 +321,7 @@ export async function generateContentImage(
           premiumProvider: premium.provider,
           premiumModel: premium.model,
           nsfwLevel: enrichedInput.nsfwLevel,
+          upscaled: isPremiumUpscaleEnabled(),
         },
       };
     } catch (error) {

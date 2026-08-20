@@ -32,7 +32,19 @@ function compactScene(raw: string): string {
 function clothingBlock(input: PromptBuildInput, tier: PremiumNsfwLevel): string {
   const outfit = input.outfit?.trim();
   if (tier === "explicit") {
-    return "intimate explicit adult content";
+    const subject = input.gender === "male" ? "adult man" : "adult woman";
+    const state = outfit
+      ? `partially undressed from ${outfit}`
+      : "natural nude body";
+    // Vague prompts ("intimate explicit adult content") make SDXL produce
+    // generic, plastic anatomy. Guide realistic proportions + identity while
+    // keeping the wording anatomical rather than pornographic.
+    return [
+      `tasteful explicit adult content, ${subject}, ${state},`,
+      "anatomically correct realistic body proportions, natural body shape,",
+      "natural matte skin with visible pores and subtle imperfections,",
+      "flattering natural pose, same body shape, proportions and curves as the reference",
+    ].join(" ");
   }
   if (tier === "soft") {
     if (outfit) {

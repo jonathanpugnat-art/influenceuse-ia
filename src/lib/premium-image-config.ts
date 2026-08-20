@@ -80,6 +80,57 @@ export function resolveNovitaAdapterStrength(
   return resolveUnitInterval(env.PREMIUM_NOVITA_ADAPTER_STRENGTH?.trim(), 0.75);
 }
 
+/** InstantID sampling steps. Default 40 (more detail than legacy 35). Clamp 20–60. */
+export function resolveNovitaSteps(
+  env: Record<string, string | undefined> = process.env
+): number {
+  const n = env.PREMIUM_NOVITA_STEPS ? Number(env.PREMIUM_NOVITA_STEPS) : 40;
+  return Number.isFinite(n) ? Math.min(60, Math.max(20, Math.round(n))) : 40;
+}
+
+/** InstantID CFG guidance. Default 4.0 (lower than legacy 4.5 = less "fried"). Clamp 1–12. */
+export function resolveNovitaGuidanceScale(
+  env: Record<string, string | undefined> = process.env
+): number {
+  const n = env.PREMIUM_NOVITA_GUIDANCE ? Number(env.PREMIUM_NOVITA_GUIDANCE) : 4.0;
+  return Number.isFinite(n) ? Math.min(12, Math.max(1, n)) : 4.0;
+}
+
+/** InstantID sampler. Default keeps the validated "DPM++ 2M Karras". */
+export function resolveNovitaSampler(
+  env: Record<string, string | undefined> = process.env
+): string {
+  return env.PREMIUM_NOVITA_SAMPLER?.trim() || "DPM++ 2M Karras";
+}
+
+/**
+ * Optional finishing upscaler for Premium outputs. Pure ESRGAN by default
+ * (no generative refine → never alters anatomy or trips content filters).
+ * Disabled unless PREMIUM_UPSCALE is on/true/1.
+ */
+export const DEFAULT_PREMIUM_UPSCALE_MODEL = "nightmareai/real-esrgan" as const;
+
+export function isPremiumUpscaleEnabled(
+  env: Record<string, string | undefined> = process.env
+): boolean {
+  const raw = env.PREMIUM_UPSCALE?.trim().toLowerCase();
+  return raw === "on" || raw === "true" || raw === "1";
+}
+
+export function resolvePremiumUpscaleModel(
+  env: Record<string, string | undefined> = process.env
+): string {
+  return env.PREMIUM_UPSCALE_MODEL?.trim() || DEFAULT_PREMIUM_UPSCALE_MODEL;
+}
+
+/** Upscale factor. Default 2×. Clamp 2–4. */
+export function resolvePremiumUpscaleScale(
+  env: Record<string, string | undefined> = process.env
+): number {
+  const n = env.PREMIUM_UPSCALE_SCALE ? Number(env.PREMIUM_UPSCALE_SCALE) : 2;
+  return Number.isFinite(n) ? Math.min(4, Math.max(2, Math.round(n))) : 2;
+}
+
 export function resolvePremiumTogetherFluxModel(
   env: Record<string, string | undefined> = process.env
 ): string {

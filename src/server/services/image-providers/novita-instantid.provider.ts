@@ -1,8 +1,11 @@
 import {
   resolveNovitaAdapterStrength,
   resolveNovitaApiKey,
+  resolveNovitaGuidanceScale,
   resolveNovitaIdStrength,
   resolveNovitaInstantIdModel,
+  resolveNovitaSampler,
+  resolveNovitaSteps,
 } from "@/lib/premium-image-config";
 import { runWithConcurrency } from "@/server/services/replicate-utils";
 
@@ -54,9 +57,9 @@ async function submitInstantIdTask(
     negative_prompt: negativePrompt,
     id_strength: resolveNovitaIdStrength(),
     adapter_strength: resolveNovitaAdapterStrength(),
-    steps: 35,
-    guidance_scale: 4.5,
-    sampler_name: "DPM++ 2M Karras",
+    steps: resolveNovitaSteps(),
+    guidance_scale: resolveNovitaGuidanceScale(),
+    sampler_name: resolveNovitaSampler(),
     width: 1024,
     height: 1280,
     image_num: 1,
