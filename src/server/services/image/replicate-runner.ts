@@ -27,6 +27,7 @@ import type { TogetherFluxInput } from "@/server/services/image-providers/togeth
 import {
   MODEL_SFW_KONTEXT,
   MODEL_SFW_NANO,
+  MODEL_SFW_SEEDREAM,
   MODEL_SFW_T2I,
 } from "./model-constants";
 
@@ -91,6 +92,28 @@ function sanitizeParamsForModel(
       out.aspect_ratio = params.aspect_ratio;
     if (typeof params.output_format === "string")
       out.output_format = params.output_format;
+    return out;
+  }
+
+  if (model === MODEL_SFW_SEEDREAM) {
+    const imgs = params.image_input;
+    const image_input: string[] = Array.isArray(imgs)
+      ? imgs
+          .filter((u): u is string => typeof u === "string" && u.startsWith("http"))
+          .slice(0, 10)
+      : typeof imgs === "string" && imgs.startsWith("http")
+        ? [imgs]
+        : [];
+    const out: Record<string, unknown> = {
+      prompt: String(params.prompt ?? ""),
+      image_input,
+    };
+    if (typeof params.size === "string") out.size = params.size;
+    if (typeof params.aspect_ratio === "string")
+      out.aspect_ratio = params.aspect_ratio;
+    if (typeof params.sequential_image_generation === "string")
+      out.sequential_image_generation = params.sequential_image_generation;
+    if (typeof params.max_images === "number") out.max_images = params.max_images;
     return out;
   }
 
@@ -246,7 +269,9 @@ export async function runMultiplePredictions(
   }
 
   const tasks: Array<() => Promise<string[]>> = [];
-  if (model === MODEL_SFW_NANO) {
+  if (model === MODEL_SFW_NANO || model === MODEL_SFW_SEEDREAM) {
+    // Neither model exposes a seed on Replicate — vary the prompt per call so
+    // multi-image runs return distinct framings instead of near-duplicates.
     for (let i = 0; i < count; i++) {
       tasks.push(() =>
         runReplicatePrediction(model, {

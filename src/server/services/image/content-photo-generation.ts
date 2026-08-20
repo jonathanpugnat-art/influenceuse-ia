@@ -44,8 +44,11 @@ import {
 import {
   MODEL_SFW_KONTEXT,
   MODEL_SFW_NANO,
+  MODEL_SFW_SEEDREAM,
   MODEL_SFW_T2I,
   NANO_BANANA_DEFAULTS,
+  SEEDREAM_DEFAULTS,
+  resolveSfwReferenceModel,
 } from "./model-constants";
 import { runMultiplePredictions } from "./replicate-runner";
 import { applyPhotoPromptEnrichment } from "./photo-enrichment";
@@ -339,19 +342,31 @@ export async function generateContentImage(
     },
   };
 
-  const nanoPlan: ModelPlan = {
-    model: MODEL_SFW_NANO,
-    params: {
-      ...NANO_BANANA_DEFAULTS,
-      prompt,
-      image_input: refs,
-    },
-    fallback: sendsRefImage && input.baseImageUrl ? kontextPlan : undefined,
-  };
+  const sfwReferenceModel = resolveSfwReferenceModel();
+  const sfwReferencePlan: ModelPlan =
+    sfwReferenceModel === MODEL_SFW_SEEDREAM
+      ? {
+          model: MODEL_SFW_SEEDREAM,
+          params: {
+            ...SEEDREAM_DEFAULTS,
+            prompt,
+            image_input: refs,
+          },
+          fallback: sendsRefImage && input.baseImageUrl ? kontextPlan : undefined,
+        }
+      : {
+          model: MODEL_SFW_NANO,
+          params: {
+            ...NANO_BANANA_DEFAULTS,
+            prompt,
+            image_input: refs,
+          },
+          fallback: sendsRefImage && input.baseImageUrl ? kontextPlan : undefined,
+        };
 
   let plan: ModelPlan;
   if (sendsRefImage && input.baseImageUrl) {
-    plan = routeKontext ? kontextPlan : nanoPlan;
+    plan = routeKontext ? kontextPlan : sfwReferencePlan;
   } else {
     plan = {
       model: MODEL_SFW_T2I,
@@ -372,7 +387,7 @@ export async function generateContentImage(
       sendsRefImage ? "(face-locked)" : "(no reference)",
       routeKontext
         ? `(borderline → kontext, keywords: ${matchedKeywords.join(", ") || "n/a"})`
-        : "(nano-first)",
+        : `(${plan.model}-first)`,
       refs.length > 1 ? `(${refs.length} identity refs)` : ""
     );
 
