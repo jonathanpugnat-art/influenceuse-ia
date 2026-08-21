@@ -69,6 +69,22 @@ export async function GET(req: NextRequest) {
     const encryptedAccess = encrypt(data.accessToken);
     const encryptedRefresh = data.refreshToken ? encrypt(data.refreshToken) : null;
 
+    // Best-effort creator_info snapshot so the composer can render the
+    // right privacy options immediately after connect. If it fails (e.g.
+    // rate limit) we still save the account — the composer will retry
+    // via the tRPC procedure.
+    let privacyOptions: string[] | undefined;
+    try {
+      const creator = await tiktok.queryCreatorInfo(data.accessToken);
+      privacyOptions = creator.privacyLevelOptions;
+    } catch (err) {
+      console.warn(
+        `[oauth/tiktok] creator_info failed on connect: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    }
+
     await db.socialAccount.upsert({
       where: {
         influencerId_platform: { influencerId, platform: "TIKTOK" },
@@ -81,6 +97,8 @@ export async function GET(req: NextRequest) {
         accessToken: encryptedAccess,
         refreshToken: encryptedRefresh,
         tokenExpiresAt: data.expiresAt,
+        scopes: data.scopes,
+        privacyOptions: privacyOptions ?? undefined,
         isConnected: true,
       },
       update: {
@@ -89,6 +107,8 @@ export async function GET(req: NextRequest) {
         accessToken: encryptedAccess,
         refreshToken: encryptedRefresh,
         tokenExpiresAt: data.expiresAt,
+        scopes: data.scopes,
+        privacyOptions: privacyOptions ?? undefined,
         isConnected: true,
       },
     });
