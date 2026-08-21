@@ -183,6 +183,32 @@ async function publishInstagramContent(params: {
 
 const platformValues = ["INSTAGRAM", "TIKTOK", "ONLYFANS"] as const;
 
+const tiktokPrivacyValues = [
+  "PUBLIC_TO_EVERYONE",
+  "MUTUAL_FOLLOW_FRIENDS",
+  "FOLLOWER_OF_CREATOR",
+  "SELF_ONLY",
+] as const;
+
+/** Social Publish V1 fields exposed on schedule / publishNow inputs. */
+const socialPublishOptions = z.object({
+  firstComment: z.string().max(2200).optional(),
+  shareToFeed: z.boolean().optional(),
+  tiktokPrivacyLevel: z.enum(tiktokPrivacyValues).optional(),
+});
+
+/**
+ * Clamp the TikTok privacy level to SELF_ONLY while the app is unaudited.
+ * Belt-and-suspenders: the service layer already enforces this, but doing it
+ * here avoids persisting a level we know will be rewritten at publish time.
+ */
+function clampTiktokPrivacy(
+  level: (typeof tiktokPrivacyValues)[number] | undefined
+): (typeof tiktokPrivacyValues)[number] | undefined {
+  if (!level) return undefined;
+  return tiktok.isTikTokAuditApproved() ? level : "SELF_ONLY";
+}
+
 // ──────────────────────────────────────────────
 // Router
 // ──────────────────────────────────────────────
@@ -193,11 +219,13 @@ export const publishRouter = createTRPCRouter({
    */
   scheduleContent: protectedProcedure
     .input(
-      z.object({
-        contentId: z.string(),
-        platforms: z.array(z.enum(platformValues)).min(1),
-        scheduledAt: z.string().transform((s) => new Date(s)),
-      })
+      z
+        .object({
+          contentId: z.string(),
+          platforms: z.array(z.enum(platformValues)).min(1),
+          scheduledAt: z.string().transform((s) => new Date(s)),
+        })
+        .merge(socialPublishOptions)
     )
     .mutation(async ({ ctx, input }) => {
       const user = await getDbUser(ctx.userId);
@@ -223,6 +251,11 @@ export const publishRouter = createTRPCRouter({
           status: "SCHEDULED",
           platforms: input.platforms,
           scheduledAt: input.scheduledAt,
+          firstComment: input.firstComment ?? null,
+          shareToFeed: input.shareToFeed ?? true,
+          tiktokPrivacyLevel: clampTiktokPrivacy(input.tiktokPrivacyLevel) ?? null,
+          // Aura only ever publishes AI content — hardcoded.
+          isAiGenerated: true,
         },
       });
 
@@ -261,14 +294,43 @@ export const publishRouter = createTRPCRouter({
    */
   publishNow: protectedProcedure
     .input(
-      z.object({
-        contentId: z.string(),
-        platforms: z.array(z.enum(platformValues)).min(1),
-      })
+      z
+        .object({
+          contentId: z.string(),
+          platforms: z.array(z.enum(platformValues)).min(1),
+        })
+        .merge(socialPublishOptions)
     )
     .mutation(async ({ ctx, input }) => {
       const user = await getDbUser(ctx.userId);
       const content = await verifyContentOwnership(input.contentId, user.id);
+
+      // Persist V1 publish fields BEFORE flipping the status so a concurrent
+      // scheduler tick doesn't publish with stale metadata.
+      if (
+        input.firstComment !== undefined ||
+        input.shareToFeed !== undefined ||
+        input.tiktokPrivacyLevel !== undefined
+      ) {
+        await db.content.update({
+          where: { id: input.contentId },
+          data: {
+            ...(input.firstComment !== undefined
+              ? { firstComment: input.firstComment || null }
+              : {}),
+            ...(input.shareToFeed !== undefined
+              ? { shareToFeed: input.shareToFeed }
+              : {}),
+            ...(input.tiktokPrivacyLevel !== undefined
+              ? {
+                  tiktokPrivacyLevel:
+                    clampTiktokPrivacy(input.tiktokPrivacyLevel) ?? null,
+                }
+              : {}),
+            isAiGenerated: true,
+          },
+        });
+      }
 
       if (content.status !== "READY" && content.status !== "SCHEDULED") {
         throw new TRPCError({
@@ -473,6 +535,96 @@ export const publishRouter = createTRPCRouter({
         buildSignedOAuthState(input.influencerId, user.id)
       );
       return { url };
+    }),
+
+  /**
+   * getTiktokCreatorInfo — Query the connected TikTok account to know which
+   * privacy_level values are allowed in Direct Post, whether comments/duet
+   * /stitch are enabled and the audit gating. Called by the composer.
+   *
+   * Un-audited apps typically return ["SELF_ONLY"]. The `auditApproved` flag
+   * (TIKTOK_AUDIT_APPROVED env) is exposed so the UI can show the sandbox
+   * banner even before the API call resolves.
+   */
+  getTiktokCreatorInfo: protectedProcedure
+    .input(z.object({ influencerId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      await verifyInfluencerOwnership(input.influencerId, ctx.userId);
+      const account = await db.socialAccount.findFirst({
+        where: {
+          influencerId: input.influencerId,
+          platform: "TIKTOK",
+          isConnected: true,
+        },
+        select: {
+          id: true,
+          accessToken: true,
+          tokenExpiresAt: true,
+          privacyOptions: true,
+        },
+      });
+      const auditApproved = tiktok.isTikTokAuditApproved();
+      if (!account?.accessToken) {
+        return {
+          connected: false as const,
+          auditApproved,
+          privacyLevelOptions: ["SELF_ONLY"] as ReadonlyArray<
+            (typeof tiktokPrivacyValues)[number]
+          >,
+          commentDisabled: false,
+          duetDisabled: false,
+          stitchDisabled: false,
+          creatorNickname: null as string | null,
+          creatorUsername: null as string | null,
+          creatorAvatarUrl: null as string | null,
+        };
+      }
+      const accessToken = decrypt(account.accessToken);
+      try {
+        const info = await tiktok.queryCreatorInfo(accessToken);
+        // Persist the fresh snapshot so the composer can render offline.
+        await db.socialAccount
+          .update({
+            where: { id: account.id },
+            data: { privacyOptions: info.privacyLevelOptions },
+          })
+          .catch(() => undefined);
+        return {
+          connected: true as const,
+          auditApproved,
+          privacyLevelOptions: info.privacyLevelOptions,
+          commentDisabled: info.commentDisabled,
+          duetDisabled: info.duetDisabled,
+          stitchDisabled: info.stitchDisabled,
+          creatorNickname: info.creatorNickname,
+          creatorUsername: info.creatorUsername,
+          creatorAvatarUrl: info.creatorAvatarUrl,
+        };
+      } catch (err) {
+        // Fall back to the cached snapshot if the live call fails
+        // (rate limit, transient network error, expired token in transit).
+        const cached = Array.isArray(account.privacyOptions)
+          ? (account.privacyOptions as string[]).filter((v): v is
+              | "PUBLIC_TO_EVERYONE"
+              | "MUTUAL_FOLLOW_FRIENDS"
+              | "FOLLOWER_OF_CREATOR"
+              | "SELF_ONLY" =>
+              (tiktokPrivacyValues as readonly string[]).includes(v)
+            )
+          : [];
+        return {
+          connected: true as const,
+          auditApproved,
+          privacyLevelOptions: cached.length > 0 ? cached : ["SELF_ONLY"],
+          commentDisabled: false,
+          duetDisabled: false,
+          stitchDisabled: false,
+          creatorNickname: null,
+          creatorUsername: null,
+          creatorAvatarUrl: null,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
     }),
 
   /**
