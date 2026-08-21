@@ -11,6 +11,7 @@ const mockDb = vi.hoisted(() => ({
     update: vi.fn(),
   },
   influencerAnalytics: { create: vi.fn() },
+  generationJob: { findMany: vi.fn() },
 }));
 
 vi.mock("@/server/db", () => ({ db: mockDb }));
@@ -54,6 +55,7 @@ describe("influencer router", () => {
     mockDb.user.findUnique.mockResolvedValue(dbUser);
     mockDb.influencer.count.mockResolvedValue(0);
     mockDb.influencerAnalytics.create.mockResolvedValue({});
+    mockDb.generationJob.findMany.mockResolvedValue([]);
   });
 
   describe("getAll", () => {
@@ -314,6 +316,89 @@ describe("influencer router", () => {
       await expect(caller.influencer.getById({ id: "inf-1" })).rejects.toMatchObject(
         { code: "NOT_FOUND" }
       );
+    });
+
+    // QA face-lock bug: the feed used to receive contents without any error
+    // context, so a FAILED photo showed a raw "FAILED" badge with no way to
+    // learn why. `getById` now folds the latest GenerationJob.error into each
+    // FAILED content, formatted via `formatGenerationErrorForUser` so the
+    // face-lock French copy reaches the tile + modal.
+    it("attaches formatted French error message to FAILED contents", async () => {
+      mockDb.influencer.findUnique.mockResolvedValue({
+        ...sampleInfluencer,
+        userId: "user-db-1",
+        socialAccounts: [],
+        analytics: {},
+        contents: [
+          {
+            id: "content-ok",
+            status: "READY",
+            contentMode: "SFW",
+            type: "PHOTO",
+            mediaUrls: ["https://cdn/x.jpg"],
+            thumbnailUrl: "https://cdn/x.jpg",
+            platforms: [],
+            caption: null,
+          },
+          {
+            id: "content-failed",
+            status: "FAILED",
+            contentMode: "SFW",
+            type: "PHOTO",
+            mediaUrls: [],
+            thumbnailUrl: null,
+            platforms: [],
+            caption: null,
+          },
+        ],
+        _count: { contents: 2 },
+      });
+      mockDb.generationJob.findMany.mockResolvedValue([
+        { contentId: "content-failed", error: "[face-lock] PuLID timed out" },
+      ]);
+
+      const caller = createCaller(mockTRPCContext("clerk-123"));
+      const result = await caller.influencer.getById({ id: "inf-1" });
+
+      expect(mockDb.generationJob.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { contentId: { in: ["content-failed"] } },
+        })
+      );
+      expect(result.contents).toHaveLength(2);
+      const ok = result.contents.find((c) => c.id === "content-ok")!;
+      const failed = result.contents.find((c) => c.id === "content-failed")!;
+      expect(ok.errorMessage).toBeNull();
+      expect(failed.errorMessage).toBeTruthy();
+      expect(failed.errorMessage).toContain("verrouillage du visage");
+    });
+
+    it("returns null errorMessage and skips the job lookup when nothing failed", async () => {
+      mockDb.influencer.findUnique.mockResolvedValue({
+        ...sampleInfluencer,
+        userId: "user-db-1",
+        socialAccounts: [],
+        analytics: {},
+        contents: [
+          {
+            id: "content-ok",
+            status: "READY",
+            contentMode: "SFW",
+            type: "PHOTO",
+            mediaUrls: ["https://cdn/x.jpg"],
+            thumbnailUrl: "https://cdn/x.jpg",
+            platforms: [],
+            caption: null,
+          },
+        ],
+        _count: { contents: 1 },
+      });
+
+      const caller = createCaller(mockTRPCContext("clerk-123"));
+      const result = await caller.influencer.getById({ id: "inf-1" });
+
+      expect(mockDb.generationJob.findMany).not.toHaveBeenCalled();
+      expect(result.contents[0].errorMessage).toBeNull();
     });
   });
 

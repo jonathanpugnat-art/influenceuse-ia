@@ -15,6 +15,7 @@ import type { Plan } from "@/generated/prisma/client";
 import { getDbUser } from "@/server/helpers/get-db-user";
 import { parseIdentityPack } from "@/lib/identity-pack";
 import { nicheProfileSchema } from "@/lib/niche-profile";
+import { formatGenerationErrorForUser } from "@/lib/generation-errors";
 
 // ──────────────────────────────────────────────
 // Helpers
@@ -152,7 +153,46 @@ export const influencerRouter = createTRPCRouter({
         });
       }
 
-      return stripInfluencerBrief(influencer);
+      // Fold the latest generation job's error into each failed content so the
+      // feed UI can show a formatted French message (and open a details modal)
+      // instead of a raw "FAILED" badge. See generation-errors.ts for the
+      // face-lock / social-safety / premium / etc mapping.
+      const failedContentIds = influencer.contents
+        .filter((c) => c.status === "FAILED")
+        .map((c) => c.id);
+
+      const errorByContentId = new Map<string, string | null>();
+      if (failedContentIds.length > 0) {
+        const jobs = await db.generationJob.findMany({
+          where: { contentId: { in: failedContentIds } },
+          orderBy: { createdAt: "desc" },
+          select: { contentId: true, error: true },
+        });
+        for (const job of jobs) {
+          if (!job.contentId) continue;
+          if (!errorByContentId.has(job.contentId)) {
+            errorByContentId.set(job.contentId, job.error ?? null);
+          }
+        }
+      }
+
+      const contentsWithError = influencer.contents.map((content) => {
+        if (content.status !== "FAILED") {
+          return { ...content, errorMessage: null as string | null };
+        }
+        const rawError = errorByContentId.get(content.id) ?? null;
+        return {
+          ...content,
+          errorMessage: formatGenerationErrorForUser(rawError, {
+            contentMode: content.contentMode === "NSFW" ? "NSFW" : "SFW",
+          }),
+        };
+      });
+
+      return {
+        ...stripInfluencerBrief(influencer),
+        contents: contentsWithError,
+      };
     }),
 
   /**

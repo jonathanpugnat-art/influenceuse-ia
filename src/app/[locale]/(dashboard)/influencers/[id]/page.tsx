@@ -338,6 +338,7 @@ export default function InfluencerDetailPage({
               thumbnailUrl: c.thumbnailUrl,
               platforms: c.platforms,
               caption: c.caption,
+              errorMessage: c.errorMessage ?? null,
             }))}
             totalContents={influencer._count.contents}
           />
