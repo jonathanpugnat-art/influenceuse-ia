@@ -24,6 +24,9 @@ const NOVITA_TASK_RESULT_URL = "https://api.novita.ai/v3/async/task-result";
 const POLL_INTERVAL_MS = 2500;
 const POLL_TIMEOUT_MS = 120_000;
 
+/** Novita InstantID rejects NegativePrompt longer than 1024 runes. */
+const NOVITA_NEGATIVE_PROMPT_MAX = 1024;
+
 type NovitaSubmitResponse = { task_id?: string };
 type NovitaTaskResult = {
   task?: { status?: string; reason?: string };
@@ -42,6 +45,22 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Truncate at a comma boundary when possible so we don't cut mid-token. */
+function clampNovitaNegativePrompt(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.length <= NOVITA_NEGATIVE_PROMPT_MAX) return trimmed;
+  const slice = trimmed.slice(0, NOVITA_NEGATIVE_PROMPT_MAX);
+  const lastComma = slice.lastIndexOf(",");
+  const clamped =
+    lastComma > NOVITA_NEGATIVE_PROMPT_MAX * 0.7
+      ? slice.slice(0, lastComma).trim()
+      : slice.trim();
+  console.warn(
+    `[novita-instantid] negative_prompt truncated ${trimmed.length} → ${clamped.length} (Novita max ${NOVITA_NEGATIVE_PROMPT_MAX})`
+  );
+  return clamped;
+}
+
 async function submitInstantIdTask(
   apiKey: string,
   model: string,
@@ -54,7 +73,7 @@ async function submitInstantIdTask(
     model_name: model,
     face_image_urls: [faceUrl],
     prompt,
-    negative_prompt: negativePrompt,
+    negative_prompt: clampNovitaNegativePrompt(negativePrompt),
     id_strength: resolveNovitaIdStrength(),
     adapter_strength: resolveNovitaAdapterStrength(),
     steps: resolveNovitaSteps(),
