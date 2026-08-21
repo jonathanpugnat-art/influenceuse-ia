@@ -384,6 +384,69 @@ enum WebhookEvent {
   CONTENT_FAILED
   BATCH_COMPLETED
   CONTENT_SCHEDULED
+  REMIX_COMPLETED
+  REMIX_FAILED
+}
+
+/// Viral remix job — user pastes/uploads a TikTok/Reel clip and the
+/// locked character replays the move. Kling O3 video-to-video + elements.
+/// Kept in its own table so the FAL webhook can look up by request_id fast
+/// and so credit-hold / refund logic stays self-contained.
+enum RemixJobStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+model RemixJob {
+  id                  String         @id @default(cuid())
+  userId              String
+  influencerId        String
+  /// "standard" | "pro" — matches REMIX_TIERS in lib/remix-config.
+  tier                String         @default("standard")
+  /// 5 | 10 | 15 — server-clamped to source duration and max 15.
+  durationSec         Int
+  /// Original clip duration reported by the client (seconds). Used to clamp
+  /// duration and for the pre-generate cost preview reconciliation.
+  sourceDurationSec   Float?
+  /// Public URL of the uploaded source MP4/MOV (already on our R2).
+  sourceVideoUrl      String
+  /// Frontal still URL passed as the first `elements[]` reference. Required.
+  frontalImageUrl     String
+  /// 0-3 additional identity references (3/4, full body, profile…). At most
+  /// 3 URLs so `elements + image_urls` stays within Kling's cap of 4.
+  referenceImageUrls  String[]       @default([])
+  /// Preserve original source audio in the output.
+  keepAudio           Boolean        @default(true)
+  /// Prompt sent to Kling. Persisted for debugging + reproducibility.
+  prompt              String         @db.Text
+  /// Credits held on queue (deducted on createRemix). Refunded on FAILED.
+  creditsHeld         Int            @default(0)
+  status              RemixJobStatus @default(PENDING)
+  /// FAL queue `request_id` — the FAL webhook uses this to look us up.
+  falRequestId        String?        @unique
+  /// FAL model id we submitted to (kept for retries / audit).
+  falModel            String
+  /// Optional oEmbed preview payload captured from the URL field.
+  /// { title, authorName, thumbnailUrl, providerName, url } — display only.
+  oembedPreview       Json?
+  /// Final R2 URL for the produced 9:16 MP4.
+  outputVideoUrl      String?
+  /// Short human-readable error for FAILED jobs.
+  error               String?
+  /// Free-form FAL payload / metadata for future audit.
+  metadata            Json?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  completedAt         DateTime?
+
+  @@index([userId])
+  @@index([influencerId])
+  @@index([status])
+  @@index([userId, status])
+  @@index([createdAt])
 }
 
 enum WebhookDeliveryStatus {
