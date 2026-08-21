@@ -185,12 +185,36 @@ model Influencer {
   /// Dataset metadata: { status, imageUrls[], zipUrl?, error? }
   loraDataset           Json?
 
+  // ── Talking-head V1 (voix + Hedra avatar) ───────────────────────────
+  /// ElevenLabs voice id used for every talking-head reel of this character.
+  /// Stored ONCE (Instant Voice Clone or Voice Library pick) so remix /
+  /// talking / future publish features reuse the same voice signature.
+  voiceId               String?
+  /// "elevenlabs" | "library" — where the voiceId comes from. Kept as a
+  /// simple string (no enum) so we can add providers later without a
+  /// migration.
+  voiceProvider         String?
+  /// Free-form label the user picked in the voice picker (library name or
+  /// "Clone Aura {name}"). Purely display, never sent to any provider.
+  voiceLabel            String?
+  /// Timestamp the user accepted the synthetic-voice consent (they own the
+  /// rights to the sample, no celebrity clones). NULL = no talking-head
+  /// generation allowed. Written server-side only.
+  voiceConsentAt        DateTime?
+  /// Public URL of the last cloning sample (audio). Kept for the "re-clone"
+  /// UX; may be NULL when the user picked a library voice.
+  voiceSampleUrl        String?
+  /// ISO code of the primary language used for TTS. Defaults to the user
+  /// locale but overridable per character.
+  voiceLanguage         String?
+
   user           User                 @relation(fields: [userId], references: [id])
   socialAccounts SocialAccount[]
   contents       Content[]
   contentBatches ContentBatch[]
   analytics      InfluencerAnalytics?
   trendRecommendations TrendRecommendation[]
+  talkingHeadJobs      TalkingHeadJob[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -449,6 +473,86 @@ model RemixJob {
   @@index([createdAt])
 }
 
+// ──────────────────────────────────────────────
+// Talking-head V1 (Hedra Avatar + ElevenLabs voice)
+// ──────────────────────────────────────────────
+//
+// A locked character reads a short script on camera. Voice lives on the
+// Influencer (`voiceId`), so the same signature is reused for every reel
+// and future features (remix, publish). Video vendor: Hedra Avatar
+// (together/hedra-avatar). TTS: ElevenLabs (Instant Voice Clone or Voice
+// Library pick — never Default voices, they expire).
+//
+// Credit flow (mirrors RemixJob):
+//   1. Estimate cost from script (2.5 words/s, capped to MAX_TALKING_HEAD_SEC).
+//   2. Hold credits (deductCredits) — refunded via refundCredits on FAILED.
+//   3. Persist row PENDING → PROCESSING → COMPLETED | FAILED | REFUNDED.
+//   4. Poller (/api/cron/poll-talking-head) advances PROCESSING → final states.
+
+enum TalkingHeadJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+model TalkingHeadJob {
+  id                   String               @id @default(cuid())
+  userId               String
+  influencerId         String
+  /// The exact text sent to ElevenLabs. Persisted for reproducibility and
+  /// so the user can see the final version after client-side clamping.
+  script               String               @db.Text
+  /// ElevenLabs voice id resolved at generate-time (may differ later if the
+  /// user re-clones the character voice).
+  voiceId              String
+  /// Whether the character was still using the ElevenLabs Voice Library
+  /// pick at the time (vs a personal clone). Kept for audit.
+  voiceProvider        String               @default("elevenlabs")
+  /// ISO code used for TTS at generate-time.
+  language             String               @default("fr")
+  /// Frontal still URL (the wizard portrait — never a new face-lock pass).
+  portraitImageUrl     String
+  /// Public R2 URL of the synthesized MP3 uploaded by our TTS step.
+  audioUrl             String?
+  /// Duration (seconds) reported by ElevenLabs / probed from the MP3.
+  /// Written before we start the Hedra generation so the credit hold and
+  /// UI cost preview reconcile exactly.
+  audioDurationSec     Float?
+  /// Public R2 URL of the produced 9:16 MP4 (once COMPLETED).
+  videoUrl             String?
+  /// Optional poster JPG (first frame) uploaded to R2.
+  thumbnailUrl         String?
+  /// Hedra asset ids we uploaded (audio + portrait). Kept for debugging;
+  /// Hedra assets are cheap and don't need cleanup.
+  hedraAudioAssetId    String?
+  hedraImageAssetId    String?
+  /// Hedra generation id — the poller uses this to check status.
+  hedraGenerationId    String?              @unique
+  /// Hedra model slug we submitted to (default: together/hedra-avatar).
+  hedraModelSlug       String?
+  /// Credits held on queue (deducted on create). Refunded on FAILED.
+  creditsHeld          Int                  @default(0)
+  status               TalkingHeadJobStatus @default(PENDING)
+  /// Short human-readable error for FAILED jobs.
+  error                String?
+  /// Free-form Hedra payload for future audit.
+  metadata             Json?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  completedAt          DateTime?
+
+  influencer Influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([influencerId])
+  @@index([status])
+  @@index([userId, status])
+  @@index([status, updatedAt])
+  @@index([createdAt])
+}
+
 enum WebhookDeliveryStatus {
   PENDING
   SUCCESS
@@ -584,6 +688,10 @@ model MediaAsset {
   sizeBytes    Int?
   /// Métadonnées libres : dimensions, prompt, palette dominante…
   metadata     Json?
+  /// Talking-head V1 — flip to true for assets produced by a synthesized
+  /// voice (ElevenLabs TTS) or a Hedra avatar reel. The publish flow will
+  /// use this later to attach the mandatory synthetic-voice disclosure.
+  isSyntheticSpeech Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
