@@ -8,6 +8,7 @@ import { PhotoPublishCaptionSection } from "./photo-publish-caption-section";
 import { PhotoPublishHashtagsSection } from "./photo-publish-hashtags-section";
 import { PhotoPublishPlatformSection } from "./photo-publish-platform-section";
 import { PhotoPublishScheduleSection } from "./photo-publish-schedule-section";
+import { PhotoPublishSocialSection } from "./photo-publish-social-section";
 import { PhotoPublishActionsSection } from "./photo-publish-actions-section";
 
 export function PhotoPublish({ mobileSheet = false }: { mobileSheet?: boolean }) {
@@ -40,6 +41,7 @@ export function PhotoPublish({ mobileSheet = false }: { mobileSheet?: boolean })
         <PhotoPublishCaptionSection flow={flow} />
         <PhotoPublishHashtagsSection flow={flow} />
         <PhotoPublishPlatformSection flow={flow} />
+        <PhotoPublishSocialSection flow={flow} />
         <PhotoPublishScheduleSection flow={flow} />
         <PhotoPublishActionsSection flow={flow} />
       </div>
