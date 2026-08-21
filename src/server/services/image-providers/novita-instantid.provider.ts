@@ -22,7 +22,8 @@ const NOVITA_INSTANTID_URL = "https://api.novita.ai/v3/async/instant-id";
 const NOVITA_TASK_RESULT_URL = "https://api.novita.ai/v3/async/task-result";
 
 const POLL_INTERVAL_MS = 2500;
-const POLL_TIMEOUT_MS = 120_000;
+/** RealVisXL InstantID routinely takes 90–120s; keep headroom for queue spikes. */
+const POLL_TIMEOUT_MS = 180_000;
 
 /** Novita InstantID rejects NegativePrompt longer than 1024 runes. */
 const NOVITA_NEGATIVE_PROMPT_MAX = 1024;
