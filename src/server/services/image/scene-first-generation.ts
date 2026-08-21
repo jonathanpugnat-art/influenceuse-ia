@@ -4,19 +4,30 @@ import {
   DEFAULT_IMAGE_PARAMS,
 } from "@/lib/prompts/image-prompts";
 import {
-  buildSceneFirstComposePrompt,
+  buildFaceLockedSceneComposePrompt,
   buildScenePlatePrompt,
   SCENE_FIRST_PLATE_CREDIT,
 } from "@/lib/prompts/scene-first-photo";
 import { softenPromptForEditorial } from "@/lib/prompts/safety-soften";
-import { selectIdentityPackRefs } from "@/lib/identity-pack";
 import { uploadFromUrl } from "@/server/services/storage.service";
-import { isContentSafetyFilterError } from "@/lib/generation-errors";
+import {
+  isContentSafetyFilterError,
+  isFaceLockError,
+  throwFaceLockError,
+  throwMissingFaceReferenceError,
+} from "@/lib/generation-errors";
 import { checkCredits, deductCredits } from "@/server/services/credits.service";
 import { CREDIT_COSTS } from "@/lib/constants";
-import { MODEL_SFW_NANO, MODEL_SFW_T2I, NANO_BANANA_DEFAULTS } from "./model-constants";
+import { MODEL_SFW_T2I } from "./model-constants";
 import { runMultiplePredictions } from "./replicate-runner";
-import { applyPhotoPromptEnrichment, resolveEnrichedSceneAndOutfit } from "./photo-enrichment";
+import {
+  applyPhotoPromptEnrichment,
+  resolveEnrichedSceneAndOutfit,
+} from "./photo-enrichment";
+import {
+  generateFaceLockedImages,
+  hasReadyLora,
+} from "./face-lock-pipeline";
 import type {
   ImageGenerationInput,
   ImageGenerationOutput,
@@ -94,6 +105,31 @@ export async function generateScenePlateImage(
   return { scenePlateUrl, platePrompt };
 }
 
+/**
+ * Scene-first compose — step 2 of the two-step photo workflow.
+ *
+ * Historically this ran on Nano with `[identity refs, plate]` as
+ * `image_input`, which meant Nano regenerated the face from scratch on top
+ * of a wizard portrait it interpreted as a soft hint. That produced "same
+ * outfit, different person" regressions and directly contradicted the
+ * merged face-lock default path (PR #2, `face-lock-pipeline.ts`).
+ *
+ * The compose step now runs the same biometric face-lock pipeline as the
+ * default SFW path:
+ *   * Pro/Agency + trained LoRA READY → FLUX LoRA hybrid with the wizard
+ *     portrait as img2img reference.
+ *   * Everyone else                   → PuLID on the wizard portrait.
+ *
+ * PuLID / LoRA cannot ingest the scene plate as a secondary reference, so
+ * the plate becomes a preview/approval artefact: the scene description that
+ * seeded plate generation is copied into the face-lock prompt so the render
+ * still matches the approved decor. The `scenePlateUrl` is preserved in
+ * output parameters for telemetry and downstream reuse.
+ *
+ * No silent T2I / Nano fallback on face-lock failure — the merged product
+ * rule is "never generate another person", so we surface the existing
+ * `[face-lock]` errors instead.
+ */
 export async function composeImageOnScenePlate(
   userId: string,
   influencerAge: number,
@@ -110,10 +146,10 @@ export async function composeImageOnScenePlate(
   }
 
   const baseUrl = input.baseImageUrl?.trim();
-  if (!baseUrl?.startsWith("http")) {
-    throw new Error(
-      "Portrait de référence requis. Regénère l'image de base de l'influenceuse."
-    );
+  if (!baseUrl || !/^https?:\/\//i.test(baseUrl)) {
+    // Match the default-path guard: face-lock intent + no accessible
+    // portrait → MISSING_FACE_REF, never a silent stranger.
+    throwMissingFaceReferenceError();
   }
   const plateUrl = input.scenePlateUrl.trim();
   if (!plateUrl.startsWith("http")) {
@@ -122,14 +158,7 @@ export async function composeImageOnScenePlate(
 
   const enrichedInput = await applyPhotoPromptEnrichment(input);
 
-  const identityRefs = selectIdentityPackRefs(baseUrl, enrichedInput.identityPack, {
-    pose: enrichedInput.pose,
-    sceneDescription: enrichedInput.sceneDescription,
-    maxTotal: 3,
-  });
-  const imageInput = [...identityRefs, plateUrl].slice(0, 4);
-
-  const composePrompt = buildSceneFirstComposePrompt({
+  const composePrompt = buildFaceLockedSceneComposePrompt({
     gender: influencerStyle.gender,
     age: influencerAge,
     ethnicity: influencerStyle.ethnicity,
@@ -148,44 +177,75 @@ export async function composeImageOnScenePlate(
     lockFace: true,
   });
 
-  const nanoParams: Record<string, unknown> = {
-    ...NANO_BANANA_DEFAULTS,
-    prompt: composePrompt,
-    image_input: imageInput,
-  };
+  const lora = hasReadyLora({
+    loraUrl: input.loraUrl,
+    loraTriggerWord: input.loraTriggerWord,
+  })
+    ? {
+        loraUrl: input.loraUrl!.trim(),
+        triggerWord: input.loraTriggerWord!.trim(),
+      }
+    : undefined;
 
-  let outputUrls: string[];
-  let usedParams = nanoParams;
-  let promptUsed = composePrompt;
+  let facePromptUsed = composePrompt;
   let promptWasSoftened = false;
+  let faceLockResult;
   try {
-    outputUrls = await runMultiplePredictions(MODEL_SFW_NANO, nanoParams, numImages);
+    console.log(
+      `[ai-image] Scene-first compose face-lock (${lora ? "lora" : "pulid"}) — plate ${plateUrl.slice(0, 60)} kept as preview only`
+    );
+    faceLockResult = await generateFaceLockedImages({
+      faceUrl: baseUrl,
+      prompt: facePromptUsed,
+      negativePrompt,
+      numImages,
+      lora,
+    });
   } catch (err) {
-    if (isContentSafetyFilterError(err)) {
-      const soft = softenPromptForEditorial(composePrompt);
-      outputUrls = await runMultiplePredictions(
-        MODEL_SFW_NANO,
-        { ...nanoParams, prompt: soft },
-        numImages
+    if (!isContentSafetyFilterError(err)) {
+      if (isFaceLockError(err)) throw err;
+      const detail = err instanceof Error ? err.message : String(err);
+      console.warn(
+        `[ai-image] Scene-first face-lock failed (${detail.slice(0, 200)}) — surfacing face-lock error instead of dropping to Nano.`
       );
-      usedParams = { ...nanoParams, prompt: soft };
-      promptUsed = soft;
+      throwFaceLockError(detail.slice(0, 200));
+    }
+
+    const soft = softenPromptForEditorial(composePrompt);
+    console.warn(
+      "[ai-image] Scene-first face-lock blocked by safety filter — retrying once with editorial-softened prompt."
+    );
+    try {
+      faceLockResult = await generateFaceLockedImages({
+        faceUrl: baseUrl,
+        prompt: soft,
+        negativePrompt,
+        numImages,
+        lora,
+      });
+      facePromptUsed = soft;
       promptWasSoftened = true;
-    } else {
-      throw err;
+    } catch (retryErr) {
+      if (isFaceLockError(retryErr)) throw retryErr;
+      const detail = retryErr instanceof Error ? retryErr.message : String(retryErr);
+      console.warn(
+        `[ai-image] Scene-first face-lock retry failed (${detail.slice(0, 200)}) — surfacing face-lock error.`
+      );
+      throwFaceLockError(detail.slice(0, 200));
     }
   }
 
   const storedUrls = await Promise.all(
-    outputUrls.map(async (url, i) => {
-      const filename = `content-${input.influencerId}-${nanoid(6)}-${i}.jpg`;
+    faceLockResult.urls.map(async (url, i) => {
+      const ext = faceLockResult!.engine === "pulid" ? "webp" : "jpg";
+      const filename = `content-${input.influencerId}-${nanoid(6)}-${i}.${ext}`;
       return uploadFromUrl(url, filename);
     })
   );
 
   if (!input.omitCreditBilling) {
-    // Partial success is possible (runMultiplePredictions settles per image):
-    // bill on delivered images, never on requested count.
+    // Partial success is possible (face-lock providers may return fewer than
+    // requested): bill on delivered images, never on requested count.
     await deductCredits(
       userId,
       CREDIT_COSTS.PHOTO * Math.min(storedUrls.length, numImages)
@@ -194,15 +254,16 @@ export async function composeImageOnScenePlate(
 
   return {
     imageUrls: storedUrls,
-    promptUsed,
+    promptUsed: facePromptUsed,
     negativePrompt,
     promptWasSoftened,
     parameters: {
-      ...usedParams,
-      contentEngine: "nano",
+      contentEngine: faceLockResult.engine,
+      provider: faceLockResult.provider,
+      model: faceLockResult.model,
       scenePlateUrl: plateUrl,
-      imageInputCount: imageInput.length,
       photoPhase: "final",
+      workflow: "scene_first_face_locked",
     },
   };
 }
