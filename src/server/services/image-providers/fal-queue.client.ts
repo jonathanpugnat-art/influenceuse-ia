@@ -16,13 +16,23 @@ export function isFalKeyConfigured(): boolean {
  * Submit a job to the FAL queue WITHOUT waiting. Returns the real
  * `request_id` so callers can persist it and poll/recover later
  * (important on serverless where the worker may not survive a long job).
+ *
+ * When `webhookUrl` is set FAL will POST the result to that URL when the
+ * job finishes (see https://fal.ai/docs/webhooks). Callers still get the
+ * `request_id` synchronously so the DB row can be persisted before the
+ * webhook can possibly fire back.
  */
 export async function falQueueSubmit(
   modelId: string,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  opts?: { webhookUrl?: string }
 ): Promise<string> {
   const key = getFalKey();
-  const submitRes = await fetch(`${FAL_QUEUE_BASE}/${modelId}`, {
+  const url = new URL(`${FAL_QUEUE_BASE}/${modelId}`);
+  if (opts?.webhookUrl) {
+    url.searchParams.set("fal_webhook", opts.webhookUrl);
+  }
+  const submitRes = await fetch(url.toString(), {
     method: "POST",
     headers: {
       Authorization: `Key ${key}`,

@@ -109,6 +109,10 @@ export default function ContentLibraryPage() {
             <Video className="h-4 w-4" />
             Reel
           </Link>
+          <Link href="/content/remix" className="dash-cta-outline">
+            <Video className="h-4 w-4" />
+            Remix
+          </Link>
         </div>
       </div>
 

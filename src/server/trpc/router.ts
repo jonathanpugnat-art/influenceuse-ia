@@ -15,6 +15,7 @@ import { trendsRouter } from "./routers/trends";
 import { photoAgentRouter } from "./routers/photo-agent";
 import { agentRouter } from "./routers/agent";
 import { basePortraitRouter } from "./routers/base-portrait";
+import { remixRouter } from "./routers/remix";
 
 export const appRouter = createTRPCRouter({
   influencer: influencerRouter,
@@ -37,6 +38,8 @@ export const appRouter = createTRPCRouter({
   trends: trendsRouter,
   // Sprint B — pre-generated base portraits gallery (wizard step 2)
   basePortrait: basePortraitRouter,
+  // Viral Remix V1 — user pastes/uploads clip → locked character replays motion
+  remix: remixRouter,
 });
 
 export type AppRouter = typeof appRouter;
