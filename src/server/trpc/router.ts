@@ -15,6 +15,7 @@ import { trendsRouter } from "./routers/trends";
 import { photoAgentRouter } from "./routers/photo-agent";
 import { agentRouter } from "./routers/agent";
 import { basePortraitRouter } from "./routers/base-portrait";
+import { talkingHeadRouter } from "./routers/talking-head";
 import { remixRouter } from "./routers/remix";
 
 export const appRouter = createTRPCRouter({
@@ -40,6 +41,8 @@ export const appRouter = createTRPCRouter({
   basePortrait: basePortraitRouter,
   // Viral Remix V1 — user pastes/uploads clip → locked character replays motion
   remix: remixRouter,
+  // Talking-head V1 — Hedra Avatar + ElevenLabs voice
+  talkingHead: talkingHeadRouter,
 });
 
 export type AppRouter = typeof appRouter;

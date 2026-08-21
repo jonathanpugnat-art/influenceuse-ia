@@ -164,4 +164,30 @@ export const CREDIT_COSTS = {
   TREND_ANALYSIS_ONE: 0.1,
   /** Vision/text analysis of scraped post media (one trend). */
   TREND_FORMAT_ANALYZE: 0.2,
+  /**
+   * Talking-head V1 (Hedra Avatar + ElevenLabs).
+   *
+   * Floor cost / second ≈ $0.08 (Hedra Character-3 listed at 8 Hedra credits
+   * per second of output; ~$0.01 / Hedra credit on the Creator plan). TTS
+   * via ElevenLabs is a rounding error (~1 EL credit per char). We apply
+   * the same ≥3× margin rule as remix (8 Aura credits/s → billed $0.32/s
+   * assuming 1 Aura credit ≈ $0.04).
+   *
+   * Duration is capped in the service to `MAX_TALKING_HEAD_SEC` so a 30s
+   * reel costs 30 × 8 = 240 credits max. The estimator ceilings to whole
+   * seconds so a 1-word test still holds a full second of credits.
+   */
+  TALKING_HEAD_PER_SEC: 8,
 } as const;
+
+/**
+ * Hard cap for a single talking-head V1 reel. Enforced client-side (the
+ * script counter clamps at ~80 words → ~30s at 2.5 w/s) and server-side
+ * (`clampTalkingHeadDuration`). Do NOT raise this without first checking
+ * Hedra's `duration` cap via `GET /models?types=video`.
+ */
+export const MAX_TALKING_HEAD_SEC = 30;
+/** Word cap that maps to MAX_TALKING_HEAD_SEC at ~2.5 words/sec. */
+export const MAX_TALKING_HEAD_WORDS = 80;
+/** Words-per-second estimate used by the client counter and the cost preview. */
+export const TALKING_HEAD_WORDS_PER_SEC = 2.5;
