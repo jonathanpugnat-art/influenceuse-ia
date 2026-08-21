@@ -62,6 +62,10 @@ type ContentWithInfluencer = {
   thumbnailUrl: string | null;
   scheduledAt: Date | null;
   platforms: Platform[];
+  /** Social Publish V1 fields (all optional to stay backwards compatible). */
+  firstComment?: string | null;
+  shareToFeed?: boolean | null;
+  tiktokPrivacyLevel?: string | null;
   influencer: {
     id: string;
     socialAccounts: Array<{
@@ -90,12 +94,25 @@ export type PublishResultItem = {
  * Publie un contenu sur chaque plateforme demandée.
  * Crée les PublishResult en base et retourne les résultats.
  */
+const DEFAULT_TRANSIENT_RE =
+  /rate.?limit|timeout|ETIMEDOUT|ECONNRESET|ENOTFOUND|EAI_AGAIN|429|5\d\d/i;
+
+function isDefaultTransientError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return DEFAULT_TRANSIENT_RE.test(msg);
+}
+
 /**
- * Retry helper: re-runs `fn` up to 3 times on transient failures (rate-limit,
- * timeouts, 5xx). Permanent errors (token expired, bad request) bubble up
- * immediately so we don't waste retries.
+ * Retry helper: re-runs `fn` up to `maxAttempts` times when `isTransient`
+ * returns true. Permanent errors (token expired, spam risk, bad request…)
+ * bubble up immediately so we don't waste retries.
  */
-async function withRetry<T>(label: string, fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
+async function withRetry<T>(
+  label: string,
+  fn: () => Promise<T>,
+  maxAttempts = 3,
+  isTransient: (err: unknown) => boolean = isDefaultTransientError
+): Promise<T> {
   let lastErr: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -103,8 +120,7 @@ async function withRetry<T>(label: string, fn: () => Promise<T>, maxAttempts = 3
     } catch (err) {
       lastErr = err;
       const msg = err instanceof Error ? err.message : String(err);
-      const transient =
-        /rate.?limit|timeout|ETIMEDOUT|ECONNRESET|ENOTFOUND|EAI_AGAIN|429|5\d\d/i.test(msg);
+      const transient = isTransient(err);
       if (!transient || attempt === maxAttempts) throw err;
       const wait = 1500 * attempt;
       console.warn(`[publisher] ${label} attempt ${attempt} failed (${msg}). Retrying in ${wait}ms...`);
@@ -112,6 +128,39 @@ async function withRetry<T>(label: string, fn: () => Promise<T>, maxAttempts = 3
     }
   }
   throw lastErr;
+}
+
+const TIKTOK_TRANSIENT_CODES = new Set(["rate_limit_exceeded"]);
+const TIKTOK_PERMANENT_CODES = new Set([
+  "spam_risk_too_many_posts",
+  "spam_risk_user_banned_from_posting",
+  "reached_active_user_cap",
+  "unaudited_client_can_only_post_to_private_accounts",
+  "invalid_privacy_level",
+  "url_ownership_unverified",
+  "access_token_invalid",
+  "access_token_expired",
+]);
+
+function isTikTokTransientError(err: unknown): boolean {
+  const code = err && typeof err === "object" && "code" in err ? (err as { code?: string }).code : undefined;
+  if (code && TIKTOK_PERMANENT_CODES.has(code)) return false;
+  if (code && TIKTOK_TRANSIENT_CODES.has(code)) return true;
+  return isDefaultTransientError(err);
+}
+
+function normalizeTikTokPrivacy(
+  value: string | null | undefined
+): "PUBLIC_TO_EVERYONE" | "MUTUAL_FOLLOW_FRIENDS" | "FOLLOWER_OF_CREATOR" | "SELF_ONLY" {
+  switch (value) {
+    case "PUBLIC_TO_EVERYONE":
+    case "MUTUAL_FOLLOW_FRIENDS":
+    case "FOLLOWER_OF_CREATOR":
+    case "SELF_ONLY":
+      return value;
+    default:
+      return "SELF_ONLY";
+  }
 }
 
 export async function publishContent(content: ContentWithInfluencer): Promise<PublishResultItem[]> {
@@ -212,14 +261,34 @@ export async function publishContent(content: ContentWithInfluencer): Promise<Pu
                 igUserId,
                 content.mediaUrls[0],
                 textWithHashtags,
-                content.thumbnailUrl ?? undefined
+                {
+                  thumbnailUrl: content.thumbnailUrl ?? undefined,
+                  // Default true when not explicitly set to false.
+                  shareToFeed: content.shareToFeed !== false,
+                }
               )
             );
+            // First comment is best-effort: a missing scope or a private
+            // account must NOT flip the whole publish to FAILED — Meta
+            // already accepted the reel. Log and move on.
+            const firstComment = content.firstComment?.trim();
+            if (firstComment) {
+              try {
+                await instagram.postComment(accessToken, mediaId, firstComment);
+              } catch (commentErr) {
+                console.warn(
+                  `[publisher] IG first comment failed for media ${mediaId}: ${
+                    commentErr instanceof Error ? commentErr.message : String(commentErr)
+                  }`
+                );
+              }
+            }
             results.push({
               platform,
               status: "SUCCESS",
               externalPostId: mediaId,
               publishedAt: new Date(),
+              metadata: { ig_media_id: mediaId },
             });
           } else {
             results.push({
@@ -241,15 +310,31 @@ export async function publishContent(content: ContentWithInfluencer): Promise<Pu
             });
             break;
           }
-          const { publishId } = await withRetry("tiktok.publishVideo", () =>
-            tiktok.publishVideo(accessToken, videoUrl, textWithHashtags)
+          // Sanitize the requested privacy level. Un-audited apps get
+          // clamped to SELF_ONLY server-side inside `publishVideo`, but we
+          // also default to SELF_ONLY when the client omitted it.
+          const requestedPrivacy = normalizeTikTokPrivacy(content.tiktokPrivacyLevel);
+          // Retry ONLY on transient errors (rate-limit / 5xx). Spam / banned
+          // / privacy-invalid must surface immediately as visible failures.
+          const result = await withRetry(
+            "tiktok.publishVideo",
+            () =>
+              tiktok.publishVideo(accessToken, videoUrl, textWithHashtags, {
+                privacyLevel: requestedPrivacy,
+              }),
+            3,
+            isTikTokTransientError
           );
           results.push({
             platform,
             status: "SUCCESS",
-            externalPostId: publishId,
+            externalPostId: result.publishId,
             publishedAt: new Date(),
-            metadata: { tiktok_publish_id: publishId },
+            metadata: {
+              tiktok_publish_id: result.publishId,
+              tiktok_privacy_level: result.privacyLevel,
+              tiktok_source: result.source,
+            },
           });
           break;
         }
@@ -330,12 +415,26 @@ export async function savePublishResults(
     });
   }
 
+  // Mirror the platform external ids on Content so PublishJob-style queries
+  // (task spec) don't need to join PublishResult. IG media id + TikTok
+  // publish_id are the only two the API returns synchronously.
+  const igSuccess = results.find(
+    (r) => r.status === "SUCCESS" && r.platform === "INSTAGRAM"
+  );
+  const ttSuccess = results.find(
+    (r) => r.status === "SUCCESS" && r.platform === "TIKTOK"
+  );
+  const igMediaId = igSuccess?.externalPostId ?? undefined;
+  const tiktokPublishId = ttSuccess?.externalPostId ?? undefined;
+
   const updated = await db.content.update({
     where: { id: contentId },
     data: {
       status: allSuccess ? "PUBLISHED" : anySuccess ? "PUBLISHED" : "FAILED",
       publishedAt: anySuccess ? new Date() : undefined,
       scheduledAt: null,
+      ...(igMediaId ? { igMediaId } : {}),
+      ...(tiktokPublishId ? { tiktokPublishId } : {}),
     },
     select: {
       id: true,

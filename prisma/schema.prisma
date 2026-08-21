@@ -265,6 +265,15 @@ model SocialAccount {
   tokenExpiresAt DateTime?
   /// instagram_login | facebook_login — how the token was obtained (refresh differs).
   oauthProvider  String?
+  /// OAuth scopes granted by the user (e.g. instagram_business_content_publish,
+  /// video.publish). Persisted so we can detect what the token can do without
+  /// re-querying the platform every publish.
+  scopes         String[]  @default([])
+  /// TikTok Direct Post: privacy options the account is allowed to pick from
+  /// (PUBLIC_TO_EVERYONE, MUTUAL_FOLLOW_FRIENDS, SELF_ONLY, ...). Fetched via
+  /// /v2/post/publish/creator_info/query/ and cached to power the composer.
+  /// Sandbox / un-audited apps typically only get ["SELF_ONLY"].
+  privacyOptions Json?
   isConnected    Boolean   @default(false)
   followers      Int       @default(0)
 
@@ -295,6 +304,28 @@ model Content {
   platforms        Platform[]
   scheduledAt      DateTime?
   publishedAt      DateTime?
+
+  // ── Social Publish V1 (IG Reels + TikTok Direct Post) ─────────────────
+  /// Whether Aura declared this asset as AI-generated to the destination
+  /// platform. Always true in V1 (`is_ai_generated=true` for IG Reels,
+  /// `is_aigc=true` for TikTok). Never opt-out. Kept as a column so the
+  /// audit log stays trivial to query.
+  isAiGenerated    Boolean            @default(true)
+  /// Optional first comment posted right after IG publish. Best-effort:
+  /// if the comments scope is missing / blocked, we silently skip.
+  firstComment     String?            @db.Text
+  /// IG Reels only — mirror the reel on the account feed (default true).
+  shareToFeed      Boolean            @default(true)
+  /// TikTok Direct Post privacy — must be one of the values returned by
+  /// creator_info.privacy_level_options. Un-audited apps are locked to
+  /// SELF_ONLY (enforced server-side).
+  tiktokPrivacyLevel String?
+  /// Meta media id returned by /media_publish. Populated on IG success.
+  igMediaId        String?
+  /// TikTok Direct Post `publish_id` returned by /video/init. Populated
+  /// on TikTok init success (the final post id is checked later via the
+  /// status endpoint if we ever need it).
+  tiktokPublishId  String?
 
   influencer       Influencer         @relation(fields: [influencerId], references: [id], onDelete: Cascade)
   batch            ContentBatch?      @relation(fields: [batchId], references: [id])

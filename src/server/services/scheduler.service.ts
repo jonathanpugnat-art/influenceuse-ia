@@ -52,6 +52,9 @@ export async function checkAndPublish(): Promise<{
         status: "SCHEDULED",
         scheduledAt: { lte: now },
       },
+      // NOTE: Prisma `include` here fetches every scalar on Content by default,
+      // which is exactly what publishContent wants (firstComment, shareToFeed,
+      // tiktokPrivacyLevel are picked up automatically).
       include: {
         influencer: {
           select: {
