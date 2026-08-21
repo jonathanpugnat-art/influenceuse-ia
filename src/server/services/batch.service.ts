@@ -127,6 +127,9 @@ export async function processNextBatchSlice(opts?: {
           baseImageUrl: true,
           avatarUrl: true,
           userId: true,
+          loraStatus: true,
+          loraUrl: true,
+          loraTriggerWord: true,
         },
       },
     },
@@ -237,6 +240,14 @@ export async function processNextBatchSlice(opts?: {
           isNsfw: draft.contentMode === "NSFW",
           customPrompt: draftParams.customPrompt,
           numberOfImages: 1,
+          loraUrl:
+            inf.loraStatus === "READY" && inf.loraUrl?.trim()
+              ? inf.loraUrl.trim()
+              : undefined,
+          loraTriggerWord:
+            inf.loraStatus === "READY" && inf.loraTriggerWord?.trim()
+              ? inf.loraTriggerWord.trim()
+              : undefined,
         }
       );
 

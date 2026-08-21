@@ -3,7 +3,6 @@ import {
   buildFullPrompt,
   buildNegativePrompt,
   DEFAULT_IMAGE_PARAMS,
-  KONTEXT_IMAGE_PARAMS,
 } from "@/lib/prompts/image-prompts";
 import {
   shouldRouteToKontext,
@@ -28,6 +27,9 @@ import { isNovitaConfigured, shouldPostModeratePremiumGeneration } from "@/lib/p
 import { runNovitaInstantIdBatch } from "@/server/services/image-providers/novita-instantid.provider";
 import {
   isContentSafetyFilterError,
+  isFaceLockError,
+  throwFaceLockError,
+  throwMissingFaceReferenceError,
   throwSocialSafetyError,
 } from "@/lib/generation-errors";
 import {
@@ -41,12 +43,7 @@ import {
   PremiumImageModerationError,
   assertPremiumImagesModerated,
 } from "@/server/services/image-moderation.service";
-import {
-  MODEL_SFW_KONTEXT,
-  MODEL_SFW_NANO,
-  MODEL_SFW_T2I,
-  NANO_BANANA_DEFAULTS,
-} from "./model-constants";
+import { MODEL_SFW_T2I } from "./model-constants";
 import { runMultiplePredictions } from "./replicate-runner";
 import { applyPhotoPromptEnrichment } from "./photo-enrichment";
 import {
@@ -55,6 +52,10 @@ import {
   selectPremiumFaceRef,
   toPremiumFluxInput,
 } from "./premium-pipeline";
+import {
+  generateFaceLockedImages,
+  hasReadyLora,
+} from "./face-lock-pipeline";
 import type {
   ImageGenerationInput,
   ImageGenerationOutput,
@@ -130,7 +131,7 @@ export async function generateContentImage(
       : routeKontext
         ? "kontext"
         : "nano";
-  let usedEngine: ContentImageEngine = primaryEngine;
+  const usedEngine: ContentImageEngine = primaryEngine;
   let prompt = buildPromptForEngine(primaryEngine);
   const gender = resolvedData.gender ?? "female";
   const nsfwTier = input.isNsfw
@@ -211,21 +212,30 @@ export async function generateContentImage(
           },
         };
       } catch (err) {
-        const reason =
-          err instanceof PremiumImageModerationError
-            ? "failed moderation"
-            : isContentSafetyFilterError(err)
-              ? "blocked by safety filter"
-              : err instanceof Error
-                ? err.message
-                : String(err);
+        // Face-lock intent + PuLID refusal → surface an actionable error
+        // rather than silently generating another person via uncensored T2I.
+        // Moderation / safety failures still throw (user needs to soften the
+        // prompt anyway); everything else becomes a [face-lock] error the UI
+        // can turn into a retry.
+        if (err instanceof PremiumImageModerationError) throw err;
+        if (isContentSafetyFilterError(err)) throw err;
+        const detail = err instanceof Error ? err.message : String(err);
         console.warn(
-          `[ai-image] PuLID ${reason}, falling back to uncensored T2I router…`
+          `[ai-image] PuLID failed on NSFW lane (${detail.slice(0, 160)}) — surfacing face-lock error instead of dropping to uncensored T2I.`
         );
+        throwFaceLockError(`PuLID (NSFW ${tier}): ${detail.slice(0, 200)}`);
       }
     }
 
-    if (premiumFaceRef && tier === "explicit" && isNovitaConfigured()) {
+    if (premiumFaceRef && tier === "explicit") {
+      if (!isNovitaConfigured()) {
+        console.warn(
+          "[ai-image] NSFW explicit tier requested face-lock but NOVITA_API_KEY is missing — refusing to drop to uncensored T2I."
+        );
+        throwFaceLockError(
+          "NOVITA_API_KEY manquant pour le tier explicit (InstantID). Configure NOVITA_API_KEY ou descends au tier soft."
+        );
+      }
       try {
         console.log("[ai-image] Premium photo — Novita InstantID face-lock (explicit)");
         const novitaPrompt = buildPremiumFaceLockPrompt(
@@ -266,20 +276,21 @@ export async function generateContentImage(
           },
         };
       } catch (err) {
-        const reason =
-          err instanceof PremiumImageModerationError
-            ? "failed moderation"
-            : err instanceof Error
-              ? err.message
-              : String(err);
+        if (err instanceof PremiumImageModerationError) throw err;
+        if (isFaceLockError(err)) throw err;
+        const detail = err instanceof Error ? err.message : String(err);
         console.warn(
-          `[ai-image] Novita InstantID ${reason}, falling back to uncensored T2I router…`
+          `[ai-image] Novita InstantID failed (${detail.slice(0, 160)}) — surfacing face-lock error instead of dropping to uncensored T2I.`
         );
+        throwFaceLockError(`InstantID (explicit): ${detail.slice(0, 200)}`);
       }
     }
 
+    // No face reference on the NSFW lane → the user has explicitly opted
+    // out of face-lock (router only forwards `premiumFaceRefUrl` when the
+    // NSFW `useFaceReference` toggle is on). Uncensored T2I is expected here.
     try {
-      console.log("[ai-image] Premium photo — FLUX uncensored router");
+      console.log("[ai-image] Premium photo — FLUX uncensored router (no face-lock requested)");
       const premium = await generatePremiumImagesWithModeration(
         prompt,
         negativePrompt,
@@ -316,69 +327,151 @@ export async function generateContentImage(
     }
   }
 
-  type ModelPlan = {
-    model: string;
-    params: Record<string, unknown>;
-    fallback?: { model: string; params: Record<string, unknown> };
-  };
+  // ──────────────────────────────────────────────────────────────────
+  // SFW DEFAULT PATH — real biometric face-lock (PuLID / Pro LoRA)
+  //
+  // Applies as soon as we have a wizard portrait to lock onto:
+  //   * Pro/Agency + trained LoRA READY → FLUX LoRA hybrid (max fidelity)
+  //   * Everyone else                   → PuLID on the wizard portrait
+  // The identity pack (profile / 3-4 / full body) stays available as
+  // *supplementary* scene refs — it is NOT the lock. LoRA is preserved as
+  // an optional Pro upgrade so we do not block the whole product on 20–60
+  // minute trainings.
+  //
+  // No silent T2I fallback: on any face-lock failure we throw a
+  // [face-lock] error so the UI surfaces a retry rather than generating
+  // another person via Flux 1.1 Pro. That closes the "wizard portrait vs
+  // feed post look like two different people" regression flagged in the
+  // product audit.
+  // ──────────────────────────────────────────────────────────────────
+  const faceUrl = sendsRefImage ? enrichedInput.baseImageUrl?.trim() : undefined;
+  if (faceUrl && /^https?:\/\//i.test(faceUrl)) {
+    const lora = hasReadyLora({
+      loraUrl: enrichedInput.loraUrl,
+      loraTriggerWord: enrichedInput.loraTriggerWord,
+    })
+      ? {
+          loraUrl: enrichedInput.loraUrl!.trim(),
+          triggerWord: enrichedInput.loraTriggerWord!.trim(),
+        }
+      : undefined;
 
-  const refs =
-    sendsRefImage && enrichedInput.baseImageUrl?.trim()
-      ? selectIdentityPackRefs(enrichedInput.baseImageUrl.trim(), enrichedInput.identityPack, {
-          pose: enrichedInput.pose,
-          sceneDescription: enrichedInput.sceneDescription,
-        })
-      : [];
+    const supplementaryRefs = selectIdentityPackRefs(
+      faceUrl,
+      enrichedInput.identityPack,
+      { pose: enrichedInput.pose, sceneDescription: enrichedInput.sceneDescription }
+    ).filter((u) => u !== faceUrl);
 
-  const kontextPlan: ModelPlan = {
-    model: MODEL_SFW_KONTEXT,
-    params: {
-      ...KONTEXT_IMAGE_PARAMS,
-      prompt,
-      input_image: input.baseImageUrl,
-    },
-  };
+    let promptWasSoftened = false;
+    let facePromptUsed = prompt;
+    let faceLockResult;
+    try {
+      console.log(
+        `[ai-image] SFW default face-lock (${lora ? "lora" : "pulid"}) on wizard portrait — ${supplementaryRefs.length} supplementary pack ref(s) ignored by lock but tracked`
+      );
+      faceLockResult = await generateFaceLockedImages({
+        faceUrl,
+        prompt: facePromptUsed,
+        negativePrompt,
+        numImages,
+        lora,
+      });
+    } catch (err) {
+      // Safety-filter refusal → one retry with editorial-softened prompt.
+      // Every other failure is a hard error: no silent T2I fallback.
+      if (!isContentSafetyFilterError(err)) {
+        if (isFaceLockError(err)) throw err;
+        const detail = err instanceof Error ? err.message : String(err);
+        console.warn(
+          `[ai-image] SFW face-lock failed (${detail.slice(0, 200)}) — surfacing face-lock error instead of dropping to T2I.`
+        );
+        throwFaceLockError(detail.slice(0, 200));
+      }
 
-  const nanoPlan: ModelPlan = {
-    model: MODEL_SFW_NANO,
-    params: {
-      ...NANO_BANANA_DEFAULTS,
-      prompt,
-      image_input: refs,
-    },
-    fallback: sendsRefImage && input.baseImageUrl ? kontextPlan : undefined,
-  };
+      const softPrompt = softenPromptForEditorial(facePromptUsed);
+      console.warn(
+        "[ai-image] SFW face-lock blocked by safety filter — retrying once with editorial-softened prompt."
+      );
+      try {
+        faceLockResult = await generateFaceLockedImages({
+          faceUrl,
+          prompt: softPrompt,
+          negativePrompt,
+          numImages,
+          lora,
+        });
+        facePromptUsed = softPrompt;
+        promptWasSoftened = true;
+      } catch (retryErr) {
+        if (isFaceLockError(retryErr)) throw retryErr;
+        const detail = retryErr instanceof Error ? retryErr.message : String(retryErr);
+        console.warn(
+          `[ai-image] SFW face-lock retry failed (${detail.slice(0, 200)}) — surfacing face-lock error.`
+        );
+        throwFaceLockError(detail.slice(0, 200));
+      }
+    }
 
-  let plan: ModelPlan;
-  if (sendsRefImage && input.baseImageUrl) {
-    plan = routeKontext ? kontextPlan : nanoPlan;
-  } else {
-    plan = {
-      model: MODEL_SFW_T2I,
-      params: {
-        ...DEFAULT_IMAGE_PARAMS,
-        prompt,
-        negative_prompt: negativePrompt,
-        num_outputs: numImages,
-        safety_tolerance: 5,
+    const storedUrls = await Promise.all(
+      faceLockResult.urls.map(async (url, i) => {
+        const ext = faceLockResult!.engine === "pulid" ? "webp" : "jpg";
+        const filename = `content-${input.influencerId}-${nanoid(6)}-${i}.${ext}`;
+        return uploadFromUrl(url, filename);
+      })
+    );
+
+    if (!input.omitCreditBilling) {
+      await deductCredits(userId, deliveredCost(storedUrls.length));
+    }
+
+    return {
+      imageUrls: storedUrls,
+      promptUsed: facePromptUsed,
+      negativePrompt,
+      promptWasSoftened,
+      parameters: {
+        contentEngine: faceLockResult.engine,
+        provider: faceLockResult.provider,
+        model: faceLockResult.model,
+        borderlineKeywords: matchedKeywords,
+        supplementaryPackRefs: supplementaryRefs.length,
+        routedForBorderline: routeKontext,
       },
     };
   }
 
-  try {
-    console.log(
-      "[ai-image] Generating content image with",
-      plan.model,
-      sendsRefImage ? "(face-locked)" : "(no reference)",
-      routeKontext
-        ? `(borderline → kontext, keywords: ${matchedKeywords.join(", ") || "n/a"})`
-        : "(nano-first)",
-      refs.length > 1 ? `(${refs.length} identity refs)` : ""
+  // No accessible face URL on the SFW lane → the wizard portrait is
+  // missing (or non-http). Refuse rather than silently generating a
+  // stranger via Flux 1.1 Pro T2I. `input.useReferenceFace !== false` is
+  // the direct user/router intent — `resolvedData.useReferenceFace` was
+  // just downgraded to false because no ref URL was reachable.
+  const userWantedFaceLock = input.useReferenceFace !== false && !enrichedInput.isNsfw;
+  if (userWantedFaceLock) {
+    console.warn(
+      "[ai-image] SFW face-lock requested but no accessible baseImageUrl — refusing to fall back to T2I."
     );
+    throwMissingFaceReferenceError();
+  }
+
+  // Explicit "no face lock" opt-out (only reachable on paths that turn
+  // off `useReferenceFace` on purpose — e.g. wizard preview scripts). We
+  // never hit this branch through the production UI on SFW because the
+  // router forces the toggle on and validates baseImageUrl above.
+  const plan = {
+    model: MODEL_SFW_T2I,
+    params: {
+      ...DEFAULT_IMAGE_PARAMS,
+      prompt,
+      negative_prompt: negativePrompt,
+      num_outputs: numImages,
+      safety_tolerance: 5,
+    },
+  };
+
+  try {
+    console.log("[ai-image] SFW T2I (no face reference requested)", plan.model);
 
     let outputUrls: string[];
-    let usedParams = plan.params;
-    let promptWasSoftened = false;
     try {
       outputUrls = await runMultiplePredictions(
         plan.model,
@@ -386,47 +479,8 @@ export async function generateContentImage(
         numImages
       );
     } catch (err) {
-      if (plan.fallback && isContentSafetyFilterError(err)) {
-        console.warn(
-          `[ai-image] ${plan.model} blocked by safety filter, falling back to ${plan.fallback.model}…`
-        );
-        const kontextPrompt = buildPromptForEngine("kontext");
-        outputUrls = await runMultiplePredictions(
-          plan.fallback.model,
-          {
-            ...plan.fallback.params,
-            prompt: kontextPrompt,
-          },
-          numImages
-        );
-        usedParams = { ...plan.fallback.params, prompt: kontextPrompt };
-        prompt = kontextPrompt;
-        usedEngine = "kontext";
-      } else if (
-        isContentSafetyFilterError(err) &&
-        plan.model === MODEL_SFW_KONTEXT
-      ) {
-        console.warn(
-          "[ai-image] Kontext blocked by safety filter, retrying with editorial-softened prompt…"
-        );
-        const softPrompt = softenPromptForEditorial(
-          buildPromptForEngine("kontext")
-        );
-        outputUrls = await runMultiplePredictions(
-          MODEL_SFW_KONTEXT,
-          { ...kontextPlan.params, prompt: softPrompt },
-          numImages
-        );
-        usedParams = { ...kontextPlan.params, prompt: softPrompt };
-        prompt = softPrompt;
-        usedEngine = "kontext";
-        promptWasSoftened = true;
-      } else {
-        if (isContentSafetyFilterError(err)) {
-          throwSocialSafetyError();
-        }
-        throw err;
-      }
+      if (isContentSafetyFilterError(err)) throwSocialSafetyError();
+      throw err;
     }
 
     const storedUrls = await Promise.all(
@@ -444,9 +498,9 @@ export async function generateContentImage(
       imageUrls: storedUrls,
       promptUsed: prompt,
       negativePrompt,
-      promptWasSoftened,
+      promptWasSoftened: false,
       parameters: {
-        ...usedParams,
+        ...plan.params,
         contentEngine: usedEngine,
         borderlineKeywords: matchedKeywords,
       },

@@ -1,11 +1,16 @@
 import { describe, it, expect } from "vitest";
 import {
+  FACE_LOCK_USER_MESSAGE,
+  MISSING_FACE_REFERENCE_MESSAGE,
   formatGenerationErrorForUser,
   isContentSafetyFilterError,
+  isFaceLockError,
   isReplicateAccessibleImageUrl,
   LOCALHOST_REF_MESSAGE,
   PREMIUM_GENERATION_USER_MESSAGE,
   SOCIAL_SAFETY_USER_MESSAGE,
+  throwFaceLockError,
+  throwMissingFaceReferenceError,
 } from "@/lib/generation-errors";
 
 describe("isContentSafetyFilterError", () => {
@@ -74,6 +79,37 @@ describe("formatGenerationErrorForUser", () => {
     expect(formatGenerationErrorForUser("429 Too Many Requests")).toContain(
       "Attendez"
     );
+  });
+});
+
+describe("face-lock errors", () => {
+  it("throwFaceLockError yields a [face-lock] prefixed error detected by isFaceLockError", () => {
+    let caught: unknown;
+    try {
+      throwFaceLockError("PuLID timed out on Replicate");
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    expect(isFaceLockError(caught)).toBe(true);
+  });
+
+  it("maps face-lock prefix to the retry-friendly French message", () => {
+    const detail = "PuLID timed out on Replicate for prediction xyz";
+    const formatted = formatGenerationErrorForUser(`[face-lock] ${detail}`);
+    expect(formatted.startsWith(FACE_LOCK_USER_MESSAGE)).toBe(true);
+    expect(formatted).toContain(detail.slice(0, 60));
+  });
+
+  it("maps MISSING_FACE_REF face-lock detail to the missing portrait message", () => {
+    let caught: unknown;
+    try {
+      throwMissingFaceReferenceError();
+    } catch (err) {
+      caught = err;
+    }
+    const raw = caught instanceof Error ? caught.message : String(caught);
+    expect(formatGenerationErrorForUser(raw)).toBe(MISSING_FACE_REFERENCE_MESSAGE);
   });
 });
 

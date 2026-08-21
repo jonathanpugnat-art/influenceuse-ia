@@ -18,11 +18,25 @@ export const PREMIUM_GENERATION_USER_MESSAGE =
 export const SUGGESTIVE_REQUIRES_PREMIUM_MESSAGE =
   "Contenu suggestif en mode Social — passe en mode Premium (🔒) pour générer avec FLUX uncensored (plan Creator requis).";
 
+/**
+ * Default-path face-lock failure — surfaced when PuLID (or the Pro/Agency
+ * LoRA / Novita InstantID on NSFW) refuses the render for a non-safety
+ * reason. We deliberately do NOT fall back to plain T2I here because the
+ * user would silently get another person; they need to retry or fix the
+ * portrait reference instead.
+ */
+export const FACE_LOCK_USER_MESSAGE =
+  "Le verrouillage du visage a échoué. Réessaie dans quelques instants. Si le problème persiste, régénère le portrait de base de l'influenceuse (onglet Modifier) — Aura refuse volontairement de générer un autre visage en fallback.";
+
+export const MISSING_FACE_REFERENCE_MESSAGE =
+  "Aucun portrait de référence disponible pour verrouiller le visage. Termine l'étape « portrait » de l'assistant ou régénère le portrait de base de l'influenceuse.";
+
 /** @deprecated Use SOCIAL_SAFETY_USER_MESSAGE */
 export const NSFW_USER_MESSAGE = SOCIAL_SAFETY_USER_MESSAGE;
 
 const PREMIUM_GEN_PREFIX = "[premium-gen]";
 const SOCIAL_SAFETY_PREFIX = "[social-safety]";
+const FACE_LOCK_PREFIX = "[face-lock]";
 
 export function formatGenerationErrorForUser(
   raw: string | null | undefined,
@@ -41,6 +55,16 @@ export function formatGenerationErrorForUser(
 
   if (msg.startsWith(SOCIAL_SAFETY_PREFIX)) {
     return SOCIAL_SAFETY_USER_MESSAGE;
+  }
+
+  if (msg.startsWith(FACE_LOCK_PREFIX)) {
+    const detail = msg.slice(FACE_LOCK_PREFIX.length).trim();
+    if (/no reference|missing.*face|no face reference|MISSING_FACE_REF/i.test(detail)) {
+      return MISSING_FACE_REFERENCE_MESSAGE;
+    }
+    return detail.length > 20
+      ? `${FACE_LOCK_USER_MESSAGE} (Détail : ${detail.slice(0, 200)})`
+      : FACE_LOCK_USER_MESSAGE;
   }
 
   if (isReplicateTokenMissingError(msg)) {
@@ -183,4 +207,20 @@ export function throwPremiumGenerationError(detail?: string): never {
       ? `${PREMIUM_GEN_PREFIX} ${detail.trim()}`
       : PREMIUM_GEN_PREFIX
   );
+}
+
+/** Face-lock provider (PuLID / LoRA / InstantID) refused — no silent T2I fallback. */
+export function throwFaceLockError(detail?: string): never {
+  throw new Error(
+    detail?.trim() ? `${FACE_LOCK_PREFIX} ${detail.trim()}` : FACE_LOCK_PREFIX
+  );
+}
+
+export function throwMissingFaceReferenceError(): never {
+  throw new Error(`${FACE_LOCK_PREFIX} MISSING_FACE_REF`);
+}
+
+export function isFaceLockError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return msg.startsWith(FACE_LOCK_PREFIX);
 }
