@@ -441,6 +441,8 @@ enum WebhookEvent {
   CONTENT_SCHEDULED
   REMIX_COMPLETED
   REMIX_FAILED
+  SCENE_COMPLETED
+  SCENE_FAILED
 }
 
 /// Viral remix job — user pastes/uploads a TikTok/Reel clip and the
@@ -496,6 +498,84 @@ model RemixJob {
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
   completedAt         DateTime?
+
+  @@index([userId])
+  @@index([influencerId])
+  @@index([status])
+  @@index([userId, status])
+  @@index([createdAt])
+}
+
+// ──────────────────────────────────────────────
+// Seedance scene-video V1 (BytePlus Seedance 2.5 via fal.ai)
+// ──────────────────────────────────────────────
+//
+// A locked character holds a 10-30s vertical shot with native audio, using
+// Seedance's multimodal `reference-to-video` endpoint (identity pack as
+// `image_urls` → @Image1, @Image2…). When the character only has a single
+// still we fall back to `image-to-video`. This is the "scene" engine and
+// is intentionally separate from Kling remix (V2V motion-swap) and Hedra
+// talking-head: those keep their own tables, providers and routers.
+//
+// Credit flow (mirrors RemixJob / TalkingHeadJob):
+//   1. Estimate cost from `resolution × durationSec` (see seedance-config).
+//   2. Hold credits (`deductCredits` — refunded via `refundCredits` on FAIL).
+//   3. Persist row PENDING → IN_PROGRESS → COMPLETED | FAILED | REFUNDED.
+//   4. FAL webhook (or poll-on-read) advances IN_PROGRESS → final states.
+
+enum SeedanceJobStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum SeedanceMode {
+  REFERENCE_TO_VIDEO
+  IMAGE_TO_VIDEO
+}
+
+model SeedanceJob {
+  id                 String            @id @default(cuid())
+  userId             String
+  influencerId       String
+  /// "reference_to_video" (default, identity pack) or "image_to_video"
+  /// (single-still fallback). Persisted as enum so a retry/reconcile knows
+  /// which fal model it originally hit.
+  mode               SeedanceMode      @default(REFERENCE_TO_VIDEO)
+  /// 10 | 15 | 30 — server-clamped to `SEEDANCE_ALLOWED_DURATIONS`.
+  durationSec        Int
+  /// "480p" | "720p" — 1080p is deliberately out of V1 (budget, gating).
+  resolution         String            @default("720p")
+  /// V1 is 9:16-only; column kept for a future landscape option.
+  aspectRatio        String            @default("9:16")
+  /// Native audio on by default (Seedance's edge over Kling/Hedra).
+  generateAudio      Boolean           @default(true)
+  /// Full prompt sent to Seedance. Persisted for reproducibility.
+  prompt             String            @db.Text
+  /// Free-form extra sentence the user typed under the base scene brief.
+  extraPromptTail    String?           @db.Text
+  /// Identity pack URLs passed as `image_urls` (or `image_url` in I2V mode).
+  /// Ordered: frontal, 3/4, full body, profile. First entry is always the
+  /// frontal reference.
+  referenceImageUrls String[]          @default([])
+  /// Credits held on queue (deducted on create). Refunded on FAILED.
+  creditsHeld        Int               @default(0)
+  status             SeedanceJobStatus @default(PENDING)
+  /// FAL queue `request_id` — the FAL webhook uses this to look us up.
+  falRequestId       String?           @unique
+  /// FAL model id submitted to (bytedance/seedance-2.5/*). Kept for retries.
+  falModel           String
+  /// Final R2 URL for the produced 9:16 MP4 with native audio.
+  outputVideoUrl     String?
+  /// Short human-readable error for FAILED jobs.
+  error              String?
+  /// Free-form FAL payload / metadata for future audit.
+  metadata           Json?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  completedAt        DateTime?
 
   @@index([userId])
   @@index([influencerId])
