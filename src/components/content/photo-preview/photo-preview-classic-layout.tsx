@@ -10,6 +10,8 @@ import {
   Coins,
   MapPin,
   User,
+  AlertTriangle,
+  X,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -64,6 +66,8 @@ export function PhotoPreviewClassicLayout({
     loadingLabel,
     showPrimaryActions,
     handleRegenerate,
+    generationError,
+    dismissGenerationError,
   } = gen;
 
   return (
@@ -228,6 +232,41 @@ export function PhotoPreviewClassicLayout({
                 >
                   <User className="h-4 w-4" />
                   {t("composeInfluencerBtn", { cost: String(composeCost) })}
+                </button>
+              </div>
+            </motion.div>
+          ) : generationError ? (
+            <motion.div
+              key="error"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="relative aspect-[3/4] overflow-hidden rounded-2xl border-2 border-rose-500/50 bg-rose-500/10"
+              role="alert"
+            >
+              <button
+                type="button"
+                onClick={dismissGenerationError}
+                aria-label={t("dismissError")}
+                className="absolute right-2 top-2 rounded-md p-1 text-rose-200 transition-colors hover:bg-rose-500/20 hover:text-rose-50"
+              >
+                <X className="h-4 w-4" />
+              </button>
+              <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+                <AlertTriangle className="h-10 w-10 text-rose-300" />
+                <p className="text-xs font-semibold uppercase tracking-wide text-rose-200">
+                  {t("generationErrorTitle")}
+                </p>
+                <p className="max-h-[55%] overflow-y-auto whitespace-pre-line text-sm leading-snug text-rose-50">
+                  {generationError}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleRegenerate}
+                  disabled={!canGenerate}
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-rose-500 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-rose-400 disabled:opacity-50"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  {t("retryGeneration")}
                 </button>
               </div>
             </motion.div>

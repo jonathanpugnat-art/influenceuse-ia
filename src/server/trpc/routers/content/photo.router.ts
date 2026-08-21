@@ -572,19 +572,11 @@ export const contentPhotoRouter = createTRPCRouter({
 
           return { resultUrl: result.imageUrls[0] };
         },
-        onFailure: async () => {
-          await db.content.update({
-            where: { id: content.id },
-            data: {
-              status: "DRAFT",
-              generationParams: {
-                ...(params ?? {}),
-                photoPhase: "scene_ready",
-                scenePlateUrl,
-              } as object,
-            },
-          });
-        },
+        // No onFailure: default `markContentFailed` sets status=FAILED without
+        // touching generationParams, so the scene plate URL + `scene_ready`
+        // phase persist for a one-click compose retry — while the UI still
+        // sees a real FAILED state (and the French face-lock error) instead
+        // of being fooled by phase=scene_ready into celebrating success.
       });
 
       return { contentId: content.id, cost };

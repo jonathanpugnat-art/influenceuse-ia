@@ -49,6 +49,10 @@ export function usePhotoGeneration(locale: "fr" | "en") {
   const [viewerOpen, setViewerOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [promptWasSoftened, setPromptWasSoftened] = useState(false);
+  // Persist the last generation error so the preview shows an inline French
+  // message instead of silently reverting to an empty placeholder — the toast
+  // alone is easy to miss (see face-lock QA report).
+  const [generationError, setGenerationError] = useState<string | null>(null);
 
   const useSceneFirst =
     params.sceneFirst &&
@@ -60,6 +64,7 @@ export function usePhotoGeneration(locale: "fr" | "en") {
     setContentId(null);
     setGeneratedUrls([]);
     setPromptWasSoftened(false);
+    setGenerationError(null);
   }, [
     params.influencerId,
     params.sceneDescription,
@@ -74,7 +79,11 @@ export function usePhotoGeneration(locale: "fr" | "en") {
       setGenerationStep("compose");
     },
     onError: (err) => {
-      if (!handleUpgrade(err.message)) toast.error(err.message);
+      const message = formatGenerationErrorForUser(err.message, {
+        contentMode: params.contentMode === "NSFW" ? "NSFW" : "SFW",
+      });
+      if (!handleUpgrade(err.message)) toast.error(message, { duration: 9000 });
+      setGenerationError(message);
       setIsGenerating(false);
       setGenerationStep("");
     },
@@ -86,11 +95,11 @@ export function usePhotoGeneration(locale: "fr" | "en") {
       setGenerationStep("scene");
     },
     onError: (err) => {
+      const message = formatPhotoSceneErrorForUser(err.message);
       if (!handleUpgrade(err.message)) {
-        toast.error(formatPhotoSceneErrorForUser(err.message), {
-          duration: 9000,
-        });
+        toast.error(message, { duration: 9000 });
       }
+      setGenerationError(message);
       setIsGenerating(false);
       setGenerationStep("");
     },
@@ -101,7 +110,9 @@ export function usePhotoGeneration(locale: "fr" | "en") {
       setGenerationStep("compose");
     },
     onError: (err) => {
-      if (!handleUpgrade(err.message)) toast.error(err.message);
+      const message = formatGenerationErrorForUser(err.message);
+      if (!handleUpgrade(err.message)) toast.error(message, { duration: 9000 });
+      setGenerationError(message);
       setIsGenerating(false);
       setGenerationStep("");
     },
@@ -120,18 +131,45 @@ export function usePhotoGeneration(locale: "fr" | "en") {
 
     const phase = statusData.photoPhase;
 
-    if (phase === "scene_ready" && statusData.scenePlateUrl) {
-      setScenePlateUrl(statusData.scenePlateUrl);
+    // Order matters: FAILED must be handled before scene_ready so a face-lock
+    // failure during compose (backend keeps the scene plate around for a
+    // retry, so phase stays "scene_ready") does not silently fire the
+    // "sceneReadyToast" success path and swallow the real French error.
+    if (statusData.status === "FAILED") {
+      const errMsg =
+        statusData.errorMessage ??
+        (phase === "scene_generating" || generationStep === "scene"
+          ? formatPhotoSceneErrorForUser(null)
+          : formatGenerationErrorForUser(null));
+      setGenerationError(errMsg);
+      toast.error(errMsg, { duration: 9000 });
+      if (statusData.scenePlateUrl) {
+        setScenePlateUrl(statusData.scenePlateUrl);
+      }
       setIsGenerating(false);
       setGenerationStep("");
-      invalidatePlan();
-      toast.success(t("sceneReadyToast"));
+      return;
+    }
+
+    if (phase === "scene_ready" && statusData.scenePlateUrl) {
+      setScenePlateUrl(statusData.scenePlateUrl);
+      // Only announce "décor prêt" when the running step is scene generation.
+      // During a compose retry the phase stays scene_ready — we don't want
+      // to prematurely celebrate success and stop polling for the compose
+      // outcome.
+      if (generationStep === "scene") {
+        setIsGenerating(false);
+        setGenerationStep("");
+        invalidatePlan();
+        toast.success(t("sceneReadyToast"));
+      }
       return;
     }
 
     if (statusData.status === "READY" && statusData.mediaUrls.length > 0) {
       setGeneratedUrls(statusData.mediaUrls);
       setGenerationStep("done");
+      setGenerationError(null);
       invalidatePlan();
       if (statusData.promptWasSoftened) {
         setPromptWasSoftened(true);
@@ -142,17 +180,6 @@ export function usePhotoGeneration(locale: "fr" | "en") {
         setGenerationStep("");
       }, 800);
       return;
-    }
-
-    if (statusData.status === "FAILED") {
-      const errMsg =
-        statusData.errorMessage ??
-        (phase === "scene_generating" || generationStep === "scene"
-          ? formatPhotoSceneErrorForUser(null)
-          : formatGenerationErrorForUser(null));
-      toast.error(errMsg, { duration: 8000 });
-      setIsGenerating(false);
-      setGenerationStep("");
     }
   }, [
     statusData,
@@ -170,7 +197,9 @@ export function usePhotoGeneration(locale: "fr" | "en") {
     if (!isGenerating || !contentId) return;
     const timeoutMs = 8 * 60 * 1000;
     const timer = setTimeout(() => {
-      toast.error(t("generationTimeout"), { duration: 10000 });
+      const message = t("generationTimeout");
+      toast.error(message, { duration: 10000 });
+      setGenerationError(message);
       setIsGenerating(false);
       setGenerationStep("");
     }, timeoutMs);
@@ -213,6 +242,7 @@ export function usePhotoGeneration(locale: "fr" | "en") {
     resetForNewRun();
     setScenePlateUrl(null);
     setContentId(null);
+    setGenerationError(null);
     setIsGenerating(true);
     setGenerationStep("scene");
     scenePlateMutation.mutate(buildPhotoPayload(params));
@@ -223,6 +253,7 @@ export function usePhotoGeneration(locale: "fr" | "en") {
       toast.error(t("generateSceneFirst"));
       return;
     }
+    setGenerationError(null);
     setIsGenerating(true);
     setGenerationStep("compose");
     composeMutation.mutate({
@@ -247,6 +278,7 @@ export function usePhotoGeneration(locale: "fr" | "en") {
     resetForNewRun();
     setScenePlateUrl(null);
     setContentId(null);
+    setGenerationError(null);
     setIsGenerating(true);
     setGenerationStep("compose");
     generateMutation.mutate(buildPhotoPayload(params));
@@ -374,6 +406,8 @@ export function usePhotoGeneration(locale: "fr" | "en") {
     showPrimaryActions,
     primaryLabel,
     onPrimaryAction,
+    generationError,
+    dismissGenerationError: () => setGenerationError(null),
   };
 }
 
