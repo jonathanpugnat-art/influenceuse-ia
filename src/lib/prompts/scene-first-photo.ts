@@ -118,5 +118,65 @@ export function buildSceneFirstComposePrompt(input: SceneFirstComposeInput): str
   return parts.join(", ");
 }
 
+/**
+ * Face-locked variant of {@link buildSceneFirstComposePrompt} for PuLID / LoRA.
+ *
+ * PuLID (and the Pro/Agency LoRA hybrid) cannot ingest a scene plate as a
+ * secondary reference — they only accept a single face image. So the plate
+ * that step 1 produced becomes a preview/approval artefact and the compose
+ * step drops the "first reference / last reference" language that Nano
+ * multi-ref needed, replacing it with a direct scene description that PuLID
+ * or LoRA can render around the biometric face.
+ *
+ * Everything else (outfit, person description, pose/expression, custom
+ * prompt) is copied verbatim from the Nano compose prompt so the user's
+ * scene text still drives the render.
+ */
+export function buildFaceLockedSceneComposePrompt(
+  input: SceneFirstComposeInput
+): string {
+  const gender: Gender = input.gender ?? "female";
+  const genderWord = genderLabel(gender);
+  const env = input.sceneDescription?.trim();
+
+  const parts: string[] = [
+    "real candid iPhone photo, natural imperfect lighting, mild grain",
+  ];
+
+  const outfit = input.outfit?.trim();
+  if (outfit) {
+    parts.push(`wearing ${outfit}, outfit clearly visible`);
+  }
+
+  const person: string[] = [`a ${genderWord}`];
+  if (input.age) person.push(`${input.age} years old`);
+  if (input.ethnicity) person.push(input.ethnicity.toLowerCase());
+  if (input.hairColor || input.hairStyle) {
+    person.push(
+      `${[input.hairColor, input.hairStyle].filter(Boolean).join(" ").toLowerCase()} hair`
+    );
+  }
+  if (input.bodyType) person.push(`${input.bodyType.toLowerCase()} build`);
+  parts.push(person.join(", "));
+
+  if (env) {
+    parts.push(`environment and scene action: ${env}`);
+  }
+
+  if (input.pose) parts.push(`pose: ${input.pose}`);
+  if (input.expression) parts.push(`expression: ${input.expression}`);
+
+  parts.push(
+    "shot vertically on iPhone, natural skin pores, slight handheld tilt, " +
+      "NOT magazine, NOT CGI, NOT plastic skin, NOT studio backdrop"
+  );
+
+  if (input.customPrompt?.trim()) {
+    parts.push(input.customPrompt.trim());
+  }
+
+  return parts.join(", ");
+}
+
 /** Extra credits for the shared environment plate (one per generation batch). */
 export const SCENE_FIRST_PLATE_CREDIT = 1;
