@@ -6,6 +6,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
+  Film,
   ImagePlus,
   MessageSquareText,
   Pencil,
@@ -233,6 +234,13 @@ export default function InfluencerDetailPage({
               >
                 <ImagePlus className="h-4 w-4" />
                 <span className="hidden sm:inline">Créer du contenu</span>
+              </Link>
+              <Link
+                href={`/influencers/${id}/scene`}
+                className="flex h-10 items-center gap-2 rounded-xl border border-fuchsia-500/40 bg-fuchsia-500/10 px-3 text-sm font-medium text-fuchsia-200 transition-colors hover:bg-fuchsia-500/20"
+              >
+                <Film className="h-4 w-4" />
+                <span className="hidden sm:inline">Vidéo scène</span>
               </Link>
               <Link
                 href={`/influencers/${id}/talking-head`}

@@ -30,6 +30,18 @@ vi.mock("@/lib/constants", () => ({
       credits: 5000,
     },
   },
+  // `seedance-config` (transitively loaded via the app router) reads
+  // credit-per-second constants at module load, so the partial mock must
+  // surface every CREDIT_COSTS field consumed at import time. Extend as
+  // needed when new video providers land.
+  CREDIT_COSTS: {
+    SEEDANCE_480P_PER_SEC: 18,
+    SEEDANCE_720P_PER_SEC: 36,
+    TALKING_HEAD_PER_SEC: 8,
+  },
+  MAX_TALKING_HEAD_SEC: 30,
+  MAX_TALKING_HEAD_WORDS: 80,
+  TALKING_HEAD_WORDS_PER_SEC: 2.5,
 }));
 
 import { createCallerFactory, mockTRPCContext } from "@/server/trpc";

@@ -178,6 +178,23 @@ export const CREDIT_COSTS = {
    * seconds so a 1-word test still holds a full second of credits.
    */
   TALKING_HEAD_PER_SEC: 8,
+  /**
+   * Seedance scene-video V1 (BytePlus Seedance 2.5 via fal.ai).
+   *
+   * Provider list price (fal.ai reference-to-video, measured 2026-08):
+   *   720p ≈ $0.473/s   → 12 cr/s at floor, we bill 36 cr/s (~3× margin)
+   *   480p ≈ $0.221/s   →  6 cr/s at floor, we bill 18 cr/s (~3× margin)
+   *
+   * Numbers come from the PRD (see docs/aura-launch-plan or the task
+   * spec). Do NOT reuse PhotoAI's 30/60 constants — Aura credits are
+   * $0.04 each so the maths is different.
+   *
+   * Duration is capped at `SEEDANCE_MAX_DURATION_SEC` in the config and
+   * the credit hold ceils to whole seconds so a 10s clip = 360 credits
+   * exactly (720p) or 180 credits (480p).
+   */
+  SEEDANCE_480P_PER_SEC: 18,
+  SEEDANCE_720P_PER_SEC: 36,
 } as const;
 
 /**
