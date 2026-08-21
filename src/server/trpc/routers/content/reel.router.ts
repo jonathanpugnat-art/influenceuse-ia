@@ -274,6 +274,15 @@ export const contentReelRouter = createTRPCRouter({
                 omitCreditBilling: true,
                 isReelSceneFrame: true,
                 identityPack,
+                loraUrl:
+                  influencer.loraStatus === "READY" && influencer.loraUrl?.trim()
+                    ? influencer.loraUrl.trim()
+                    : undefined,
+                loraTriggerWord:
+                  influencer.loraStatus === "READY" &&
+                  influencer.loraTriggerWord?.trim()
+                    ? influencer.loraTriggerWord.trim()
+                    : undefined,
               }
             );
 

@@ -177,6 +177,17 @@ export const contentPhotoRouter = createTRPCRouter({
         });
       }
 
+      // Default path (SFW + NSFW with face-lock on) requires a locked face.
+      // Mirror the reel router's guard so we fail fast at the tRPC edge
+      // rather than letting the pipeline throw MISSING_FACE_REF mid-run.
+      if (wantsFaceReference && !rawRefUrl) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Aucun portrait de base pour verrouiller le visage. Régénère le portrait de l'influenceuse depuis l'assistant ou l'onglet Modifier avant de générer une photo.",
+        });
+      }
+
       const { hydrateTrendPhotoInput } = await loadTrendsService();
       const trendHydration = await hydrateTrendPhotoInput({
         userId: user.id,
@@ -279,6 +290,17 @@ export const contentPhotoRouter = createTRPCRouter({
               numberOfImages: resolvedInput.numberOfImages,
               appearanceVariations,
               identityPack,
+              // Pro/Agency face-lock upgrade: face-lock pipeline switches to
+              // FLUX LoRA hybrid when a trained LoRA is READY on this
+              // influencer. Falls back to PuLID otherwise.
+              loraUrl:
+                influencer.loraStatus === "READY" && influencer.loraUrl?.trim()
+                  ? influencer.loraUrl.trim()
+                  : undefined,
+              loraTriggerWord:
+                influencer.loraStatus === "READY" && influencer.loraTriggerWord?.trim()
+                  ? influencer.loraTriggerWord.trim()
+                  : undefined,
               instagramShot: resolvedInput.instagramShot === true,
               trendContext: resolvedInput.trendContext,
             }
@@ -515,6 +537,14 @@ export const contentPhotoRouter = createTRPCRouter({
               numberOfImages,
               appearanceVariations,
               identityPack,
+              loraUrl:
+                influencer.loraStatus === "READY" && influencer.loraUrl?.trim()
+                  ? influencer.loraUrl.trim()
+                  : undefined,
+              loraTriggerWord:
+                influencer.loraStatus === "READY" && influencer.loraTriggerWord?.trim()
+                  ? influencer.loraTriggerWord.trim()
+                  : undefined,
               scenePlateUrl,
               isNsfw: false,
             }
