@@ -31,12 +31,61 @@ export const FACE_LOCK_USER_MESSAGE =
 export const MISSING_FACE_REFERENCE_MESSAGE =
   "Aucun portrait de référence disponible pour verrouiller le visage. Termine l'étape « portrait » de l'assistant ou régénère le portrait de base de l'influenceuse.";
 
+/**
+ * Provider-side outage / quota / payment issue (Replicate 402, Novita
+ * insufficient credit, etc). Never mentions the provider name, Aura's
+ * own credit balance, or any HTTP/URL detail.
+ */
+export const PROVIDER_UNAVAILABLE_USER_MESSAGE =
+  "Le service de génération est temporairement indisponible. Réessayez dans quelques minutes.";
+
 /** @deprecated Use SOCIAL_SAFETY_USER_MESSAGE */
 export const NSFW_USER_MESSAGE = SOCIAL_SAFETY_USER_MESSAGE;
 
 const PREMIUM_GEN_PREFIX = "[premium-gen]";
 const SOCIAL_SAFETY_PREFIX = "[social-safety]";
 const FACE_LOCK_PREFIX = "[face-lock]";
+
+/**
+ * Provider-side quota / billing failure signature. We keep this list
+ * conservative — Replicate 402 + Novita "insufficient credit" cover the
+ * observed prod incident; any other 4xx stays in the generic bucket.
+ */
+function looksLikeProviderQuotaError(detail: string): boolean {
+  const lower = detail.toLowerCase();
+  return (
+    /\b402\b/.test(detail) ||
+    lower.includes("payment required") ||
+    lower.includes("insufficient credit") ||
+    lower.includes("insufficient_credit") ||
+    lower.includes("insufficient balance") ||
+    lower.includes("billing") ||
+    lower.includes("quota exceeded")
+  );
+}
+
+/**
+ * Anything that would leak provider identity to the end user: URLs,
+ * HTTP status lines, JSON error blobs, model slugs (owner/name), lane
+ * labels like "PuLID (NSFW suggestive)". Used to gate whether a detail
+ * string is safe enough to surface next to a French friendly message.
+ */
+function containsProviderLeak(detail: string): boolean {
+  return (
+    /https?:\/\//i.test(detail) ||
+    /\bstatus\s*\d{3}\b/i.test(detail) ||
+    /\b(?:4\d{2}|5\d{2})\b/.test(detail) ||
+    /[{}[\]]/.test(detail) ||
+    /\breplicate\b/i.test(detail) ||
+    /\bnovita\b/i.test(detail) ||
+    /\bpulid\b/i.test(detail) ||
+    /\binstantid\b/i.test(detail) ||
+    /\blora\b/i.test(detail) ||
+    /\bnsfw\b/i.test(detail) ||
+    /\bsfw\b/i.test(detail) ||
+    /[a-z0-9._-]+\/[a-z0-9._-]+/i.test(detail)
+  );
+}
 
 export function formatGenerationErrorForUser(
   raw: string | null | undefined,
@@ -50,7 +99,18 @@ export function formatGenerationErrorForUser(
 
   if (msg.startsWith(PREMIUM_GEN_PREFIX)) {
     const detail = msg.slice(PREMIUM_GEN_PREFIX.length).trim();
-    return detail.length > 20 ? detail : PREMIUM_GENERATION_USER_MESSAGE;
+    if (looksLikeProviderQuotaError(detail)) {
+      return PROVIDER_UNAVAILABLE_USER_MESSAGE;
+    }
+    // Only surface the detail when it's clearly a French-authored
+    // message from our own server code. Anything that smells like raw
+    // provider output (URL, HTTP status, model slug, lane label, JSON
+    // blob) falls back to the friendly premium copy — the raw text is
+    // already in server logs where it belongs.
+    if (detail.length > 20 && !containsProviderLeak(detail)) {
+      return detail;
+    }
+    return PREMIUM_GENERATION_USER_MESSAGE;
   }
 
   if (msg.startsWith(SOCIAL_SAFETY_PREFIX)) {
@@ -62,20 +122,30 @@ export function formatGenerationErrorForUser(
     if (/no reference|missing.*face|no face reference|MISSING_FACE_REF/i.test(detail)) {
       return MISSING_FACE_REFERENCE_MESSAGE;
     }
-    return detail.length > 20
-      ? `${FACE_LOCK_USER_MESSAGE} (Détail : ${detail.slice(0, 200)})`
-      : FACE_LOCK_USER_MESSAGE;
+    if (looksLikeProviderQuotaError(detail)) {
+      return PROVIDER_UNAVAILABLE_USER_MESSAGE;
+    }
+    // Never append raw provider detail (URL, HTTP status, JSON body,
+    // model slug, lane label). QA hit a Replicate 402 on the NSFW
+    // PuLID lane whose detail leaked "PuLID (NSFW suggestive):
+    // Request to https://api.replicate.com/... 402 …" straight into
+    // the studio dialog. Raw text stays in server logs.
+    return FACE_LOCK_USER_MESSAGE;
   }
 
   if (isReplicateTokenMissingError(msg)) {
     return "Replicate n'est pas configuré sur le serveur (REPLICATE_API_TOKEN manquant). Redémarre le serveur après avoir ajouté la clé dans `.env` ou `.env.local`.";
   }
 
-  if (
-    msg.includes("Crédits insuffisants") ||
-    msg.toLowerCase().includes("insufficient credit")
-  ) {
+  // Aura's own "Crédits insuffisants" copy (thrown by checkCredits) is
+  // safe to surface verbatim. A provider-side "insufficient credit"
+  // (Replicate 402, Novita quota) is a leak — collapse to the neutral
+  // "service indisponible" message instead of pasting the raw payload.
+  if (msg.includes("Crédits insuffisants")) {
     return msg;
+  }
+  if (looksLikeProviderQuotaError(msg)) {
+    return PROVIDER_UNAVAILABLE_USER_MESSAGE;
   }
 
   if (msg.includes(SUGGESTIVE_REQUIRES_PREMIUM_MESSAGE)) {
@@ -128,7 +198,12 @@ export function formatGenerationErrorForUser(
   }
 
   const cleaned = msg.replace(/^Error:\s*/i, "").slice(0, 280);
-  return cleaned.length > 20 ? cleaned : "La génération a échoué. Réessayez.";
+  // Last-line-of-defense: if the fallback would still reveal a provider
+  // URL, HTTP status, JSON blob, or model slug, drop to the neutral copy.
+  if (cleaned.length <= 20 || containsProviderLeak(cleaned)) {
+    return "La génération a échoué. Réessayez.";
+  }
+  return cleaned;
 }
 
 /** Coaching copy for the scene-first photo step (décor seul). */
