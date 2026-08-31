@@ -1,23 +1,23 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
-import { ArrowLeft, Check, Sparkles } from "lucide-react";
+import { ArrowLeft, Check } from "lucide-react";
 import { Link } from "@/i18n/navigation";
 import { PLANS } from "@/lib/constants";
+import { WordMark } from "@/components/marketing/word-mark";
 
 export const metadata: Metadata = {
-  title: "Tarifs — Influenceuse IA",
+  title: "Tarifs — Aura Influences",
   description:
-    "Tarifs simples et transparents pour Influenceuse IA. Free, Creator, Pro et Agency — choisissez le plan qui correspond à votre volume de génération.",
+    "Tarifs simples et transparents pour Aura Influences. Free, Creator, Pro et Agency — choisissez le plan qui correspond à votre volume de génération.",
 };
 
 /**
  * Public pricing page.
  *
- * Driven directly by `PLANS` in `src/lib/constants.ts` so that any pricing
- * change in the source of truth (credits, max influencers, feature flags)
- * is reflected here without manual sync. The Stripe price IDs are only
- * needed inside the authenticated `/billing` flow — this page is purely
- * informational.
+ * Driven directly by `PLANS` in `src/lib/constants.ts` so any pricing change
+ * in the source of truth (credits, max influencers, feature flags) is
+ * reflected here without manual sync. Visual language matches the new
+ * marketing home so the transition between the two feels continuous.
  */
 export default async function PricingPage({
   params,
@@ -34,7 +34,7 @@ export default async function PricingPage({
     name: string;
     price: number;
     description: string;
-    /** Renders highlight ribbon + violet accent. */
+    /** Renders highlight ribbon + accent border. */
     featured?: boolean;
     /** When true the CTA goes to a contact mailto: instead of sign-up. */
     enterprise?: boolean;
@@ -113,36 +113,40 @@ export default async function PricingPage({
   ];
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-50 selection:bg-violet-500/30">
-      <header className="container mx-auto px-6 h-16 flex items-center justify-between border-b border-zinc-800/50">
-        <Link href="/home" className="flex items-center gap-2 group">
-          <div className="size-8 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
-            <Sparkles className="size-4 text-white" />
-          </div>
-          <span className="font-bold text-lg tracking-tight">Influenceuse IA</span>
+    <div className="relative min-h-screen bg-black text-white selection:bg-[oklch(0.55_0.22_295)]/40">
+      <header className="mx-auto flex h-14 max-w-6xl items-center justify-between px-5 md:px-8">
+        <Link href="/home" className="flex items-center gap-2">
+          <WordMark />
         </Link>
         <Link
           href="/home"
-          className="text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-2"
+          className="inline-flex items-center gap-2 text-sm text-white/50 transition-colors hover:text-white"
         >
           <ArrowLeft className="size-4" /> {tLanding("navFeatures")}
         </Link>
       </header>
 
-      <main className="container mx-auto px-6 py-16 md:py-24">
-        <div className="text-center max-w-2xl mx-auto mb-16">
-          <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
+      <main className="mx-auto max-w-6xl px-5 py-16 md:px-8 md:py-24">
+        <div className="mx-auto max-w-2xl text-center">
+          <span className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-white/45">
+            <span className="size-1 rounded-full bg-[oklch(0.85_0.14_310)]" />
+            {tLanding("pricingEyebrow")}
+          </span>
+          <h1 className="mt-4 text-balance text-4xl font-semibold tracking-[-0.02em] md:text-5xl">
             {t("title")}
           </h1>
-          <p className="text-zinc-400 text-lg">{t("subtitle")}</p>
+          <p className="mt-4 text-white/55">{t("subtitle")}</p>
+          <p className="mt-3 font-mono text-[11px] uppercase tracking-widest text-white/40">
+            {tLanding("pricingCreditNote")}
+          </p>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto">
+        <div className="mt-16 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {plans.map((plan) => {
             const priceLabel =
               plan.price === 0 ? t("free") : `${plan.price}€`;
             const ctaHref = plan.enterprise
-              ? "mailto:hello@influenceuse-ia.com"
+              ? "mailto:hello@aurainfluenceai.com"
               : "/sign-up";
             const ctaLabel = plan.enterprise
               ? t("ctaContact")
@@ -153,42 +157,50 @@ export default async function PricingPage({
             return (
               <div
                 key={plan.id}
-                className={`relative rounded-2xl p-8 border flex flex-col ${
+                className={`relative flex flex-col rounded-2xl border p-6 ${
                   plan.featured
-                    ? "border-violet-500/50 bg-violet-500/5 shadow-2xl shadow-violet-900/20"
-                    : "border-zinc-800 bg-zinc-900/50"
+                    ? "border-[oklch(0.85_0.14_310)]/40 bg-[oklch(0.85_0.14_310)]/[0.04]"
+                    : "border-white/[0.08] bg-white/[0.015]"
                 }`}
               >
                 {plan.featured && (
-                  <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 px-3 py-1 bg-violet-500 text-white text-xs font-bold rounded-full">
+                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full border border-[oklch(0.85_0.14_310)]/40 bg-black px-3 py-0.5 font-mono text-[10px] uppercase tracking-widest text-[oklch(0.88_0.12_310)]">
                     {t("mostPopular")}
-                  </div>
+                  </span>
                 )}
-                <h2 className="text-xl font-bold mb-2">{plan.name}</h2>
-                <div className="mb-4">
-                  <span className="text-4xl font-bold">{priceLabel}</span>
-                  {plan.price > 0 && (
-                    <span className="text-zinc-400">{t("perMonth")}</span>
-                  )}
-                </div>
-                <p className="text-zinc-400 text-sm mb-6 min-h-[3rem]">
+
+                <h2 className="text-sm font-semibold text-white">
+                  {plan.name}
+                </h2>
+                <p className="mt-1 min-h-[2.5rem] text-[12px] text-white/50">
                   {plan.description}
                 </p>
+
+                <div className="mt-4 flex items-baseline gap-1">
+                  <span className="text-4xl font-semibold tracking-tight text-white">
+                    {priceLabel}
+                  </span>
+                  {plan.price > 0 && (
+                    <span className="text-[12px] text-white/45">
+                      {t("perMonth")}
+                    </span>
+                  )}
+                </div>
 
                 {plan.enterprise ? (
                   <a
                     href={ctaHref}
-                    className="inline-flex items-center justify-center w-full mb-6 h-10 px-4 rounded-md text-sm font-medium border border-zinc-700 text-white hover:bg-zinc-800 transition-colors"
+                    className="mt-6 inline-flex h-10 w-full items-center justify-center rounded-full border border-white/10 px-4 text-sm font-medium text-white transition-colors hover:bg-white/[0.06]"
                   >
                     {ctaLabel}
                   </a>
                 ) : (
-                  <Link href="/sign-up">
+                  <Link href={ctaHref}>
                     <span
-                      className={`inline-flex items-center justify-center w-full mb-6 h-10 px-4 rounded-md text-sm font-medium transition-colors ${
+                      className={`mt-6 inline-flex h-10 w-full items-center justify-center rounded-full px-4 text-sm font-medium transition-colors ${
                         plan.featured
-                          ? "bg-violet-600 hover:bg-violet-700 text-white"
-                          : "border border-zinc-700 text-white hover:bg-zinc-800"
+                          ? "bg-white text-black hover:bg-white/90"
+                          : "border border-white/10 text-white hover:bg-white/[0.06]"
                       }`}
                     >
                       {ctaLabel}
@@ -196,13 +208,10 @@ export default async function PricingPage({
                   </Link>
                 )}
 
-                <ul className="space-y-3">
+                <ul className="mt-6 space-y-2 text-[13px] text-white/70">
                   {plan.features.map((feat, j) => (
-                    <li
-                      key={j}
-                      className="flex items-start gap-3 text-sm text-zinc-300"
-                    >
-                      <Check className="size-4 text-violet-500 shrink-0 mt-0.5" />
+                    <li key={j} className="flex items-start gap-2">
+                      <Check className="mt-0.5 size-3.5 shrink-0 text-white/40" />
                       <span>{feat}</span>
                     </li>
                   ))}
@@ -212,11 +221,11 @@ export default async function PricingPage({
           })}
         </div>
 
-        <p className="text-center text-zinc-500 text-sm mt-12">
+        <p className="mt-12 text-center text-sm text-white/45">
           {t("ctaCreditPacks")}{" "}
           <Link
             href="/billing"
-            className="text-violet-400 hover:text-violet-300 underline-offset-4 hover:underline"
+            className="text-[oklch(0.85_0.14_310)] underline-offset-4 hover:underline"
           >
             {t("creditPacksLink")}
           </Link>
