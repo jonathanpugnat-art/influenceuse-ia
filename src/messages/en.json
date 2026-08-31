@@ -98,7 +98,7 @@
     }
   },
   "common": {
-    "appName": "Influenceuse IA",
+    "appName": "Aura Influences",
     "dashboard": "Dashboard",
     "influencers": "My Influencers",
     "content": "Content",
@@ -1622,6 +1622,8 @@
     "pricingStart": "Get started",
     "pricingSeeAll": "Compare all plans",
     "pricingCreditNote": "1 credit ≈ 1 photo · 1 reel ≈ 8 credits",
+    "pricingCreditPacksHint": "One-off boost? À-la-carte credit packs are available inside the dashboard once you're signed in.",
+    "pricingCreditPacksCta": "Create an account",
     "ctaFinalEyebrow": "Ready?",
     "ctaFinalTitle": "50 credits to try the studio.",
     "ctaFinalSubtitle": "Create an influencer, lock her face, ship your first photos. No card required.",

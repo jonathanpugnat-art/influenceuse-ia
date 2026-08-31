@@ -98,7 +98,7 @@
     }
   },
   "common": {
-    "appName": "Influenceuse IA",
+    "appName": "Aura Influences",
     "dashboard": "Tableau de bord",
     "influencers": "Mes Influenceuses",
     "content": "Contenu",
@@ -1621,6 +1621,8 @@
     "pricingStart": "Commencer",
     "pricingSeeAll": "Comparer tous les plans",
     "pricingCreditNote": "1 crédit ≈ 1 photo · 1 reel ≈ 8 crédits",
+    "pricingCreditPacksHint": "Besoin ponctuel ? Des packs de crédits à la carte sont disponibles dans le dashboard une fois connecté.",
+    "pricingCreditPacksCta": "Créer un compte",
     "ctaFinalEyebrow": "Prêt ?",
     "ctaFinalTitle": "50 crédits pour tester le studio.",
     "ctaFinalSubtitle": "Crée une influenceuse, verrouille son visage, génère tes premières photos. Aucune carte demandée.",

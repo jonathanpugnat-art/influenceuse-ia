@@ -17,12 +17,12 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
   const { locale } = await params;
   const titles: Record<string, string> = {
-    fr: "Aura Influences — Créez vos influenceuses IA",
-    en: "Aura Influences — Build your AI influencers",
+    fr: "Aura Influences — Le même visage. Sur chaque scène.",
+    en: "Aura Influences — The same face. On every scene.",
   };
   const descriptions: Record<string, string> = {
-    fr: "Aura Influences : plateforme tout-en-un pour créer, animer et publier des influenceuses virtuelles générées par IA. Photos iPhone-réelles, reels TikTok, planning auto. Bêta gratuite.",
-    en: "Aura Influences: the all-in-one platform to create, animate and publish AI-generated virtual influencers. iPhone-real photos, TikTok reels, auto scheduling. Free beta.",
+    fr: "Aura Influences : studio SaaS pour créer des influenceuses IA à visage verrouillé (PuLID / InstantID), générer photos et reels au crédit, et publier automatiquement sur Instagram et TikTok. Free 0 €, Creator 29 €, Pro 79 €, Agency 199 €.",
+    en: "Aura Influences: a SaaS studio to build AI influencers with a locked face (PuLID / InstantID), generate photos and reels by credit, and auto-publish to Instagram and TikTok. Free €0, Creator €29, Pro €79, Agency €199.",
   };
   return {
     title: { default: titles[locale] ?? titles.fr, template: `%s | Aura Influences` },

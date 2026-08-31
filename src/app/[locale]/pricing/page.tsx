@@ -222,12 +222,12 @@ export default async function PricingPage({
         </div>
 
         <p className="mt-12 text-center text-sm text-white/45">
-          {t("ctaCreditPacks")}{" "}
+          {tLanding("pricingCreditPacksHint")}{" "}
           <Link
-            href="/billing"
+            href="/sign-up"
             className="text-[oklch(0.85_0.14_310)] underline-offset-4 hover:underline"
           >
-            {t("creditPacksLink")}
+            {tLanding("pricingCreditPacksCta")}
           </Link>
         </p>
       </main>
