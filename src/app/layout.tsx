@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"),
   title: "Aura Influences — Le même visage. Sur chaque scène.",
   description:
-    "Aura Influences : studio SaaS pour créer des influenceuses IA à visage verrouillé (PuLID / InstantID), générer photos et reels au crédit, et publier automatiquement sur Instagram et TikTok. Free 0 €, Creator 29 €, Pro 79 €, Agency 199 €.",
+    "Aura Influences : studio SaaS pour créer des influenceuses IA au visage verrouillé, générer photos et reels au crédit, et publier automatiquement sur Instagram et TikTok. Free 0 €, Creator 29 €, Pro 79 €, Agency 199 €.",
 };
 
 function Providers({ children }: { children: React.ReactNode }) {

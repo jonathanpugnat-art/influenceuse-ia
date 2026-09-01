@@ -21,8 +21,8 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
     en: "Aura Influences — The same face. On every scene.",
   };
   const descriptions: Record<string, string> = {
-    fr: "Aura Influences : studio SaaS pour créer des influenceuses IA à visage verrouillé (PuLID / InstantID), générer photos et reels au crédit, et publier automatiquement sur Instagram et TikTok. Free 0 €, Creator 29 €, Pro 79 €, Agency 199 €.",
-    en: "Aura Influences: a SaaS studio to build AI influencers with a locked face (PuLID / InstantID), generate photos and reels by credit, and auto-publish to Instagram and TikTok. Free €0, Creator €29, Pro €79, Agency €199.",
+    fr: "Aura Influences : studio SaaS pour créer des influenceuses IA au visage verrouillé, générer photos et reels au crédit, et publier automatiquement sur Instagram et TikTok. Free 0 €, Creator 29 €, Pro 79 €, Agency 199 €.",
+    en: "Aura Influences: a SaaS studio to build AI influencers with a locked face, generate photos and reels by credit, and auto-publish to Instagram and TikTok. Free €0, Creator €29, Pro €79, Agency €199.",
   };
   return {
     title: { default: titles[locale] ?? titles.fr, template: `%s | Aura Influences` },

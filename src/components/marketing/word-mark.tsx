@@ -10,9 +10,9 @@ export function WordMark({ className = "" }: { className?: string }) {
         aria-hidden
         className="relative inline-flex size-5 items-center justify-center"
       >
-        <span className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_30%_30%,_oklch(0.85_0.14_310)_0%,_oklch(0.55_0.2_290)_45%,_transparent_75%)]" />
+        <span className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_30%_30%,var(--aurora)_0%,var(--aurora-deep)_45%,transparent_75%)]" />
         <span className="absolute inset-[3px] rounded-full bg-black" />
-        <span className="absolute inset-[6px] rounded-full bg-[radial-gradient(circle,_oklch(0.85_0.14_310)_0%,_transparent_70%)]" />
+        <span className="absolute inset-[6px] rounded-full bg-[radial-gradient(circle,var(--aurora)_0%,transparent_70%)]" />
       </span>
       <span className="text-[15px] font-semibold tracking-tight text-white">
         Aura{" "}

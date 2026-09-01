@@ -113,7 +113,7 @@ export default async function PricingPage({
   ];
 
   return (
-    <div className="relative min-h-screen bg-black text-white selection:bg-[oklch(0.55_0.22_295)]/40">
+    <div className="relative min-h-screen bg-black text-white selection:bg-aurora-deep/40">
       <header className="mx-auto flex h-14 max-w-6xl items-center justify-between px-5 md:px-8">
         <Link href="/home" className="flex items-center gap-2">
           <WordMark />
@@ -129,7 +129,7 @@ export default async function PricingPage({
       <main className="mx-auto max-w-6xl px-5 py-16 md:px-8 md:py-24">
         <div className="mx-auto max-w-2xl text-center">
           <span className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-white/45">
-            <span className="size-1 rounded-full bg-[oklch(0.85_0.14_310)]" />
+            <span className="size-1 rounded-full bg-aurora" />
             {tLanding("pricingEyebrow")}
           </span>
           <h1 className="mt-4 text-balance text-4xl font-semibold tracking-[-0.02em] md:text-5xl">
@@ -159,12 +159,12 @@ export default async function PricingPage({
                 key={plan.id}
                 className={`relative flex flex-col rounded-2xl border p-6 ${
                   plan.featured
-                    ? "border-[oklch(0.85_0.14_310)]/40 bg-[oklch(0.85_0.14_310)]/[0.04]"
+                    ? "border-aurora/40 bg-aurora/[0.04]"
                     : "border-white/[0.08] bg-white/[0.015]"
                 }`}
               >
                 {plan.featured && (
-                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full border border-[oklch(0.85_0.14_310)]/40 bg-black px-3 py-0.5 font-mono text-[10px] uppercase tracking-widest text-[oklch(0.88_0.12_310)]">
+                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full border border-aurora/40 bg-black px-3 py-0.5 font-mono text-[10px] uppercase tracking-widest text-aurora">
                     {t("mostPopular")}
                   </span>
                 )}
@@ -225,7 +225,7 @@ export default async function PricingPage({
           {tLanding("pricingCreditPacksHint")}{" "}
           <Link
             href="/sign-up"
-            className="text-[oklch(0.85_0.14_310)] underline-offset-4 hover:underline"
+            className="text-aurora underline-offset-4 hover:underline"
           >
             {tLanding("pricingCreditPacksCta")}
           </Link>

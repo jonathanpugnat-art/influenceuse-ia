@@ -122,7 +122,7 @@ export function HeroPreview() {
                 className="pointer-events-none absolute inset-0"
                 style={{
                   backgroundImage:
-                    "linear-gradient(oklch(0.85 0.14 310 / 0.14) 1px, transparent 1px), linear-gradient(90deg, oklch(0.85 0.14 310 / 0.14) 1px, transparent 1px)",
+                    "linear-gradient(color-mix(in oklch, var(--aurora) 14%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in oklch, var(--aurora) 14%, transparent) 1px, transparent 1px)",
                   backgroundSize: "40px 40px",
                   maskImage:
                     "radial-gradient(ellipse at 50% 40%, transparent 30%, black 75%)",
@@ -130,10 +130,10 @@ export function HeroPreview() {
               />
               {/* Face-lock brackets */}
               <div className="pointer-events-none absolute left-1/2 top-[38%] size-32 -translate-x-1/2 -translate-y-1/2 md:size-40">
-                <span className="absolute left-0 top-0 h-4 w-4 border-l border-t border-[oklch(0.85_0.14_310)]" />
-                <span className="absolute right-0 top-0 h-4 w-4 border-r border-t border-[oklch(0.85_0.14_310)]" />
-                <span className="absolute bottom-0 left-0 h-4 w-4 border-b border-l border-[oklch(0.85_0.14_310)]" />
-                <span className="absolute bottom-0 right-0 h-4 w-4 border-b border-r border-[oklch(0.85_0.14_310)]" />
+                <span className="absolute left-0 top-0 h-4 w-4 border-l border-t border-aurora" />
+                <span className="absolute right-0 top-0 h-4 w-4 border-r border-t border-aurora" />
+                <span className="absolute bottom-0 left-0 h-4 w-4 border-b border-l border-aurora" />
+                <span className="absolute bottom-0 right-0 h-4 w-4 border-b border-r border-aurora" />
               </div>
               {/* Top eyebrow */}
               <div className="absolute inset-x-3 top-3 flex items-center justify-between">
@@ -144,8 +144,8 @@ export function HeroPreview() {
               </div>
               {/* Bottom face-lock chip */}
               <div className="absolute inset-x-3 bottom-3 flex items-center justify-between">
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-[oklch(0.85_0.14_310)]/40 bg-[oklch(0.85_0.14_310)]/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest text-[oklch(0.88_0.12_310)] backdrop-blur">
-                  <span className="size-1.5 rounded-full bg-[oklch(0.85_0.14_310)] shadow-[0_0_8px_oklch(0.85_0.14_310)]" />
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-aurora/40 bg-aurora/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest text-aurora backdrop-blur">
+                  <span className="size-1.5 rounded-full bg-aurora shadow-[0_0_8px_var(--aurora)]" />
                   face-lock
                 </span>
                 <span className="rounded-full border border-white/10 bg-black/50 px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-white/50 backdrop-blur">
@@ -160,7 +160,7 @@ export function HeroPreview() {
             {/* Header bar */}
             <div className="flex items-center justify-between border-b border-white/[0.05] px-4 py-2.5">
               <span className="inline-flex items-center gap-2 text-[13px] font-medium text-white/80">
-                <Sparkles className="size-3.5 text-[oklch(0.85_0.14_310)]" />
+                <Sparkles className="size-3.5 text-aurora" />
                 {t("previewFeedLabel")}
               </span>
               <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-white/40">
@@ -248,7 +248,7 @@ export function HeroPreview() {
       {/* Aurora glow, single accent only */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 -top-24 -z-10 mx-auto h-64 max-w-4xl rounded-full bg-[oklch(0.55_0.22_295)] opacity-25 blur-3xl"
+        className="pointer-events-none absolute inset-x-0 -top-24 -z-10 mx-auto h-64 max-w-4xl rounded-full bg-aurora-deep opacity-25 blur-3xl"
       />
     </div>
   );
@@ -264,8 +264,8 @@ function RenderingTile({ pulse }: { pulse: boolean }) {
             className="absolute inset-y-0 left-0 w-1/3 animate-[shimmer_1.4s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-white/[0.08] to-transparent"
           />
           <span className="relative flex size-1.5">
-            <span className="absolute inset-0 animate-ping rounded-full bg-[oklch(0.85_0.14_310)]/70" />
-            <span className="relative size-1.5 rounded-full bg-[oklch(0.85_0.14_310)]" />
+            <span className="absolute inset-0 animate-ping rounded-full bg-aurora/70" />
+            <span className="relative size-1.5 rounded-full bg-aurora" />
           </span>
         </>
       )}

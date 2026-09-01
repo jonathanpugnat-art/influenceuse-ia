@@ -17,8 +17,8 @@ import {
  *
  * A tall face-lock hero tile on the left (spans two rows) anchors the eye,
  * then a mixed grid of five smaller tiles carries the rest of the story.
- * Copy uses product language (credits, wizard, face-lock, LoRA, IG/TikTok
- * APIs) — no "powerful / seamless / intuitive".
+ * Copy uses creator language (credits, face-lock, calendar, IG/TikTok)
+ * — no "powerful / seamless / intuitive", no engine names in titles.
  */
 export function BentoCapabilities() {
   const t = useTranslations("landing");
@@ -150,11 +150,11 @@ function FaceLockVisual() {
       />
       {/* Face-lock brackets */}
       <div className="pointer-events-none absolute left-1/2 top-[30%] size-40 -translate-x-1/2 -translate-y-1/2 md:size-52">
-        <span className="absolute left-0 top-0 h-5 w-5 border-l border-t border-[oklch(0.85_0.14_310)]" />
-        <span className="absolute right-0 top-0 h-5 w-5 border-r border-t border-[oklch(0.85_0.14_310)]" />
-        <span className="absolute bottom-0 left-0 h-5 w-5 border-b border-l border-[oklch(0.85_0.14_310)]" />
-        <span className="absolute bottom-0 right-0 h-5 w-5 border-b border-r border-[oklch(0.85_0.14_310)]" />
-        <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 rounded-full border border-[oklch(0.85_0.14_310)]/40 bg-black/70 px-2 py-0.5 font-mono text-[9px] uppercase tracking-widest text-[oklch(0.88_0.12_310)] backdrop-blur">
+        <span className="absolute left-0 top-0 h-5 w-5 border-l border-t border-aurora" />
+        <span className="absolute right-0 top-0 h-5 w-5 border-r border-t border-aurora" />
+        <span className="absolute bottom-0 left-0 h-5 w-5 border-b border-l border-aurora" />
+        <span className="absolute bottom-0 right-0 h-5 w-5 border-b border-r border-aurora" />
+        <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 rounded-full border border-aurora/40 bg-black/70 px-2 py-0.5 font-mono text-[9px] uppercase tracking-widest text-aurora backdrop-blur">
           locked
         </span>
       </div>
@@ -222,7 +222,7 @@ function CalendarVisual() {
           key={i}
           className={`aspect-square rounded ${
             filled.has(i)
-              ? "bg-[oklch(0.85_0.14_310)]/60"
+              ? "bg-aurora/60"
               : "bg-white/[0.04]"
           }`}
         />
@@ -284,7 +284,7 @@ function AnalyticsVisual() {
       {bars.map((h, i) => (
         <div
           key={i}
-          className="flex-1 rounded-t-sm bg-gradient-to-t from-[oklch(0.55_0.22_295)]/60 to-[oklch(0.85_0.14_310)]/80"
+          className="flex-1 rounded-t-sm bg-gradient-to-t from-aurora-deep/60 to-aurora/80"
           style={{ height: `${h}%` }}
         />
       ))}

@@ -23,7 +23,7 @@ import { WordMark } from "@/components/marketing/word-mark";
  *
  *   1. Nav (quiet, product-grade)
  *   2. Hero — tight claim + React product preview (face → feed loop)
- *   3. Proof strip — existing stats only, small, framed
+ *   3. Built-with stack
  *   4. Face-lock story — the actual conversion argument
  *   5. Bento capabilities — real product language, not four icon cards
  *   6. Pricing — existing tiers, existing amounts, existing "Most popular"
@@ -60,7 +60,7 @@ export default function LandingPage() {
         isFr
           ? `${PLANS.FREE.maxInfluencers} influenceuse`
           : `${PLANS.FREE.maxInfluencers} influencer`,
-        isFr ? "Face-lock PuLID / InstantID" : "PuLID / InstantID face-lock",
+        isFr ? "Visage verrouillé" : "Locked face",
       ],
     },
     {
@@ -93,7 +93,7 @@ export default function LandingPage() {
           ? `${PLANS.PRO.maxInfluencers} influenceuses`
           : `${PLANS.PRO.maxInfluencers} influencers`,
         isFr ? "Vidéo multi-moteurs" : "Multi-engine video",
-        isFr ? "Batch + LoRA dédié" : "Batch + dedicated LoRA",
+        isFr ? "Batch + modèle visage dédié" : "Batch + dedicated face model",
       ],
     },
     {
@@ -103,27 +103,19 @@ export default function LandingPage() {
       desc: isFr ? "Pour les agences" : "For agencies",
       features: [
         isFr ? "Influenceuses illimitées" : "Unlimited influencers",
-        isFr
-          ? `${PLANS.ENTERPRISE.credits} crédits / mois`
-          : `${PLANS.ENTERPRISE.credits} credits / month`,
+        isFr ? "Crédits illimités" : "Unlimited credits",
         isFr ? "Analytics avancés" : "Advanced analytics",
         isFr ? "Webhooks + API" : "Webhooks + API",
       ],
     },
   ];
 
-  const stats: Array<{ value: string; label: string }> = [
-    { value: "1.2M+", label: t("statsPhotosGenerated") },
-    { value: "21s", label: t("statsAvgGenTime") },
-    { value: "32", label: t("statsCountries") },
-    { value: "45+", label: t("statsActiveAgencies") },
-  ];
-
   const stackItems: Array<{ name: string; role: string }> = [
     { name: "Clerk", role: t("stackAuth") },
     { name: "Stripe", role: t("stackPayments") },
     { name: "Anthropic", role: t("stackLLM") },
-    { name: "Replicate", role: t("stackGen") },
+    { name: "Replicate", role: t("stackGenImage") },
+    { name: "Fal", role: t("stackGenVideo") },
   ];
 
   const testimonials = [
@@ -148,7 +140,7 @@ export default function LandingPage() {
   ];
 
   return (
-    <div className="relative min-h-screen bg-black text-white selection:bg-[oklch(0.55_0.22_295)]/40">
+    <div className="relative min-h-screen bg-black text-white selection:bg-aurora-deep/40">
       <BackgroundGrid />
       <MarketingNav />
 
@@ -158,7 +150,7 @@ export default function LandingPage() {
           {/* Single aurora radial. No mesh salad. */}
           <div
             aria-hidden
-            className="pointer-events-none absolute left-1/2 top-24 -z-10 h-[520px] w-[820px] -translate-x-1/2 rounded-full bg-[radial-gradient(ellipse_at_center,_oklch(0.55_0.22_295)_0%,_transparent_60%)] opacity-30 blur-3xl"
+            className="pointer-events-none absolute left-1/2 top-24 -z-10 h-[520px] w-[820px] -translate-x-1/2 rounded-full bg-[radial-gradient(ellipse_at_center,var(--aurora-deep)_0%,transparent_60%)] opacity-30 blur-3xl"
           />
 
           <div className="mx-auto max-w-6xl px-5 md:px-8">
@@ -257,7 +249,7 @@ export default function LandingPage() {
                   t("faceLockPointRef"),
                 ].map((point) => (
                   <li key={point} className="flex items-start gap-2.5">
-                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-[oklch(0.85_0.14_310)]" />
+                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-aurora" />
                     <span>{point}</span>
                   </li>
                 ))}
@@ -286,8 +278,8 @@ export default function LandingPage() {
                     sizes="(min-width: 768px) 30vw, 100vw"
                     className="object-cover"
                   />
-                  <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-[oklch(0.85_0.14_310)]/40 bg-black/60 px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-[oklch(0.88_0.12_310)] backdrop-blur">
-                    <span className="size-1.5 rounded-full bg-[oklch(0.85_0.14_310)]" />
+                  <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-aurora/40 bg-black/60 px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-aurora backdrop-blur">
+                    <span className="size-1.5 rounded-full bg-aurora" />
                     face-lock
                   </span>
                   <span className="absolute inset-x-3 bottom-3 text-[11px] text-white/60">
@@ -339,28 +331,7 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* 4. Proof strip (subtle) */}
-        <section className="border-y border-white/[0.05] bg-white/[0.01] py-14">
-          <div className="mx-auto max-w-6xl px-5 md:px-8">
-            <p className="mb-6 font-mono text-[11px] uppercase tracking-widest text-white/40">
-              {t("proofEyebrow")}
-            </p>
-            <div className="grid grid-cols-2 gap-8 md:grid-cols-4 md:gap-4">
-              {stats.map((s) => (
-                <div key={s.label}>
-                  <div className="text-2xl font-semibold tracking-tight text-white md:text-4xl">
-                    {s.value}
-                  </div>
-                  <div className="mt-1 text-[12px] text-white/45">
-                    {s.label}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* 5. Bento capabilities */}
+        {/* 4. Bento capabilities */}
         <section id="studio" className="py-24 md:py-32">
           <div className="mx-auto max-w-6xl px-5 md:px-8">
             <div className="max-w-2xl">
@@ -379,7 +350,7 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* 6. Pricing teaser */}
+        {/* 5. Pricing teaser */}
         <section
           id="pricing"
           className="border-t border-white/[0.05] py-24 md:py-32"
@@ -404,12 +375,12 @@ export default function LandingPage() {
                   key={plan.id}
                   className={`relative flex flex-col rounded-2xl border p-6 ${
                     plan.featured
-                      ? "border-[oklch(0.85_0.14_310)]/40 bg-[oklch(0.85_0.14_310)]/[0.04]"
+                      ? "border-aurora/40 bg-aurora/[0.04]"
                       : "border-white/[0.08] bg-white/[0.015]"
                   }`}
                 >
                   {plan.featured && (
-                    <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full border border-[oklch(0.85_0.14_310)]/40 bg-black px-3 py-0.5 font-mono text-[10px] uppercase tracking-widest text-[oklch(0.88_0.12_310)]">
+                    <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full border border-aurora/40 bg-black px-3 py-0.5 font-mono text-[10px] uppercase tracking-widest text-aurora">
                       {t("pricingMostPopular")}
                     </span>
                   )}
@@ -469,7 +440,7 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* 7. Testimonials */}
+        {/* 6. Testimonials */}
         <section className="border-y border-white/[0.05] bg-white/[0.01] py-24 md:py-32">
           <div className="mx-auto max-w-6xl px-5 md:px-8">
             <div className="max-w-2xl">
@@ -521,13 +492,13 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* 8. Final CTA */}
+        {/* 7. Final CTA */}
         <section className="py-24 md:py-32">
           <div className="mx-auto max-w-4xl px-5 md:px-8">
             <div className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-[oklch(0.06_0.008_285)] p-10 text-center md:p-16">
               <div
                 aria-hidden
-                className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,_oklch(0.55_0.22_295)_0%,_transparent_60%)] opacity-25"
+                className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,var(--aurora-deep)_0%,transparent_60%)] opacity-25"
               />
               <Eyebrow>{t("ctaFinalEyebrow")}</Eyebrow>
               <h2 className="mx-auto mt-5 max-w-xl text-balance text-3xl font-semibold tracking-[-0.02em] text-white md:text-5xl">
@@ -607,7 +578,7 @@ export default function LandingPage() {
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
     <span className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-white/45">
-      <span className="size-1 rounded-full bg-[oklch(0.85_0.14_310)]" />
+      <span className="size-1 rounded-full bg-aurora" />
       {children}
     </span>
   );
