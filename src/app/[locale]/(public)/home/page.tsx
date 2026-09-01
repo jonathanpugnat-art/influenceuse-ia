@@ -1,105 +1,45 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Image from "next/image";
-import { motion, AnimatePresence } from "framer-motion";
-import { useTranslations, useLocale } from "next-intl";
-import { Link, usePathname } from "@/i18n/navigation";
+import { motion } from "framer-motion";
+import { useLocale, useTranslations } from "next-intl";
+import {
+  ArrowRight,
+  CheckCircle2,
+  Quote,
+} from "lucide-react";
+import { Link } from "@/i18n/navigation";
 import { Button } from "@/components/ui/button";
 import { PLANS } from "@/lib/constants";
-import {
-  Sparkles,
-  Layers,
-  Video,
-  BarChart3,
-  CheckCircle2,
-  Play,
-  ArrowRight,
-  Menu,
-  X,
-  Wand2,
-  Users,
-  Image as ImageIcon,
-  CalendarDays,
-  Heart,
-  MessageCircle,
-  Send,
-  Bookmark,
-  Camera,
-  Quote,
-  Zap,
-  Globe,
-} from "lucide-react";
+import { MarketingNav } from "@/components/marketing/marketing-nav";
+import { HeroPreview } from "@/components/marketing/hero-preview";
+import { BentoCapabilities } from "@/components/marketing/bento-capabilities";
+import { WordMark } from "@/components/marketing/word-mark";
 
 /**
- * Public landing page.
+ * Aura Influences public marketing home.
  *
- * All copy lives in `messages/{fr,en}.json` under the `landing` namespace,
- * so adding a locale = translating the JSON, no template changes.
+ * Section grammar (2026 SaaS, one buyer question per section):
  *
- * All pricing numbers (credits, max influencers) are read straight from
- * `PLANS` (`src/lib/constants.ts`) so a single source of truth drives the
- * marketing site, the in-app billing page, the upgrade modal, etc.
+ *   1. Nav (quiet, product-grade)
+ *   2. Hero — tight claim + React product preview (face → feed loop)
+ *   3. Built-with stack
+ *   4. Face-lock story — the actual conversion argument
+ *   5. Bento capabilities — real product language, not four icon cards
+ *   6. Pricing — existing tiers, existing amounts, existing "Most popular"
+ *   7. Testimonials — the ones already in the copy files
+ *   8. Final CTA
+ *   9. Footer
+ *
+ * Copy comes from `messages/{fr,en}.json` under the `landing` namespace.
+ * Plan numbers are pulled straight from `PLANS` (`src/lib/constants.ts`)
+ * so the marketing site can never drift from the actual product limits.
  */
 export default function LandingPage() {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const t = useTranslations("landing");
   const locale = useLocale();
-  const pathname = usePathname();
-
-  const fadeIn = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.6 } },
-  };
-
-  const staggerContainer = {
-    hidden: { opacity: 0 },
-    visible: { opacity: 1, transition: { staggerChildren: 0.1 } },
-  };
-
-  const features = [
-    {
-      icon: ImageIcon,
-      title: t("feature1Title"),
-      desc: t("feature1Desc"),
-      color: "text-foreground",
-      bg: "bg-card",
-    },
-    {
-      icon: Layers,
-      title: t("feature2Title"),
-      desc: t("feature2Desc"),
-      color: "text-primary",
-      bg: "bg-primary/10",
-    },
-    {
-      icon: Video,
-      title: t("feature3Title"),
-      desc: t("feature3Desc"),
-      color: "text-foreground",
-      bg: "bg-card",
-    },
-    {
-      icon: BarChart3,
-      title: t("feature4Title"),
-      desc: t("feature4Desc"),
-      color: "text-muted-foreground",
-      bg: "bg-muted",
-    },
-  ];
-
-  const steps = [
-    { step: "01", title: t("step1Title"), desc: t("step1Desc"), icon: Users },
-    { step: "02", title: t("step2Title"), desc: t("step2Desc"), icon: Wand2 },
-    { step: "03", title: t("step3Title"), desc: t("step3Desc"), icon: CalendarDays },
-    { step: "04", title: t("step4Title"), desc: t("step4Desc"), icon: BarChart3 },
-  ];
-
-  // Pricing teaser: read numbers from the single source of truth (PLANS) so
-  // the landing can never drift from the actual product limits. Copy bits
-  // that are not yet i18n-keyed (descriptions, feature one-liners) are
-  // hand-translated inline since they're tiny and rarely change.
   const isFr = locale === "fr";
+
   const plansForCards: Array<{
     id: keyof typeof PLANS;
     name: string;
@@ -112,7 +52,7 @@ export default function LandingPage() {
       id: "FREE",
       name: PLANS.FREE.name,
       price: "0€",
-      desc: isFr ? "Pour tester la plateforme" : "To try the platform",
+      desc: isFr ? "Pour tester le studio" : "To try the studio",
       features: [
         isFr
           ? `${PLANS.FREE.credits} crédits offerts`
@@ -120,15 +60,14 @@ export default function LandingPage() {
         isFr
           ? `${PLANS.FREE.maxInfluencers} influenceuse`
           : `${PLANS.FREE.maxInfluencers} influencer`,
-        isFr ? "Outils de base" : "Core tools",
+        isFr ? "Visage verrouillé" : "Locked face",
       ],
     },
     {
       id: "STARTER",
       name: PLANS.STARTER.name,
       price: `${PLANS.STARTER.price}€`,
-      desc: isFr ? "Idéal pour se lancer" : "Perfect to get started",
-      featured: true,
+      desc: isFr ? "Pour se lancer" : "To get started",
       features: [
         isFr
           ? `${PLANS.STARTER.credits} crédits / mois`
@@ -137,14 +76,15 @@ export default function LandingPage() {
           ? `${PLANS.STARTER.maxInfluencers} influenceuses`
           : `${PLANS.STARTER.maxInfluencers} influencers`,
         isFr ? "Plan éditorial IA" : "AI editorial plan",
-        isFr ? "Publication auto" : "Auto-publishing",
+        isFr ? "Publication auto IG / TikTok" : "IG / TikTok auto-publish",
       ],
     },
     {
       id: "PRO",
       name: PLANS.PRO.name,
       price: `${PLANS.PRO.price}€`,
-      desc: isFr ? "Pour les pros" : "For pros",
+      desc: isFr ? "Pour la production" : "For production",
+      featured: true,
       features: [
         isFr
           ? `${PLANS.PRO.credits} crédits / mois`
@@ -152,872 +92,515 @@ export default function LandingPage() {
         isFr
           ? `${PLANS.PRO.maxInfluencers} influenceuses`
           : `${PLANS.PRO.maxInfluencers} influencers`,
-        isFr ? "Génération vidéo" : "Video generation",
-        isFr ? "Génération batch" : "Batch generation",
+        isFr ? "Vidéo multi-moteurs" : "Multi-engine video",
+        isFr ? "Batch + modèle visage dédié" : "Batch + dedicated face model",
+      ],
+    },
+    {
+      id: "ENTERPRISE",
+      name: PLANS.ENTERPRISE.name,
+      price: `${PLANS.ENTERPRISE.price}€`,
+      desc: isFr ? "Pour les agences" : "For agencies",
+      features: [
+        isFr ? "Influenceuses illimitées" : "Unlimited influencers",
+        isFr ? "Crédits illimités" : "Unlimited credits",
+        isFr ? "Analytics avancés" : "Advanced analytics",
+        isFr ? "Webhooks + API" : "Webhooks + API",
       ],
     },
   ];
 
-  const otherLocale = locale === "fr" ? "en" : "fr";
+  const stackItems: Array<{ name: string; role: string }> = [
+    { name: "Clerk", role: t("stackAuth") },
+    { name: "Stripe", role: t("stackPayments") },
+    { name: "Anthropic", role: t("stackLLM") },
+    { name: "Replicate", role: t("stackGenImage") },
+    { name: "Fal", role: t("stackGenVideo") },
+  ];
+
+  const testimonials = [
+    {
+      quote: t("testimonial1Quote"),
+      name: t("testimonial1Name"),
+      role: t("testimonial1Role"),
+      avatar: "/landing/influencers/luna.jpg",
+    },
+    {
+      quote: t("testimonial2Quote"),
+      name: t("testimonial2Name"),
+      role: t("testimonial2Role"),
+      avatar: "/landing/influencers/marco.jpg",
+    },
+    {
+      quote: t("testimonial3Quote"),
+      name: t("testimonial3Name"),
+      role: t("testimonial3Role"),
+      avatar: "/landing/influencers/amani.jpg",
+    },
+  ];
 
   return (
-    <div className="min-h-screen bg-background text-foreground selection:bg-primary/20 app-mesh">
-      <header className="fixed inset-x-0 top-0 z-50 px-4 pt-4 md:px-6 md:pt-5">
-        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between rounded-full border border-border/50 bg-card/50 px-4 shadow-lg shadow-black/20 backdrop-blur-2xl md:px-6">
-          <div className="flex items-center gap-2.5">
-            <div className="flex size-8 items-center justify-center rounded-xl border border-border/50 bg-background/60">
-              <Sparkles className="size-4 text-foreground" />
-            </div>
-            <span className="text-base font-semibold tracking-tight">
-              Aura <span className="font-normal text-muted-foreground">Influences</span>
-            </span>
-          </div>
+    <div className="relative min-h-screen bg-black text-white selection:bg-aurora-deep/40">
+      <BackgroundGrid />
+      <MarketingNav />
 
-          <nav className="hidden items-center gap-6 text-sm font-medium text-muted-foreground md:flex">
-            <a href="#features" className="transition-colors hover:text-foreground">
-              {t("navFeatures")}
-            </a>
-            <a href="#how-it-works" className="transition-colors hover:text-foreground">
-              {t("navHowItWorks")}
-            </a>
-            <a href="#pricing" className="transition-colors hover:text-foreground">
-              {t("navPricing")}
-            </a>
-          </nav>
+      <main className="relative">
+        {/* 1. Hero */}
+        <section className="relative overflow-hidden pt-32 pb-16 md:pt-40 md:pb-24">
+          {/* Single aurora radial. No mesh salad. */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute left-1/2 top-24 -z-10 h-[520px] w-[820px] -translate-x-1/2 rounded-full bg-[radial-gradient(ellipse_at_center,var(--aurora-deep)_0%,transparent_60%)] opacity-30 blur-3xl"
+          />
 
-          <div className="hidden items-center gap-3 md:flex">
-            <Link
-              href={pathname}
-              locale={otherLocale}
-              className="text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
-              aria-label={`Switch to ${otherLocale.toUpperCase()}`}
+          <div className="mx-auto max-w-6xl px-5 md:px-8">
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              className="mx-auto max-w-3xl text-center"
             >
-              {otherLocale.toUpperCase()}
-            </Link>
-            <Link href="/sign-in">
-              <Button variant="ghost" className="text-muted-foreground hover:text-foreground">
-                {t("signIn")}
-              </Button>
-            </Link>
-            <Link href="/sign-up">
-              <Button size="sm">{t("tryFree")}</Button>
-            </Link>
-          </div>
+              <Eyebrow>{t("heroEyebrow")}</Eyebrow>
 
-          <button
-            type="button"
-            className="text-muted-foreground transition-colors hover:text-foreground md:hidden"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            aria-label="Toggle menu"
-          >
-            {mobileMenuOpen ? <X className="size-5" /> : <Menu className="size-5" />}
-          </button>
-        </div>
-      </header>
+              <h1 className="mt-6 text-balance text-4xl font-semibold leading-[1.05] tracking-[-0.02em] text-white md:text-6xl lg:text-[68px]">
+                {t("heroTitle")}
+              </h1>
 
-      <AnimatePresence>
-        {mobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            className="md:hidden fixed inset-x-4 top-[4.5rem] z-40 overflow-hidden rounded-2xl border border-border/50 bg-popover/95 px-6 py-4 shadow-xl shadow-black/30 backdrop-blur-2xl"
-          >
-            <div className="flex flex-col gap-4 text-sm font-medium">
-              <a
-                href="#features"
-                onClick={() => setMobileMenuOpen(false)}
-                className="text-foreground/80 py-2 border-b border-border/60"
-              >
-                {t("navFeatures")}
-              </a>
-              <a
-                href="#how-it-works"
-                onClick={() => setMobileMenuOpen(false)}
-                className="text-foreground/80 py-2 border-b border-border/60"
-              >
-                {t("navHowItWorks")}
-              </a>
-              <a
-                href="#pricing"
-                onClick={() => setMobileMenuOpen(false)}
-                className="text-foreground/80 py-2 border-b border-border/60"
-              >
-                {t("navPricing")}
-              </a>
-              <Link
-                href={pathname}
-                locale={otherLocale}
-                onClick={() => setMobileMenuOpen(false)}
-                className="text-foreground/80 py-2 border-b border-border/60 uppercase text-xs tracking-wider"
-              >
-                {otherLocale.toUpperCase()}
-              </Link>
-              <div className="flex flex-col gap-2 pt-4">
-                <Link href="/sign-in" onClick={() => setMobileMenuOpen(false)}>
-                  <Button
-                    variant="outline"
-                    className="w-full border-border bg-transparent text-foreground"
-                  >
-                    {t("signIn")}
-                  </Button>
-                </Link>
-                <Link href="/sign-up" onClick={() => setMobileMenuOpen(false)}>
-                  <Button className="w-full bg-foreground text-background border-0">
-                    {t("tryFree")}
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <main>
-        {/* Hero */}
-        <section className="relative overflow-hidden pt-36 pb-20 md:pt-52 md:pb-32">
-          <div className="pointer-events-none absolute inset-0 -z-10">
-            <div className="absolute inset-0 app-mesh" />
-            <div className="absolute left-1/2 top-1/3 h-[500px] w-[700px] -translate-x-1/2 -translate-y-1/2 glow-lavender opacity-80" />
-          </div>
-
-          <div className="container relative mx-auto px-6">
-            <div className="mx-auto max-w-4xl text-center">
-              <motion.div
-                initial="hidden"
-                animate="visible"
-                variants={fadeIn}
-                className="mb-8 inline-flex items-center gap-2 rounded-full border border-border/50 bg-card/50 px-4 py-1.5 text-sm font-medium text-muted-foreground backdrop-blur-sm"
-              >
-                <Sparkles className="size-4 text-foreground" />
-                <span>{t("heroBadge")}</span>
-              </motion.div>
-
-              <motion.h1
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.1 }}
-                className="mb-6 text-5xl font-bold leading-[1.02] tracking-tight text-foreground md:text-7xl lg:text-8xl"
-              >
-                {t("heroTitlePart1")}{" "}
-                <span className="text-gradient-pastel">
-                  {t("heroTitleHighlight")}
-                </span>
-                {t("heroTitlePart2")}
-              </motion.h1>
-
-              <motion.p
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.2 }}
-                className="mx-auto mb-10 max-w-2xl text-lg leading-relaxed text-muted-foreground md:text-xl"
-              >
+              <p className="mx-auto mt-6 max-w-2xl text-pretty text-base leading-relaxed text-white/60 md:text-lg">
                 {t("heroSubtitle")}
-              </motion.p>
+              </p>
 
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.3 }}
-                className="flex flex-col items-center justify-center gap-4 sm:flex-row"
-              >
-                <Link href="/sign-up">
-                  <Button size="lg" className="h-14 w-full px-8 sm:w-auto">
-                    {t("ctaPrimary")} <ArrowRight className="ml-2 size-4" />
+              <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+                <Link href="/sign-up" className="w-full sm:w-auto">
+                  <Button
+                    size="lg"
+                    className="h-12 w-full bg-white px-6 text-black hover:bg-white/90 sm:w-auto"
+                  >
+                    {t("ctaPrimary")}
+                    <ArrowRight className="ml-1 size-4" />
                   </Button>
                 </Link>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="h-14 w-full px-8 sm:w-auto"
-                >
-                  <Play className="mr-2 size-4" /> {t("ctaWatchDemo")}
-                </Button>
-              </motion.div>
-            </div>
+                <a href="#face-lock" className="w-full sm:w-auto">
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="h-12 w-full border-white/10 bg-white/[0.02] px-6 text-white hover:bg-white/[0.06] sm:w-auto"
+                  >
+                    {t("ctaSecondary")}
+                  </Button>
+                </a>
+              </div>
+            </motion.div>
 
             <motion.div
-              initial={{ opacity: 0, y: 40 }}
+              initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.4 }}
-              className="mt-16 md:mt-20 relative mx-auto max-w-6xl"
+              transition={{ duration: 0.7, delay: 0.2 }}
+              className="mt-16 md:mt-20"
             >
-              {/* "100% AI" trust badge above the photo wall */}
-              <div className="flex justify-center mb-6">
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-medium">
-                  <Camera className="size-3.5" />
-                  <span>{t("heroPhotoBadge")}</span>
-                </div>
-              </div>
-
-              <div className="relative overflow-hidden rounded-3xl border border-border/50 bg-card/40 p-3 shadow-2xl shadow-black/50 backdrop-blur-sm md:p-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-                  {[
-                    { src: "/landing/showcase/luna-gym.jpg", caption: t("showcaseCaptionGym"), likes: "12.4K" },
-                    { src: "/landing/showcase/amani-restaurant.jpg", caption: t("showcaseCaptionRestaurant"), likes: "8.7K" },
-                    { src: "/landing/showcase/kenji-tokyo.jpg", caption: t("showcaseCaptionTokyo"), likes: "15.2K" },
-                    { src: "/landing/showcase/marco-nyc.jpg", caption: t("showcaseCaptionNyc"), likes: "21.8K" },
-                  ].map((shot, i) => (
-                    <motion.div
-                      key={shot.src}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.6, delay: 0.5 + i * 0.08 }}
-                      className="relative rounded-2xl overflow-hidden aspect-[3/4] group bg-muted"
-                    >
-                      <Image
-                        src={shot.src}
-                        alt={shot.caption}
-                        fill
-                        sizes="(min-width: 768px) 25vw, 50vw"
-                        className="object-cover transition-transform duration-700 group-hover:scale-105"
-                        priority={i < 2}
-                      />
-                      {/* IG-style overlay */}
-                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent p-3 md:p-4">
-                        <div className="flex items-center justify-between text-white text-xs md:text-sm">
-                          <div className="flex items-center gap-1.5 font-semibold">
-                            <Heart className="size-3.5 md:size-4 fill-rose-500 text-rose-500" />
-                            {shot.likes}
-                          </div>
-                          <span className="text-white/80 truncate ml-2">
-                            {shot.caption}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="absolute top-3 right-3 size-7 rounded-full bg-background/60 backdrop-blur flex items-center justify-center border border-border">
-                        <Sparkles className="size-3.5 text-primary" />
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
+              <HeroPreview />
             </motion.div>
           </div>
         </section>
 
-        {/* Stats strip + social proof */}
-        <section className="py-12 border-y border-border bg-card/30">
-          <div className="container mx-auto px-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-10 mb-10 max-w-5xl mx-auto">
-              {[
-                { value: "1.2M+", label: t("statsPhotosGenerated"), icon: ImageIcon },
-                { value: "21s", label: t("statsAvgGenTime"), icon: Zap },
-                { value: "32", label: t("statsCountries"), icon: Globe },
-                { value: "45+", label: t("statsActiveAgencies"), icon: Users },
-              ].map((stat) => (
-                <div key={stat.label} className="text-center">
-                  <div className="flex justify-center mb-2">
-                    <stat.icon className="size-5 text-muted-foreground" />
+        {/* 2. Built-with stack strip (was a fake customer logo wall) */}
+        <section className="border-y border-white/[0.05] bg-white/[0.01]">
+          <div className="mx-auto max-w-6xl px-5 py-8 md:px-8">
+            <div className="flex flex-col items-center gap-6 md:flex-row md:justify-between">
+              <p className="font-mono text-[11px] uppercase tracking-widest text-white/40">
+                {t("stackTitle")}
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3">
+                {stackItems.map((s) => (
+                  <div
+                    key={s.name}
+                    className="flex items-baseline gap-2 text-sm text-white/60"
+                  >
+                    <span className="font-medium text-white/80">{s.name}</span>
+                    <span className="font-mono text-[10px] uppercase tracking-widest text-white/35">
+                      {s.role}
+                    </span>
                   </div>
-                  <div className="text-3xl md:text-4xl font-bold text-foreground tracking-tight">
-                    {stat.value}
-                  </div>
-                  <div className="text-xs md:text-sm text-muted-foreground mt-1">
-                    {stat.label}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <p className="text-center text-xs text-muted-foreground font-medium mb-5 uppercase tracking-wider">
-              {t("socialProofTitle")}
-            </p>
-            <div className="flex flex-wrap justify-center items-center gap-8 md:gap-14 opacity-40 grayscale">
-              <div className="text-lg font-bold flex items-center gap-2">
-                <Sparkles className="size-4" /> Stripe
-              </div>
-              <div className="text-lg font-bold flex items-center gap-2">
-                <Layers className="size-4" /> Clerk
-              </div>
-              <div className="text-lg font-bold flex items-center gap-2">
-                <Wand2 className="size-4" /> Anthropic
-              </div>
-              <div className="text-lg font-bold flex items-center gap-2">
-                <ImageIcon className="size-4" /> Replicate
+                ))}
               </div>
             </div>
           </div>
         </section>
 
-        {/* Showcase — 4 personas with Instagram-style cards */}
-        <section className="py-24 md:py-32 relative overflow-hidden">
-          <div className="container mx-auto px-6">
-            <div className="text-center max-w-2xl mx-auto mb-14">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-border bg-card text-muted-foreground text-xs font-medium mb-4">
-                <Sparkles className="size-3.5 text-primary" />
-                <span>{t("heroPhotoBadge")}</span>
-              </div>
-              <h2 className="text-3xl md:text-5xl font-bold mb-4 tracking-tight text-foreground">
-                {t("showcaseTitle")}
+        {/* 3. Face-lock story */}
+        <section
+          id="face-lock"
+          className="relative py-24 md:py-32"
+        >
+          <div className="mx-auto max-w-6xl px-5 md:px-8">
+            <div className="max-w-2xl">
+              <Eyebrow>{t("faceLockEyebrow")}</Eyebrow>
+              <h2 className="mt-4 text-balance text-3xl font-semibold tracking-[-0.02em] text-white md:text-5xl">
+                {t("faceLockTitle")}
               </h2>
-              <p className="text-muted-foreground text-lg leading-relaxed">
-                {t("showcaseSubtitle")}
+              <p className="mt-5 text-pretty text-base leading-relaxed text-white/55 md:text-lg">
+                {t("faceLockSubtitle")}
               </p>
+
+              <ul className="mt-8 space-y-2.5 text-sm text-white/70">
+                {[
+                  t("faceLockPointFlux"),
+                  t("faceLockPointLora"),
+                  t("faceLockPointRef"),
+                ].map((point) => (
+                  <li key={point} className="flex items-start gap-2.5">
+                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-aurora" />
+                    <span>{point}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto">
-              {[
-                {
-                  name: t("showcaseLuna"),
-                  handle: "@luna.lifestyle",
-                  avatar: "/landing/influencers/luna.jpg",
-                  posts: [
-                    { src: "/landing/showcase/luna-gym.jpg", caption: t("showcaseCaptionGym"), likes: "12.4K", comments: "284" },
-                    { src: "/landing/showcase/luna-cafe.jpg", caption: t("showcaseCaptionCafe"), likes: "8.9K", comments: "156" },
-                    { src: "/landing/showcase/luna-mirror.jpg", caption: t("showcaseCaptionMirror"), likes: "15.7K", comments: "412" },
-                  ],
-                },
-                {
-                  name: t("showcaseAmani"),
-                  handle: "@amani.style",
-                  avatar: "/landing/influencers/amani.jpg",
-                  posts: [
-                    { src: "/landing/showcase/amani-restaurant.jpg", caption: t("showcaseCaptionRestaurant"), likes: "21.3K", comments: "503" },
-                    { src: "/landing/showcase/amani-shopping.jpg", caption: "Shopping day 🛍️", likes: "9.1K", comments: "187" },
-                  ],
-                },
-                {
-                  name: t("showcaseKenji"),
-                  handle: "@kenji.tokyo",
-                  avatar: "/landing/influencers/kenji.jpg",
-                  posts: [
-                    { src: "/landing/showcase/kenji-tokyo.jpg", caption: t("showcaseCaptionTokyo"), likes: "18.6K", comments: "402" },
-                    { src: "/landing/showcase/kenji-street1.jpg", caption: "Daylight fit 🇯🇵", likes: "11.2K", comments: "231" },
-                    { src: "/landing/showcase/kenji-shop.jpg", caption: "Vintage finds", likes: "7.4K", comments: "98" },
-                  ],
-                },
-                {
-                  name: t("showcaseMarco"),
-                  handle: "@marco.travels",
-                  avatar: "/landing/influencers/marco.jpg",
-                  posts: [
-                    { src: "/landing/showcase/marco-nyc.jpg", caption: t("showcaseCaptionNyc"), likes: "24.1K", comments: "612" },
-                    { src: "/landing/showcase/marco-cafe.jpg", caption: "Espresso run ☕", likes: "9.8K", comments: "204" },
-                    { src: "/landing/showcase/marco-park.jpg", caption: "Park days 🌳", likes: "13.5K", comments: "318" },
-                  ],
-                },
-              ].map((persona, idx) => (
-                <motion.article
-                  key={persona.handle}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: "-50px" }}
-                  transition={{ duration: 0.5, delay: idx * 0.1 }}
-                  className="rounded-3xl bg-card border border-border overflow-hidden hover:border-primary/30 transition-colors duration-300 group"
-                >
-                  {/* Profile header */}
-                  <div className="p-4 flex items-center gap-3 border-b border-border">
-                    <div className="relative size-11 rounded-full overflow-hidden ring-1 ring-border shrink-0">
-                      <Image
-                        src={persona.avatar}
-                        alt={persona.name}
-                        fill
-                        sizes="44px"
-                        className="object-cover"
-                      />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-bold text-foreground truncate flex items-center gap-1">
-                        {persona.handle}
-                        <span className="inline-flex size-3.5 items-center justify-center rounded-full bg-primary">
-                          <CheckCircle2 className="size-2.5 text-primary-foreground" />
-                        </span>
-                      </div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        {persona.name}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Main post */}
-                  <div className="relative aspect-[4/5] bg-muted">
-                    <Image
-                      src={persona.posts[0].src}
-                      alt={persona.posts[0].caption}
-                      fill
-                      sizes="(min-width: 1024px) 25vw, (min-width: 768px) 50vw, 100vw"
-                      className="object-cover group-hover:scale-[1.02] transition-transform duration-700"
-                    />
-                  </div>
-
-                  {/* IG-style actions */}
-                  <div className="p-4">
-                    <div className="flex items-center gap-4 mb-2 text-white">
-                      <Heart className="size-6 hover:text-rose-500 transition-colors cursor-pointer" />
-                      <MessageCircle className="size-6 cursor-pointer" />
-                      <Send className="size-6 cursor-pointer" />
-                      <Bookmark className="size-6 ml-auto cursor-pointer" />
-                    </div>
-                    <div className="text-sm font-semibold text-white">
-                      {persona.posts[0].likes} likes
-                    </div>
-                    <div className="text-sm text-foreground/80 mt-1 line-clamp-2">
-                      <span className="font-semibold text-white mr-1.5">
-                        {persona.handle}
-                      </span>
-                      {persona.posts[0].caption}
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {persona.posts[0].comments} comments
-                    </div>
-                  </div>
-
-                  {/* Mini grid of other shots */}
-                  {persona.posts.length > 1 && (
-                    <div
-                      className={`grid gap-px bg-border ${
-                        persona.posts.length === 2 ? "grid-cols-1" : "grid-cols-2"
-                      }`}
-                    >
-                      {persona.posts.slice(1).map((p) => (
-                        <div
-                          key={p.src}
-                          className="relative aspect-square bg-card"
-                        >
-                          <Image
-                            src={p.src}
-                            alt={p.caption}
-                            fill
-                            sizes="(min-width: 1024px) 12vw, 25vw"
-                            className="object-cover"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </motion.article>
-              ))}
-            </div>
-
-            <div className="text-center mt-12">
-              <Link href="/sign-up">
-                <Button
-                  variant="outline"
-                  className="border-border bg-card text-foreground hover:bg-accent h-11 px-6"
-                >
-                  {t("showcaseSeeMore")}
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </section>
-
-        {/* Before / After — same face, different scenes */}
-        <section className="py-24 md:py-32 bg-card/30 border-y border-border">
-          <div className="container mx-auto px-6">
-            <div className="text-center max-w-2xl mx-auto mb-14">
-              <h2 className="text-3xl md:text-5xl font-bold mb-4 tracking-tight">
-                {t("beforeAfterTitle")}
-              </h2>
-              <p className="text-muted-foreground text-lg leading-relaxed">
-                {t("beforeAfterSubtitle")}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 max-w-6xl mx-auto items-center">
+            {/* Reference portrait → generated scenes */}
+            <div className="mt-12 grid grid-cols-1 gap-4 md:mt-16 md:grid-cols-[minmax(0,0.85fr)_auto_minmax(0,1.4fr)] md:items-center md:gap-6">
               <motion.div
-                initial={{ opacity: 0, x: -30 }}
+                initial={{ opacity: 0, x: -20 }}
                 whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.6 }}
-                className="md:col-span-2"
+                viewport={{ once: true, margin: "-50px" }}
+                transition={{ duration: 0.5 }}
+                className="relative"
               >
-                <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-3 text-center md:text-left">
-                  {t("beforeAfterLabelBase")}
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-white/40">
+                    {t("faceLockRefLabel")}
+                  </span>
                 </div>
-                <div className="relative aspect-[3/4] rounded-3xl overflow-hidden border border-border shadow-2xl shadow-black/30">
+                <div className="relative aspect-[4/5] overflow-hidden rounded-2xl border border-white/[0.08]">
                   <Image
                     src="/landing/influencers/luna.jpg"
-                    alt="Reference portrait"
+                    alt=""
                     fill
-                    sizes="(min-width: 768px) 40vw, 100vw"
+                    sizes="(min-width: 768px) 30vw, 100vw"
                     className="object-cover"
                   />
-                  <div className="absolute top-3 left-3 px-2 py-1 rounded-full bg-black/60 backdrop-blur text-white text-[10px] font-bold uppercase tracking-wider">
-                    Wizard
-                  </div>
+                  <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-aurora/40 bg-black/60 px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-aurora backdrop-blur">
+                    <span className="size-1.5 rounded-full bg-aurora" />
+                    face-lock
+                  </span>
+                  <span className="absolute inset-x-3 bottom-3 text-[11px] text-white/60">
+                    {t("faceLockRefCaption")}
+                  </span>
                 </div>
               </motion.div>
 
-              <div className="hidden md:flex justify-center items-center md:col-span-1">
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.5 }}
-                  whileInView={{ opacity: 1, scale: 1 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.5, delay: 0.3 }}
-                  className="size-16 rounded-full bg-card border border-border flex items-center justify-center"
-                >
-                  <ArrowRight className="size-7 text-primary" />
-                </motion.div>
+              <div className="hidden items-center justify-center md:flex">
+                <ArrowRight className="size-6 text-white/30" />
               </div>
 
-              <motion.div
-                initial={{ opacity: 0, x: 30 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.6, delay: 0.2 }}
-                className="md:col-span-2"
-              >
-                <div className="text-xs uppercase tracking-wider text-emerald-400 font-semibold mb-3 text-center md:text-left">
-                  {t("beforeAfterLabelGenerated")}
+              <div>
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-white/40">
+                    {t("faceLockOutLabel")}
+                  </span>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                   {[
                     "/landing/showcase/luna-gym.jpg",
                     "/landing/showcase/luna-cafe.jpg",
                     "/landing/showcase/luna-mirror.jpg",
-                    "/landing/showcase/amani-restaurant.jpg",
+                    "/landing/showcase/marco-cafe.jpg",
                   ].map((src, i) => (
                     <motion.div
                       key={src}
-                      initial={{ opacity: 0, y: 20 }}
+                      initial={{ opacity: 0, y: 12 }}
                       whileInView={{ opacity: 1, y: 0 }}
                       viewport={{ once: true }}
-                      transition={{ duration: 0.4, delay: 0.4 + i * 0.08 }}
-                      className="relative aspect-[3/4] rounded-2xl overflow-hidden border border-border"
+                      transition={{ duration: 0.4, delay: 0.15 + i * 0.06 }}
+                      className="relative aspect-[3/4] overflow-hidden rounded-xl border border-white/[0.06]"
                     >
                       <Image
                         src={src}
                         alt=""
                         fill
-                        sizes="(min-width: 768px) 20vw, 50vw"
+                        sizes="(min-width: 768px) 15vw, 45vw"
                         className="object-cover"
                       />
                     </motion.div>
                   ))}
                 </div>
-              </motion.div>
+                <p className="mt-3 text-[12px] text-white/45">
+                  {t("faceLockOutCaption")}
+                </p>
+              </div>
             </div>
           </div>
         </section>
 
-        {/* Features */}
-        <section id="features" className="py-24 md:py-32 relative">
-          <div className="container mx-auto px-6">
-            <div className="text-center max-w-2xl mx-auto mb-16">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">
-                {t("featuresTitle")}
+        {/* 4. Bento capabilities */}
+        <section id="studio" className="py-24 md:py-32">
+          <div className="mx-auto max-w-6xl px-5 md:px-8">
+            <div className="max-w-2xl">
+              <Eyebrow>{t("bentoEyebrow")}</Eyebrow>
+              <h2 className="mt-4 text-balance text-3xl font-semibold tracking-[-0.02em] text-white md:text-5xl">
+                {t("bentoTitle")}
               </h2>
-              <p className="text-muted-foreground text-lg">{t("featuresSubtitle")}</p>
-            </div>
-
-            <motion.div
-              variants={staggerContainer}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, margin: "-100px" }}
-              className="grid md:grid-cols-2 lg:grid-cols-4 gap-6"
-            >
-              {features.map((feature, i) => (
-                <motion.div
-                  key={i}
-                  variants={fadeIn}
-                  className="p-6 rounded-2xl bg-card border border-border hover:border-primary/20 transition-colors group"
-                >
-                  <div
-                    className={`size-12 rounded-xl ${feature.bg} flex items-center justify-center mb-6 group-hover:scale-110 transition-transform`}
-                  >
-                    <feature.icon className={`size-6 ${feature.color}`} />
-                  </div>
-                  <h3 className="text-xl font-bold mb-3">{feature.title}</h3>
-                  <p className="text-muted-foreground leading-relaxed">{feature.desc}</p>
-                </motion.div>
-              ))}
-            </motion.div>
-          </div>
-        </section>
-
-        {/* How it works */}
-        <section
-          id="how-it-works"
-          className="py-24 md:py-32 bg-card/30 border-y border-border"
-        >
-          <div className="container mx-auto px-6">
-            <div className="text-center max-w-2xl mx-auto mb-16">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">
-                {t("howItWorksTitle")}
-              </h2>
-              <p className="text-muted-foreground text-lg">
-                {t("howItWorksSubtitle")}
+              <p className="mt-5 text-pretty text-base leading-relaxed text-white/55 md:text-lg">
+                {t("bentoSubtitle")}
               </p>
             </div>
 
-            <div className="max-w-4xl mx-auto relative">
-              <div className="absolute left-[27px] md:left-1/2 top-4 bottom-4 w-px bg-border md:-translate-x-1/2" />
-
-              {steps.map((step, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: "-100px" }}
-                  transition={{ delay: i * 0.1 }}
-                  className={`relative flex flex-col md:flex-row gap-8 items-start md:items-center mb-12 last:mb-0 ${
-                    i % 2 !== 0 ? "md:flex-row-reverse" : ""
-                  }`}
-                >
-                  <div
-                    className={`md:w-1/2 flex flex-col ${
-                      i % 2 !== 0
-                        ? "md:items-start"
-                        : "md:items-end md:text-right"
-                    } pl-16 md:pl-0`}
-                  >
-                    <h3 className="text-xl font-bold mb-2">{step.title}</h3>
-                    <p className="text-muted-foreground">{step.desc}</p>
-                  </div>
-
-                  <div className="absolute left-0 md:static md:w-14 flex justify-center shrink-0 z-10">
-                    <div className="size-14 rounded-full bg-background border-4 border-card flex items-center justify-center text-sm font-bold text-primary">
-                      {step.step}
-                    </div>
-                  </div>
-
-                  <div
-                    className={`md:w-1/2 hidden md:flex ${
-                      i % 2 !== 0 ? "justify-end" : "justify-start"
-                    }`}
-                  >
-                    <div className="size-24 rounded-2xl bg-card border border-border flex items-center justify-center">
-                      <step.icon className="size-10 text-muted-foreground" />
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
+            <div className="mt-12 md:mt-16">
+              <BentoCapabilities />
             </div>
           </div>
         </section>
 
-        {/* Pricing teaser */}
-        <section id="pricing" className="py-24 md:py-32">
-          <div className="container mx-auto px-6">
-            <div className="text-center max-w-2xl mx-auto mb-16">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">
+        {/* 5. Pricing teaser */}
+        <section
+          id="pricing"
+          className="border-t border-white/[0.05] py-24 md:py-32"
+        >
+          <div className="mx-auto max-w-6xl px-5 md:px-8">
+            <div className="mx-auto max-w-2xl text-center">
+              <Eyebrow>{t("pricingEyebrow")}</Eyebrow>
+              <h2 className="mt-4 text-balance text-3xl font-semibold tracking-[-0.02em] text-white md:text-5xl">
                 {t("pricingTitle")}
               </h2>
-              <p className="text-muted-foreground text-lg">{t("pricingSubtitle")}</p>
+              <p className="mt-5 text-pretty text-base leading-relaxed text-white/55 md:text-lg">
+                {t("pricingSubtitle")}
+              </p>
+              <p className="mt-4 font-mono text-[11px] uppercase tracking-widest text-white/40">
+                {t("pricingCreditNote")}
+              </p>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto mb-12">
-              {plansForCards.map((plan, i) => (
+            <div className="mt-14 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              {plansForCards.map((plan) => (
                 <div
-                  key={i}
-                  className={`rounded-2xl p-8 border ${
+                  key={plan.id}
+                  className={`relative flex flex-col rounded-2xl border p-6 ${
                     plan.featured
-                      ? "border-primary/40 bg-primary/5 relative"
-                      : "border-border bg-card"
+                      ? "border-aurora/40 bg-aurora/[0.04]"
+                      : "border-white/[0.08] bg-white/[0.015]"
                   }`}
                 >
                   {plan.featured && (
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 px-3 py-1 bg-foreground text-background text-xs font-bold rounded-full">
+                    <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full border border-aurora/40 bg-black px-3 py-0.5 font-mono text-[10px] uppercase tracking-widest text-aurora">
                       {t("pricingMostPopular")}
-                    </div>
+                    </span>
                   )}
-                  <h3 className="text-xl font-bold mb-2">{plan.name}</h3>
-                  <div className="mb-4">
-                    <span className="text-4xl font-bold">{plan.price}</span>
+
+                  <h3 className="text-sm font-semibold text-white">
+                    {plan.name}
+                  </h3>
+                  <p className="mt-1 text-[12px] text-white/45">{plan.desc}</p>
+
+                  <div className="mt-4 flex items-baseline gap-1">
+                    <span className="text-4xl font-semibold tracking-tight text-white">
+                      {plan.price}
+                    </span>
                     {plan.id !== "FREE" && (
-                      <span className="text-muted-foreground">
+                      <span className="text-[12px] text-white/45">
                         {isFr ? "/mois" : "/mo"}
                       </span>
                     )}
                   </div>
-                  <p className="text-muted-foreground text-sm mb-6">{plan.desc}</p>
 
-                  <Link href="/sign-up">
+                  <ul className="mt-6 space-y-2 text-[13px] text-white/70">
+                    {plan.features.map((f) => (
+                      <li key={f} className="flex items-start gap-2">
+                        <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-white/40" />
+                        <span>{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <Link href="/sign-up" className="mt-6 block">
                     <Button
+                      size="sm"
                       variant={plan.featured ? "default" : "outline"}
-                      className={`w-full mb-6 ${
+                      className={
                         plan.featured
-                          ? "bg-foreground text-background hover:bg-foreground/90"
-                          : "border-border text-foreground hover:bg-accent"
-                      }`}
+                          ? "w-full bg-white text-black hover:bg-white/90"
+                          : "w-full border-white/10 bg-transparent text-white hover:bg-white/[0.06]"
+                      }
                     >
                       {t("pricingStart")}
                     </Button>
                   </Link>
-
-                  <ul className="space-y-3">
-                    {plan.features.map((f, j) => (
-                      <li
-                        key={j}
-                        className="flex items-center gap-3 text-sm text-foreground/80"
-                      >
-                        <CheckCircle2 className="size-4 text-primary shrink-0" />
-                        {f}
-                      </li>
-                    ))}
-                  </ul>
                 </div>
               ))}
             </div>
 
-            <div className="text-center">
+            <div className="mt-8 text-center">
               <Link href="/pricing">
                 <Button
                   variant="ghost"
-                  className="text-muted-foreground hover:text-foreground"
+                  className="text-white/60 hover:text-white"
                 >
-                  {t("pricingSeeAll")}{" "}
-                  <ArrowRight className="ml-2 size-4" />
+                  {t("pricingSeeAll")} <ArrowRight className="ml-1 size-4" />
                 </Button>
               </Link>
             </div>
           </div>
         </section>
 
-        {/* Testimonials */}
-        <section className="py-24 md:py-32 bg-card/30 border-y border-border">
-          <div className="container mx-auto px-6">
-            <div className="text-center max-w-2xl mx-auto mb-14">
-              <h2 className="text-3xl md:text-5xl font-bold mb-4 tracking-tight">
+        {/* 6. Testimonials */}
+        <section className="border-y border-white/[0.05] bg-white/[0.01] py-24 md:py-32">
+          <div className="mx-auto max-w-6xl px-5 md:px-8">
+            <div className="max-w-2xl">
+              <Eyebrow>{t("testimonialsEyebrow")}</Eyebrow>
+              <h2 className="mt-4 text-balance text-3xl font-semibold tracking-[-0.02em] text-white md:text-5xl">
                 {t("testimonialsTitle")}
               </h2>
-              <p className="text-muted-foreground text-lg">
+              <p className="mt-5 text-pretty text-base leading-relaxed text-white/55 md:text-lg">
                 {t("testimonialsSubtitle")}
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
-              {[
-                {
-                  quote: t("testimonial1Quote"),
-                  name: t("testimonial1Name"),
-                  role: t("testimonial1Role"),
-                  avatar: "/landing/influencers/luna.jpg",
-                },
-                {
-                  quote: t("testimonial2Quote"),
-                  name: t("testimonial2Name"),
-                  role: t("testimonial2Role"),
-                  avatar: "/landing/influencers/marco.jpg",
-                },
-                {
-                  quote: t("testimonial3Quote"),
-                  name: t("testimonial3Name"),
-                  role: t("testimonial3Role"),
-                  avatar: "/landing/influencers/amani.jpg",
-                },
-              ].map((tt, i) => (
-                <motion.div
+            <div className="mt-14 grid gap-4 md:grid-cols-3">
+              {testimonials.map((tt, i) => (
+                <motion.figure
                   key={tt.name}
-                  initial={{ opacity: 0, y: 20 }}
+                  initial={{ opacity: 0, y: 16 }}
                   whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: "-50px" }}
-                  transition={{ duration: 0.5, delay: i * 0.1 }}
-                  className="p-7 rounded-3xl bg-card border border-border hover:border-primary/20 transition-colors relative"
+                  viewport={{ once: true, margin: "-60px" }}
+                  transition={{ duration: 0.5, delay: i * 0.08 }}
+                  className="relative flex flex-col justify-between rounded-2xl border border-white/[0.07] bg-black/40 p-7"
                 >
-                  <Quote className="absolute top-5 right-5 size-7 text-muted-foreground/30" />
-                  <p className="text-foreground/90 leading-relaxed mb-6 text-[15px]">
+                  <Quote className="mb-4 size-5 text-white/25" />
+                  <blockquote className="text-[15px] leading-relaxed text-white/85">
                     &ldquo;{tt.quote}&rdquo;
-                  </p>
-                  <div className="flex items-center gap-3">
-                    <div className="relative size-11 rounded-full overflow-hidden ring-1 ring-border shrink-0">
+                  </blockquote>
+                  <figcaption className="mt-6 flex items-center gap-3">
+                    <span className="relative size-9 overflow-hidden rounded-full ring-1 ring-white/10">
                       <Image
                         src={tt.avatar}
                         alt={tt.name}
                         fill
-                        sizes="44px"
+                        sizes="36px"
                         className="object-cover"
                       />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-sm font-bold text-foreground">{tt.name}</div>
-                      <div className="text-xs text-muted-foreground">{tt.role}</div>
-                    </div>
-                  </div>
-                </motion.div>
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium text-white">
+                        {tt.name}
+                      </span>
+                      <span className="block truncate text-[11px] text-white/45">
+                        {tt.role}
+                      </span>
+                    </span>
+                  </figcaption>
+                </motion.figure>
               ))}
             </div>
           </div>
         </section>
 
-        {/* Final CTA */}
-        <section className="py-24">
-          <div className="container mx-auto px-6">
-            <div className="rounded-3xl border border-border bg-card p-8 md:p-16 text-center relative overflow-hidden">
-              <div className="absolute inset-0 app-mesh opacity-50" />
-
-              {/* Floating face thumbnails */}
-              <div className="absolute -top-8 -left-8 size-24 md:size-32 rounded-3xl overflow-hidden border border-white/20 rotate-[-8deg] opacity-80 hidden md:block">
-                <Image
-                  src="/landing/influencers/luna.jpg"
-                  alt=""
-                  fill
-                  sizes="128px"
-                  className="object-cover"
-                />
-              </div>
-              <div className="absolute -bottom-6 -right-6 size-24 md:size-36 rounded-3xl overflow-hidden border border-white/20 rotate-[10deg] opacity-80 hidden md:block">
-                <Image
-                  src="/landing/influencers/kenji.jpg"
-                  alt=""
-                  fill
-                  sizes="144px"
-                  className="object-cover"
-                />
-              </div>
-
-              <div className="relative z-10 max-w-2xl mx-auto">
-                <h2 className="text-3xl md:text-5xl font-bold text-foreground mb-6">
-                  {t("ctaFinalTitle")}
-                </h2>
-                <p className="text-muted-foreground text-lg mb-10">
-                  {t("ctaFinalSubtitle")}
-                </p>
-
-                <Link href="/sign-up">
-                  <Button
-                    size="lg"
-                    className="h-14 px-8 text-base bg-foreground text-background hover:bg-foreground/90 transition-colors"
-                  >
-                    {t("ctaFinalButton")}
-                  </Button>
-                </Link>
-              </div>
+        {/* 7. Final CTA */}
+        <section className="py-24 md:py-32">
+          <div className="mx-auto max-w-4xl px-5 md:px-8">
+            <div className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-[oklch(0.06_0.008_285)] p-10 text-center md:p-16">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,var(--aurora-deep)_0%,transparent_60%)] opacity-25"
+              />
+              <Eyebrow>{t("ctaFinalEyebrow")}</Eyebrow>
+              <h2 className="mx-auto mt-5 max-w-xl text-balance text-3xl font-semibold tracking-[-0.02em] text-white md:text-5xl">
+                {t("ctaFinalTitle")}
+              </h2>
+              <p className="mx-auto mt-4 max-w-lg text-pretty text-base leading-relaxed text-white/60">
+                {t("ctaFinalSubtitle")}
+              </p>
+              <Link href="/sign-up" className="mt-8 inline-block">
+                <Button
+                  size="lg"
+                  className="h-12 bg-white px-6 text-black hover:bg-white/90"
+                >
+                  {t("ctaFinalButton")}
+                  <ArrowRight className="ml-1 size-4" />
+                </Button>
+              </Link>
             </div>
           </div>
         </section>
       </main>
 
-      <footer className="bg-background border-t border-border py-12">
-        <div className="container mx-auto px-6">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-            <div className="flex items-center gap-2.5">
-              <div className="size-6 rounded-md border border-border bg-card flex items-center justify-center">
-                <Sparkles className="size-3 text-primary" />
-              </div>
-              <span className="font-semibold text-foreground">Aura Influences</span>
-            </div>
+      <footer className="border-t border-white/[0.05]">
+        <div className="mx-auto flex max-w-6xl flex-col gap-6 px-5 py-10 md:flex-row md:items-center md:justify-between md:px-8">
+          <WordMark />
 
-            <div className="flex gap-6 text-sm text-muted-foreground">
-              <Link
-                href="/changelog"
-                className="hover:text-foreground transition-colors"
-              >
-                {t("navChangelog")}
-              </Link>
-              <Link
-                href="/pricing"
-                className="hover:text-foreground transition-colors"
-              >
-                {t("navPricing")}
-              </Link>
-              <a
-                href="mailto:hello@influenceuse-ia.com"
-                className="hover:text-foreground transition-colors"
-              >
-                {t("footerSupport")}
-              </a>
-            </div>
+          <p className="max-w-md text-[12px] text-white/40">
+            {t("footerBuiltWith")}
+          </p>
 
-            <p className="text-sm text-muted-foreground/70">
-              © {new Date().getFullYear()} Aura Influences. {t("footerRights")}
-            </p>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[12px] text-white/50">
+            <Link
+              href="/changelog"
+              className="transition-colors hover:text-white"
+            >
+              {t("navChangelog")}
+            </Link>
+            <Link
+              href="/pricing"
+              className="transition-colors hover:text-white"
+            >
+              {t("navPricing")}
+            </Link>
+            <a
+              href="mailto:hello@aurainfluenceai.com"
+              className="transition-colors hover:text-white"
+            >
+              {t("footerSupport")}
+            </a>
+            <Link
+              href="/privacy"
+              className="transition-colors hover:text-white"
+            >
+              {t("footerPrivacy")}
+            </Link>
+            <Link
+              href="/terms"
+              className="transition-colors hover:text-white"
+            >
+              {t("footerTerms")}
+            </Link>
           </div>
+
+          <p className="text-[11px] text-white/30">
+            © {new Date().getFullYear()} Aura Influences. {t("footerRights")}
+          </p>
         </div>
       </footer>
     </div>
+  );
+}
+
+/**
+ * Small uppercase mono-tag we use above every section title for that
+ * quiet product-grade rhythm you find on Linear/Vercel/Cursor.
+ */
+function Eyebrow({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-white/45">
+      <span className="size-1 rounded-full bg-aurora" />
+      {children}
+    </span>
+  );
+}
+
+/**
+ * Site-wide faint grid + noise. Rendered once behind the whole page so the
+ * canvas feels like a surface, not a flat black rectangle. Kept extremely
+ * subtle — you should barely notice it unless you're looking for it.
+ */
+function BackgroundGrid() {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none fixed inset-0 -z-10 opacity-[0.35]"
+      style={{
+        backgroundImage:
+          "linear-gradient(oklch(0.28 0.008 285 / 0.14) 1px, transparent 1px), linear-gradient(90deg, oklch(0.28 0.008 285 / 0.14) 1px, transparent 1px)",
+        backgroundSize: "56px 56px",
+        maskImage:
+          "radial-gradient(ellipse 90% 60% at 50% 0%, black 40%, transparent 100%)",
+      }}
+    />
   );
 }

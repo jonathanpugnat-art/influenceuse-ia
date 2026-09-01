@@ -15,7 +15,6 @@ function isPublicPath(pathname: string): boolean {
   if (pathname === "/" || pathname === "/fr" || pathname === "/en") return true;
   if (/^\/(fr|en)\/sign-(in|up)/.test(pathname)) return true;
   if (/^\/(fr|en)\/home\b/.test(pathname)) return true;
-  if (/^\/(fr|en)\/preview\/landing-premium\b/.test(pathname)) return true;
   if (/^\/(fr|en)\/changelog\b/.test(pathname)) return true;
   if (/^\/(fr|en)\/pricing\b/.test(pathname)) return true;
   // Sprint 14 — legal pages must be reachable without auth so Meta /

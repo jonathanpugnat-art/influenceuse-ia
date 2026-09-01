@@ -7,6 +7,9 @@
 :root {
   /* Hauteur barre nav mobile : pill flottante + safe area iOS */
   --mobile-nav-height: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+  /* Accent aurore — landing / pricing (clair = traits, profond = glow) */
+  --aurora: oklch(0.85 0.14 310);
+  --aurora-deep: oklch(0.55 0.22 295);
 }
 
 @theme inline {
@@ -76,6 +79,10 @@
   --color-indigo-800: oklch(0.398 0.195 277.366);
   --color-indigo-900: oklch(0.359 0.144 278.697);
   --color-indigo-950: oklch(0.257 0.09 281.288);
+
+  /* Named aurora tokens — use bg-aurora / text-aurora / bg-aurora-deep */
+  --color-aurora: var(--aurora);
+  --color-aurora-deep: var(--aurora-deep);
 
   /* Custom slate colors */
   --color-slate-50: oklch(0.984 0.003 247.858);
