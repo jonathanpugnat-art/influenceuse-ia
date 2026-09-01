@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { processNextBatchSlice } from "@/server/services/batch.service";
 import { failStaleGenerations } from "@/server/services/stale-generation.service";
+import { failStaleVideoJobs } from "@/server/services/stale-video-job.service";
 
 // The slice budgets 45s of image generation; leave headroom for Replicate retries.
 export const maxDuration = 300;
@@ -40,11 +41,18 @@ export async function GET(req: NextRequest) {
       return { failedContents: 0, failedJobs: 0 };
     });
 
+    // Seedance / Remix: webhook never arrived → refund after 20 min.
+    const videoSwept = await failStaleVideoJobs().catch((err) => {
+      console.error("[cron/process-batches] stale video sweep failed:", err);
+      return { seedance: 0, remix: 0 };
+    });
+
     const result = await processNextBatchSlice();
     return NextResponse.json({
       ok: true,
       ...result,
       staleSwept: swept.failedContents,
+      staleVideoSwept: videoSwept.seedance + videoSwept.remix,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

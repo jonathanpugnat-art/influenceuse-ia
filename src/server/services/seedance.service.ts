@@ -13,6 +13,10 @@
  *
  * The webhook (or poll-on-read) then finalises to COMPLETED | FAILED |
  * REFUNDED. All state transitions are idempotent.
+ *
+ * If no webhook arrives within 20 min (`STALE_VIDEO_JOB_MS` in
+ * stale-video-job.service), the sweeper calls `failSeedanceJob` so the
+ * hold is refunded and the UI stops spinning.
  */
 
 import { TRPCError } from "@trpc/server";

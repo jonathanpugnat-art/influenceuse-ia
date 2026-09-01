@@ -144,6 +144,9 @@ async function resolveInfluencerIdentity(
  *
  * The caller receives the job id + the credits held so the UI can show
  * the exact charge before render is complete.
+ *
+ * If no webhook arrives within 20 min (`STALE_VIDEO_JOB_MS`), the
+ * sweeper calls `failRemixJob` so the hold is refunded.
  */
 export async function createRemixJob(
   input: CreateRemixInput

@@ -8,6 +8,11 @@ import {
   reconcileSeedanceJob,
 } from "@/server/services/seedance.service";
 import {
+  failStaleVideoJobs,
+  isOpenVideoJobStatus,
+  settleOpenSeedanceJobIfStale,
+} from "@/server/services/stale-video-job.service";
+import {
   clampSeedanceDuration,
   clampSeedanceResolution,
   estimateSeedanceCredits,
@@ -144,14 +149,13 @@ export const seedanceRouter = createTRPCRouter({
           message: "Scène introuvable.",
         });
       }
-      // Poll-on-read recovery: if the webhook was missed, nudge FAL.
-      if (
-        (job.status === "IN_PROGRESS" || job.status === "PENDING") &&
-        job.falRequestId
-      ) {
-        void reconcileSeedanceJob(job.id);
+      // Timeout first so a Luana-style zombie returns REFUNDED in this
+      // response (refundCredits, spinner stops). Young jobs still nudge FAL.
+      const settled = await settleOpenSeedanceJobIfStale(job);
+      if (isOpenVideoJobStatus(settled.status) && settled.falRequestId) {
+        void reconcileSeedanceJob(settled.id);
       }
-      return serializeSeedanceJob(job);
+      return serializeSeedanceJob(settled);
     }),
 
   listScenes: protectedProcedure
@@ -163,6 +167,9 @@ export const seedanceRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const user = await getDbUser(ctx.userId);
+      await failStaleVideoJobs({ userId: user.id }).catch((err) => {
+        console.warn("[seedance.listScenes] stale sweep failed:", err);
+      });
       const jobs = await db.seedanceJob.findMany({
         where: {
           userId: user.id,
