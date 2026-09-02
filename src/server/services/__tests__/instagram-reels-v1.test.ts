@@ -99,6 +99,61 @@ describe("instagram.service — Reels V1", () => {
     });
   });
 
+  describe("publishPhoto", () => {
+    it("sends is_ai_generated=true on the Graph container create", async () => {
+      mockedAxios.post.mockResolvedValueOnce({ data: { id: "photo_c1" } });
+      mockedAxios.get.mockResolvedValueOnce({
+        data: { status_code: "FINISHED" },
+      });
+      mockedAxios.post.mockResolvedValueOnce({ data: { id: "photo_m1" } });
+
+      const result = await instagram.publishPhoto(
+        "access-token",
+        IG_USER,
+        "https://cdn.example.com/shot.jpg",
+        "ai photo"
+      );
+
+      expect(result.mediaId).toBe("photo_m1");
+      const createParams = mockedAxios.post.mock.calls[0][2].params;
+      expect(createParams.image_url).toBe("https://cdn.example.com/shot.jpg");
+      expect(createParams.is_ai_generated).toBe("true");
+    });
+  });
+
+  describe("publishCarousel", () => {
+    it("sends is_ai_generated=true on every child and parent container create", async () => {
+      mockedAxios.post
+        .mockResolvedValueOnce({ data: { id: "child_1" } })
+        .mockResolvedValueOnce({ data: { id: "child_2" } })
+        .mockResolvedValueOnce({ data: { id: "carousel_c" } });
+      mockedAxios.get.mockResolvedValueOnce({
+        data: { status_code: "FINISHED" },
+      });
+      mockedAxios.post.mockResolvedValueOnce({ data: { id: "carousel_m" } });
+
+      const result = await instagram.publishCarousel(
+        "access-token",
+        IG_USER,
+        [
+          "https://cdn.example.com/a.jpg",
+          "https://cdn.example.com/b.jpg",
+        ],
+        "ai carousel"
+      );
+
+      expect(result.mediaId).toBe("carousel_m");
+      const child1 = mockedAxios.post.mock.calls[0][2].params;
+      const child2 = mockedAxios.post.mock.calls[1][2].params;
+      const parent = mockedAxios.post.mock.calls[2][2].params;
+      expect(child1.is_carousel_item).toBe(true);
+      expect(child1.is_ai_generated).toBe("true");
+      expect(child2.is_ai_generated).toBe("true");
+      expect(parent.media_type).toBe("CAROUSEL");
+      expect(parent.is_ai_generated).toBe("true");
+    });
+  });
+
   describe("postComment", () => {
     it("posts a first comment via /{media-id}/comments", async () => {
       mockedAxios.post.mockResolvedValueOnce({ data: { id: "comment_9" } });
