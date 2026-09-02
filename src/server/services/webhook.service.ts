@@ -1,6 +1,10 @@
 import crypto from "node:crypto";
 import { db } from "@/server/db";
 import type { WebhookEvent } from "@/generated/prisma/client";
+import {
+  assertSafeOutboundWebhookUrl,
+  OutboundUrlBlockedError,
+} from "@/lib/outbound-url-guard";
 
 // ──────────────────────────────────────────────
 // Outbound webhook service (Phase 5)
@@ -66,7 +70,11 @@ async function deliverOnce(input: DeliverInput) {
   let responseBody: string | null = null;
   let errorMsg: string | null = null;
 
+  let permanentFailure = false;
+
   try {
+    await assertSafeOutboundWebhookUrl(input.url);
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -81,6 +89,7 @@ async function deliverOnce(input: DeliverInput) {
         "x-webhook-attempt": String(attempt),
       },
       body: rawBody,
+      redirect: "manual",
       signal: controller.signal,
     });
     clearTimeout(timer);
@@ -95,10 +104,13 @@ async function deliverOnce(input: DeliverInput) {
     }
   } catch (err) {
     errorMsg = err instanceof Error ? err.message : String(err);
+    if (err instanceof OutboundUrlBlockedError) {
+      permanentFailure = true;
+    }
   }
 
   const ok = responseCode !== null && responseCode >= 200 && responseCode < 300;
-  const willRetry = !ok && attempt < MAX_ATTEMPTS;
+  const willRetry = !ok && !permanentFailure && attempt < MAX_ATTEMPTS;
 
   const updated = await db.webhookDelivery.update({
     where: { id: input.payload.deliveryId! },

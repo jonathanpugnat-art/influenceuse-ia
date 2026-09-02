@@ -10,8 +10,12 @@ const mockDb = vi.hoisted(() => ({
   },
 }));
 const mockFetch = vi.hoisted(() => vi.fn());
+const mockLookup = vi.hoisted(() => vi.fn());
 
 vi.mock("@/server/db", () => ({ db: mockDb }));
+vi.mock("node:dns/promises", () => ({
+  lookup: mockLookup,
+}));
 // Replace global fetch with our spy.
 globalThis.fetch = mockFetch as unknown as typeof fetch;
 
@@ -20,6 +24,7 @@ import {
   generateWebhookSecret,
   emitEvent,
   retryFailedDeliveries,
+  pingWebhook,
 } from "@/server/services/webhook.service";
 
 describe("webhook.service", () => {
@@ -34,6 +39,7 @@ describe("webhook.service", () => {
       ...data,
     }));
     mockDb.webhook.update.mockResolvedValue(undefined);
+    mockLookup.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
   });
 
   it("signs payloads with HMAC-SHA256 deterministically", () => {
@@ -143,4 +149,53 @@ describe("webhook.service", () => {
     expect(r.succeeded).toBe(1);
     expect(r.stillFailing).toBe(1);
   });
+
+  it("does not fetch http://127.0.0.1 (SSRF)", async () => {
+    mockDb.webhook.findMany.mockResolvedValue([
+      { id: "w1", url: "http://127.0.0.1/hook", secret: "s1" },
+    ]);
+    await emitEvent("u1", "CONTENT_PUBLISHED", { foo: 1 });
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockLookup).not.toHaveBeenCalled();
+    const updateCall = mockDb.webhookDelivery.update.mock.calls[0][0];
+    expect(updateCall.data.status).toBe("FAILED");
+    expect(updateCall.data.nextRetryAt).toBeNull();
+  });
+
+  it("does not fetch http://169.254.169.254 (SSRF metadata)", async () => {
+    mockDb.webhook.findMany.mockResolvedValue([
+      { id: "w1", url: "http://169.254.169.254/latest/meta-data", secret: "s1" },
+    ]);
+    await emitEvent("u1", "CONTENT_PUBLISHED", { foo: 1 });
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockLookup).not.toHaveBeenCalled();
+  });
+
+  it("pingWebhook does not fetch a loopback URL", async () => {
+    mockDb.webhook.findUnique.mockResolvedValue({
+      id: "w1",
+      url: "http://127.0.0.1/hook",
+      secret: "s1",
+    });
+    await pingWebhook("w1");
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("POSTs with redirect: manual so a 302 never follows to a blocked host", async () => {
+    mockDb.webhook.findMany.mockResolvedValue([
+      { id: "w1", url: "https://hooks.example/1", secret: "s1" },
+    ]);
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => "ok",
+    } as Response);
+
+    await emitEvent("u1", "CONTENT_PUBLISHED", { contentId: "c1" });
+
+    const [, init] = mockFetch.mock.calls[0];
+    expect(init.redirect).toBe("manual");
+    expect(init.headers["x-webhook-signature"]).toMatch(/^sha256=/);
+  });
 });
+
