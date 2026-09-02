@@ -1,11 +1,19 @@
 /**
  * Hostnames allowed for /api/media/download proxy (SSRF guard).
+ * https only. Redirect targets must pass this check again.
  */
+
+import { isBlockedOutboundHostname } from "@/lib/outbound-url-guard";
+
+export const MAX_MEDIA_DOWNLOAD_BYTES = 50 * 1024 * 1024;
+export const MAX_MEDIA_REDIRECTS = 5;
 
 export function isAllowedMediaDownloadUrl(rawUrl: string): boolean {
   try {
     const u = new URL(rawUrl);
-    if (u.protocol !== "https:" && u.protocol !== "http:") return false;
+    if (u.protocol !== "https:") return false;
+    if (u.username || u.password) return false;
+    if (isBlockedOutboundHostname(u.hostname)) return false;
 
     const allowed = new Set<string>();
 
@@ -26,14 +34,24 @@ export function isAllowedMediaDownloadUrl(rawUrl: string): boolean {
     allowed.add("replicate.delivery");
     allowed.add("pbxt.replicate.delivery");
 
-    if (process.env.NODE_ENV === "development") {
-      allowed.add("localhost");
-      allowed.add("127.0.0.1");
-    }
-
     return allowed.has(u.hostname);
   } catch {
     return false;
+  }
+}
+
+export function isRedirectStatus(status: number): boolean {
+  return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
+}
+
+export function resolveMediaRedirectUrl(
+  location: string,
+  currentUrl: string
+): string | null {
+  try {
+    return new URL(location, currentUrl).href;
+  } catch {
+    return null;
   }
 }
 
