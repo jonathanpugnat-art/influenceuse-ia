@@ -363,8 +363,10 @@ export async function finalizeSeedanceJob(
 }
 
 /**
- * Failure path — refund credits (best-effort), mark the job REFUNDED and
- * emit SCENE_FAILED. Idempotent on double-fire.
+ * Failure path — claim the open row first, then refund. Cron + poll +
+ * webhook can race; `updateMany` on PENDING|IN_PROGRESS → REFUNDED is the
+ * single winner. `refundCredits` runs only when count === 1 so we never
+ * double-refund or refund a COMPLETED job.
  */
 export async function failSeedanceJob(
   jobId: string,
@@ -373,20 +375,20 @@ export async function failSeedanceJob(
   const job = await db.seedanceJob.findUnique({ where: { id: jobId } });
   if (!job) return;
 
-  if (job.status === "FAILED" || job.status === "REFUNDED") {
-    return;
-  }
-
-  await refundCredits(job.userId, job.creditsHeld);
-
-  await db.seedanceJob.update({
-    where: { id: jobId },
+  const claimed = await db.seedanceJob.updateMany({
+    where: {
+      id: jobId,
+      status: { in: ["PENDING", "IN_PROGRESS"] },
+    },
     data: {
       status: "REFUNDED",
       error: error.slice(0, 500),
       completedAt: new Date(),
     },
   });
+  if (claimed.count !== 1) return;
+
+  await refundCredits(job.userId, job.creditsHeld);
 
   await emitEvent(job.userId, "SCENE_FAILED", {
     jobId: job.id,

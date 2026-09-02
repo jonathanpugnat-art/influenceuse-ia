@@ -349,8 +349,10 @@ export async function finalizeRemixJob(
 }
 
 /**
- * Failure path — refund credits (best-effort), mark the job FAILED and
- * emit a REMIX_FAILED webhook. Idempotent on double-fire.
+ * Failure path — claim the open row first, then refund. Cron + poll +
+ * webhook can race; `updateMany` on PENDING|IN_PROGRESS → REFUNDED is the
+ * single winner. `refundCredits` runs only when count === 1 so we never
+ * double-refund or refund a COMPLETED job.
  */
 export async function failRemixJob(
   jobId: string,
@@ -359,20 +361,20 @@ export async function failRemixJob(
   const job = await db.remixJob.findUnique({ where: { id: jobId } });
   if (!job) return;
 
-  if (job.status === "FAILED" || job.status === "REFUNDED") {
-    return;
-  }
-
-  await refundCredits(job.userId, job.creditsHeld);
-
-  await db.remixJob.update({
-    where: { id: jobId },
+  const claimed = await db.remixJob.updateMany({
+    where: {
+      id: jobId,
+      status: { in: ["PENDING", "IN_PROGRESS"] },
+    },
     data: {
       status: "REFUNDED",
       error: error.slice(0, 500),
       completedAt: new Date(),
     },
   });
+  if (claimed.count !== 1) return;
+
+  await refundCredits(job.userId, job.creditsHeld);
 
   await emitEvent(job.userId, "REMIX_FAILED", {
     jobId: job.id,
