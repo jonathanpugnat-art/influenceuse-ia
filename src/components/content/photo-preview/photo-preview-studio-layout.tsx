@@ -1,6 +1,6 @@
 "use client";
 
-import { RefreshCw, Download, Sparkles, Coins } from "lucide-react";
+import { RefreshCw, Download, Sparkles, Coins, AlertTriangle, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import { SCENE_FIRST_PLATE_CREDIT } from "@/lib/prompts/scene-first-photo";
@@ -55,6 +55,8 @@ export function PhotoPreviewStudioLayout({
     primaryLabel,
     onPrimaryAction,
     handleRegenerate,
+    generationError,
+    dismissGenerationError,
   } = gen;
 
   const influencersQuery = useInfluencers();
@@ -131,6 +133,23 @@ export function PhotoPreviewStudioLayout({
             softened={promptWasSoftened}
             locale={locale}
           />
+          {generationError && !isGenerating ? (
+            <div
+              role="alert"
+              className="relative flex items-start gap-2 rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-left text-[11px] leading-snug text-rose-100"
+            >
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-300" />
+              <p className="flex-1 whitespace-pre-line">{generationError}</p>
+              <button
+                type="button"
+                onClick={dismissGenerationError}
+                aria-label={t("dismissError")}
+                className="shrink-0 rounded-md p-0.5 text-rose-300 transition-colors hover:text-rose-100"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ) : null}
         </div>
 
         {hasFinalImages && generatedUrls.length > 1 && (

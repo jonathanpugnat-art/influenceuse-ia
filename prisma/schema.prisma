@@ -185,12 +185,36 @@ model Influencer {
   /// Dataset metadata: { status, imageUrls[], zipUrl?, error? }
   loraDataset           Json?
 
+  // ── Talking-head V1 (voix + Hedra avatar) ───────────────────────────
+  /// ElevenLabs voice id used for every talking-head reel of this character.
+  /// Stored ONCE (Instant Voice Clone or Voice Library pick) so remix /
+  /// talking / future publish features reuse the same voice signature.
+  voiceId               String?
+  /// "elevenlabs" | "library" — where the voiceId comes from. Kept as a
+  /// simple string (no enum) so we can add providers later without a
+  /// migration.
+  voiceProvider         String?
+  /// Free-form label the user picked in the voice picker (library name or
+  /// "Clone Aura {name}"). Purely display, never sent to any provider.
+  voiceLabel            String?
+  /// Timestamp the user accepted the synthetic-voice consent (they own the
+  /// rights to the sample, no celebrity clones). NULL = no talking-head
+  /// generation allowed. Written server-side only.
+  voiceConsentAt        DateTime?
+  /// Public URL of the last cloning sample (audio). Kept for the "re-clone"
+  /// UX; may be NULL when the user picked a library voice.
+  voiceSampleUrl        String?
+  /// ISO code of the primary language used for TTS. Defaults to the user
+  /// locale but overridable per character.
+  voiceLanguage         String?
+
   user           User                 @relation(fields: [userId], references: [id])
   socialAccounts SocialAccount[]
   contents       Content[]
   contentBatches ContentBatch[]
   analytics      InfluencerAnalytics?
   trendRecommendations TrendRecommendation[]
+  talkingHeadJobs      TalkingHeadJob[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -241,6 +265,15 @@ model SocialAccount {
   tokenExpiresAt DateTime?
   /// instagram_login | facebook_login — how the token was obtained (refresh differs).
   oauthProvider  String?
+  /// OAuth scopes granted by the user (e.g. instagram_business_content_publish,
+  /// video.publish). Persisted so we can detect what the token can do without
+  /// re-querying the platform every publish.
+  scopes         String[]  @default([])
+  /// TikTok Direct Post: privacy options the account is allowed to pick from
+  /// (PUBLIC_TO_EVERYONE, MUTUAL_FOLLOW_FRIENDS, SELF_ONLY, ...). Fetched via
+  /// /v2/post/publish/creator_info/query/ and cached to power the composer.
+  /// Sandbox / un-audited apps typically only get ["SELF_ONLY"].
+  privacyOptions Json?
   isConnected    Boolean   @default(false)
   followers      Int       @default(0)
 
@@ -271,6 +304,28 @@ model Content {
   platforms        Platform[]
   scheduledAt      DateTime?
   publishedAt      DateTime?
+
+  // ── Social Publish V1 (IG Reels + TikTok Direct Post) ─────────────────
+  /// Whether Aura declared this asset as AI-generated to the destination
+  /// platform. Always true in V1 (`is_ai_generated=true` for IG Reels,
+  /// `is_aigc=true` for TikTok). Never opt-out. Kept as a column so the
+  /// audit log stays trivial to query.
+  isAiGenerated    Boolean            @default(true)
+  /// Optional first comment posted right after IG publish. Best-effort:
+  /// if the comments scope is missing / blocked, we silently skip.
+  firstComment     String?            @db.Text
+  /// IG Reels only — mirror the reel on the account feed (default true).
+  shareToFeed      Boolean            @default(true)
+  /// TikTok Direct Post privacy — must be one of the values returned by
+  /// creator_info.privacy_level_options. Un-audited apps are locked to
+  /// SELF_ONLY (enforced server-side).
+  tiktokPrivacyLevel String?
+  /// Meta media id returned by /media_publish. Populated on IG success.
+  igMediaId        String?
+  /// TikTok Direct Post `publish_id` returned by /video/init. Populated
+  /// on TikTok init success (the final post id is checked later via the
+  /// status endpoint if we ever need it).
+  tiktokPublishId  String?
 
   influencer       Influencer         @relation(fields: [influencerId], references: [id], onDelete: Cascade)
   batch            ContentBatch?      @relation(fields: [batchId], references: [id])
@@ -384,6 +439,229 @@ enum WebhookEvent {
   CONTENT_FAILED
   BATCH_COMPLETED
   CONTENT_SCHEDULED
+  REMIX_COMPLETED
+  REMIX_FAILED
+  SCENE_COMPLETED
+  SCENE_FAILED
+}
+
+/// Viral remix job — user pastes/uploads a TikTok/Reel clip and the
+/// locked character replays the move. Kling O3 video-to-video + elements.
+/// Kept in its own table so the FAL webhook can look up by request_id fast
+/// and so credit-hold / refund logic stays self-contained.
+enum RemixJobStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+model RemixJob {
+  id                  String         @id @default(cuid())
+  userId              String
+  influencerId        String
+  /// "standard" | "pro" — matches REMIX_TIERS in lib/remix-config.
+  tier                String         @default("standard")
+  /// 5 | 10 | 15 — server-clamped to source duration and max 15.
+  durationSec         Int
+  /// Original clip duration reported by the client (seconds). Used to clamp
+  /// duration and for the pre-generate cost preview reconciliation.
+  sourceDurationSec   Float?
+  /// Public URL of the uploaded source MP4/MOV (already on our R2).
+  sourceVideoUrl      String
+  /// Frontal still URL passed as the first `elements[]` reference. Required.
+  frontalImageUrl     String
+  /// 0-3 additional identity references (3/4, full body, profile…). At most
+  /// 3 URLs so `elements + image_urls` stays within Kling's cap of 4.
+  referenceImageUrls  String[]       @default([])
+  /// Preserve original source audio in the output.
+  keepAudio           Boolean        @default(true)
+  /// Prompt sent to Kling. Persisted for debugging + reproducibility.
+  prompt              String         @db.Text
+  /// Credits held on queue (deducted on createRemix). Refunded on FAILED.
+  creditsHeld         Int            @default(0)
+  status              RemixJobStatus @default(PENDING)
+  /// FAL queue `request_id` — the FAL webhook uses this to look us up.
+  falRequestId        String?        @unique
+  /// FAL model id we submitted to (kept for retries / audit).
+  falModel            String
+  /// Optional oEmbed preview payload captured from the URL field.
+  /// { title, authorName, thumbnailUrl, providerName, url } — display only.
+  oembedPreview       Json?
+  /// Final R2 URL for the produced 9:16 MP4.
+  outputVideoUrl      String?
+  /// Short human-readable error for FAILED jobs.
+  error               String?
+  /// Free-form FAL payload / metadata for future audit.
+  metadata            Json?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  completedAt         DateTime?
+
+  @@index([userId])
+  @@index([influencerId])
+  @@index([status])
+  @@index([userId, status])
+  @@index([createdAt])
+}
+
+// ──────────────────────────────────────────────
+// Seedance scene-video V1 (BytePlus Seedance 2.5 via fal.ai)
+// ──────────────────────────────────────────────
+//
+// A locked character holds a 10-30s vertical shot with native audio, using
+// Seedance's multimodal `reference-to-video` endpoint (identity pack as
+// `image_urls` → @Image1, @Image2…). When the character only has a single
+// still we fall back to `image-to-video`. This is the "scene" engine and
+// is intentionally separate from Kling remix (V2V motion-swap) and Hedra
+// talking-head: those keep their own tables, providers and routers.
+//
+// Credit flow (mirrors RemixJob / TalkingHeadJob):
+//   1. Estimate cost from `resolution × durationSec` (see seedance-config).
+//   2. Hold credits (`deductCredits` — refunded via `refundCredits` on FAIL).
+//   3. Persist row PENDING → IN_PROGRESS → COMPLETED | FAILED | REFUNDED.
+//   4. FAL webhook (or poll-on-read) advances IN_PROGRESS → final states.
+
+enum SeedanceJobStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum SeedanceMode {
+  REFERENCE_TO_VIDEO
+  IMAGE_TO_VIDEO
+}
+
+model SeedanceJob {
+  id                 String            @id @default(cuid())
+  userId             String
+  influencerId       String
+  /// "reference_to_video" (default, identity pack) or "image_to_video"
+  /// (single-still fallback). Persisted as enum so a retry/reconcile knows
+  /// which fal model it originally hit.
+  mode               SeedanceMode      @default(REFERENCE_TO_VIDEO)
+  /// 10 | 15 | 30 — server-clamped to `SEEDANCE_ALLOWED_DURATIONS`.
+  durationSec        Int
+  /// "480p" | "720p" — 1080p is deliberately out of V1 (budget, gating).
+  resolution         String            @default("720p")
+  /// V1 is 9:16-only; column kept for a future landscape option.
+  aspectRatio        String            @default("9:16")
+  /// Native audio on by default (Seedance's edge over Kling/Hedra).
+  generateAudio      Boolean           @default(true)
+  /// Full prompt sent to Seedance. Persisted for reproducibility.
+  prompt             String            @db.Text
+  /// Free-form extra sentence the user typed under the base scene brief.
+  extraPromptTail    String?           @db.Text
+  /// Identity pack URLs passed as `image_urls` (or `image_url` in I2V mode).
+  /// Ordered: frontal, 3/4, full body, profile. First entry is always the
+  /// frontal reference.
+  referenceImageUrls String[]          @default([])
+  /// Credits held on queue (deducted on create). Refunded on FAILED.
+  creditsHeld        Int               @default(0)
+  status             SeedanceJobStatus @default(PENDING)
+  /// FAL queue `request_id` — the FAL webhook uses this to look us up.
+  falRequestId       String?           @unique
+  /// FAL model id submitted to (bytedance/seedance-2.5/*). Kept for retries.
+  falModel           String
+  /// Final R2 URL for the produced 9:16 MP4 with native audio.
+  outputVideoUrl     String?
+  /// Short human-readable error for FAILED jobs.
+  error              String?
+  /// Free-form FAL payload / metadata for future audit.
+  metadata           Json?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  completedAt        DateTime?
+
+  @@index([userId])
+  @@index([influencerId])
+  @@index([status])
+  @@index([userId, status])
+  @@index([createdAt])
+}
+
+// ──────────────────────────────────────────────
+// Talking-head V1 (Hedra Avatar + ElevenLabs voice)
+// ──────────────────────────────────────────────
+//
+// A locked character reads a short script on camera. Voice lives on the
+// Influencer (`voiceId`), so the same signature is reused for every reel
+// and future features (remix, publish). Video vendor: Hedra Avatar
+// (together/hedra-avatar). TTS: ElevenLabs (Instant Voice Clone or Voice
+// Library pick — never Default voices, they expire).
+//
+// Credit flow (mirrors RemixJob):
+//   1. Estimate cost from script (2.5 words/s, capped to MAX_TALKING_HEAD_SEC).
+//   2. Hold credits (deductCredits) — refunded via refundCredits on FAILED.
+//   3. Persist row PENDING → PROCESSING → COMPLETED | FAILED | REFUNDED.
+//   4. Poller (/api/cron/poll-talking-head) advances PROCESSING → final states.
+
+enum TalkingHeadJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+model TalkingHeadJob {
+  id                   String               @id @default(cuid())
+  userId               String
+  influencerId         String
+  /// The exact text sent to ElevenLabs. Persisted for reproducibility and
+  /// so the user can see the final version after client-side clamping.
+  script               String               @db.Text
+  /// ElevenLabs voice id resolved at generate-time (may differ later if the
+  /// user re-clones the character voice).
+  voiceId              String
+  /// Whether the character was still using the ElevenLabs Voice Library
+  /// pick at the time (vs a personal clone). Kept for audit.
+  voiceProvider        String               @default("elevenlabs")
+  /// ISO code used for TTS at generate-time.
+  language             String               @default("fr")
+  /// Frontal still URL (the wizard portrait — never a new face-lock pass).
+  portraitImageUrl     String
+  /// Public R2 URL of the synthesized MP3 uploaded by our TTS step.
+  audioUrl             String?
+  /// Duration (seconds) reported by ElevenLabs / probed from the MP3.
+  /// Written before we start the Hedra generation so the credit hold and
+  /// UI cost preview reconcile exactly.
+  audioDurationSec     Float?
+  /// Public R2 URL of the produced 9:16 MP4 (once COMPLETED).
+  videoUrl             String?
+  /// Optional poster JPG (first frame) uploaded to R2.
+  thumbnailUrl         String?
+  /// Hedra asset ids we uploaded (audio + portrait). Kept for debugging;
+  /// Hedra assets are cheap and don't need cleanup.
+  hedraAudioAssetId    String?
+  hedraImageAssetId    String?
+  /// Hedra generation id — the poller uses this to check status.
+  hedraGenerationId    String?              @unique
+  /// Hedra model slug we submitted to (default: together/hedra-avatar).
+  hedraModelSlug       String?
+  /// Credits held on queue (deducted on create). Refunded on FAILED.
+  creditsHeld          Int                  @default(0)
+  status               TalkingHeadJobStatus @default(PENDING)
+  /// Short human-readable error for FAILED jobs.
+  error                String?
+  /// Free-form Hedra payload for future audit.
+  metadata             Json?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  completedAt          DateTime?
+
+  influencer Influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([influencerId])
+  @@index([status])
+  @@index([userId, status])
+  @@index([status, updatedAt])
+  @@index([createdAt])
 }
 
 enum WebhookDeliveryStatus {
@@ -521,6 +799,10 @@ model MediaAsset {
   sizeBytes    Int?
   /// Métadonnées libres : dimensions, prompt, palette dominante…
   metadata     Json?
+  /// Talking-head V1 — flip to true for assets produced by a synthesized
+  /// voice (ElevenLabs TTS) or a Hedra avatar reel. The publish flow will
+  /// use this later to attach the mandatory synthetic-voice disclosure.
+  isSyntheticSpeech Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

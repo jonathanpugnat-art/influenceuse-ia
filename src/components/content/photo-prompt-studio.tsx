@@ -58,7 +58,15 @@ function draftPromptFromParams(params: {
 export function PhotoPromptStudio({
   identityPackPending = false,
 }: {
-  /** Soft-block generate while identity angles are still building (welcome flow). */
+  /**
+   * Informational only: show a "pack still building / retrying" hint on the
+   * generate button. NEVER blocks generation — the identity pack is no
+   * longer the face lock (PuLID / trained LoRA does that on the wizard
+   * portrait), so a pack that's still generating or has failed is at worst
+   * a mild consistency downgrade, not a broken state. If the wizard
+   * portrait (`baseImageUrl`) is missing, the server surfaces
+   * MISSING_FACE_REF instead.
+   */
   identityPackPending?: boolean;
 }) {
   const t = useTranslations("content");
@@ -86,8 +94,7 @@ export function PhotoPromptStudio({
   const canGenerate =
     hasInfluencer &&
     prompt.trim().length >= MIN_USER_SCENE_LENGTH &&
-    !isGenerating &&
-    !identityPackPending;
+    !isGenerating;
 
   const examples = useMemo(
     () => PROMPT_EXAMPLES.map((key) => ({ key, text: t(key) })),
@@ -105,13 +112,14 @@ export function PhotoPromptStudio({
   }
 
   const handleGenerate = () => {
-    if (identityPackPending) {
-      toast.info(t("identityPackGeneratingBanner"));
-      return;
-    }
     if (!hasInfluencer) {
       toast.error(t("selectInfluencerFirst"));
       return;
+    }
+    if (identityPackPending) {
+      // Info toast only — face-lock happens on the wizard portrait, so the
+      // pack is nice-to-have consistency, not a required lock.
+      toast.info(t("identityPackGeneratingBanner"));
     }
     const trimmed = prompt.trim();
     if (trimmed.length < MIN_USER_SCENE_LENGTH) {

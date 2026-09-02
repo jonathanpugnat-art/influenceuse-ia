@@ -164,6 +164,37 @@ export const CREDIT_COSTS = {
   TREND_ANALYSIS_ONE: 0.1,
   /** Vision/text analysis of scraped post media (one trend). */
   TREND_FORMAT_ANALYZE: 0.2,
+  /**
+   * Talking-head V1 (Hedra Avatar + ElevenLabs).
+   *
+   * Floor cost / second ≈ $0.08 (Hedra Character-3 listed at 8 Hedra credits
+   * per second of output; ~$0.01 / Hedra credit on the Creator plan). TTS
+   * via ElevenLabs is a rounding error (~1 EL credit per char). We apply
+   * the same ≥3× margin rule as remix (8 Aura credits/s → billed $0.32/s
+   * assuming 1 Aura credit ≈ $0.04).
+   *
+   * Duration is capped in the service to `MAX_TALKING_HEAD_SEC` so a 30s
+   * reel costs 30 × 8 = 240 credits max. The estimator ceilings to whole
+   * seconds so a 1-word test still holds a full second of credits.
+   */
+  TALKING_HEAD_PER_SEC: 8,
+  /**
+   * Seedance scene-video V1 (BytePlus Seedance 2.5 via fal.ai).
+   *
+   * Provider list price (fal.ai reference-to-video, measured 2026-08):
+   *   720p ≈ $0.473/s   → 12 cr/s at floor, we bill 36 cr/s (~3× margin)
+   *   480p ≈ $0.221/s   →  6 cr/s at floor, we bill 18 cr/s (~3× margin)
+   *
+   * Numbers come from the PRD (see docs/aura-launch-plan or the task
+   * spec). Do NOT reuse PhotoAI's 30/60 constants — Aura credits are
+   * $0.04 each so the maths is different.
+   *
+   * Duration is capped at `SEEDANCE_MAX_DURATION_SEC` in the config and
+   * the credit hold ceils to whole seconds so a 10s clip = 360 credits
+   * exactly (720p) or 180 credits (480p).
+   */
+  SEEDANCE_480P_PER_SEC: 18,
+  SEEDANCE_720P_PER_SEC: 36,
 } as const;
 
 /** Display catalog for credit packs (Stripe price IDs live in stripe.service). */
@@ -172,3 +203,15 @@ export const CREDIT_PACK_CATALOG = [
   { id: "medium", credits: 500, priceEur: 39 },
   { id: "large", credits: 1500, priceEur: 99 },
 ] as const;
+
+/**
+ * Hard cap for a single talking-head V1 reel. Enforced client-side (the
+ * script counter clamps at ~80 words → ~30s at 2.5 w/s) and server-side
+ * (`clampTalkingHeadDuration`). Do NOT raise this without first checking
+ * Hedra's `duration` cap via `GET /models?types=video`.
+ */
+export const MAX_TALKING_HEAD_SEC = 30;
+/** Word cap that maps to MAX_TALKING_HEAD_SEC at ~2.5 words/sec. */
+export const MAX_TALKING_HEAD_WORDS = 80;
+/** Words-per-second estimate used by the client counter and the cost preview. */
+export const TALKING_HEAD_WORDS_PER_SEC = 2.5;

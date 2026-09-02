@@ -534,23 +534,43 @@ export async function publishCarousel(
   return { mediaId: publishRes.id };
 }
 
+export type PublishReelOptions = {
+  thumbnailUrl?: string;
+  /** Mirror the reel to the main feed (default true). */
+  shareToFeed?: boolean;
+};
+
 /**
  * Reel : media_type=REELS, video_url, caption, cover_url optionnel.
+ *
+ * V1 Social Publish forces `is_ai_generated=true` on every reel — Aura only
+ * publishes AI-authored assets, and Meta's AI labeling policy requires that
+ * disclosure. No user opt-out.
+ *
+ * Docs: https://developers.facebook.com/docs/instagram-platform/content-publishing
  */
 export async function publishReel(
   accessToken: string,
   igUserId: string,
   videoUrl: string,
   caption: string,
-  thumbnailUrl?: string
-): Promise<{ mediaId: string }> {
+  optionsOrThumbnail?: PublishReelOptions | string
+): Promise<{ mediaId: string; containerId: string }> {
+  const options: PublishReelOptions =
+    typeof optionsOrThumbnail === "string"
+      ? { thumbnailUrl: optionsOrThumbnail }
+      : (optionsOrThumbnail ?? {});
+
   const params: Record<string, string> = {
     media_type: "REELS",
     video_url: videoUrl,
     caption: caption.slice(0, 2200),
+    // V1: hardcoded AI disclosure. Never expose an opt-out to the user.
+    is_ai_generated: "true",
+    share_to_feed: options.shareToFeed === false ? "false" : "true",
     access_token: accessToken,
   };
-  if (thumbnailUrl) params.cover_url = thumbnailUrl;
+  if (options.thumbnailUrl) params.cover_url = options.thumbnailUrl;
 
   const createRes = await axios
     .post<{ id: string }>(`${BASE}/${API_VERSION}/${igUserId}/media`, null, { params })
@@ -578,7 +598,37 @@ export async function publishReel(
     )
     .then((r) => r.data)
     .catch(handleError);
-  return { mediaId: publishRes.id };
+  return { mediaId: publishRes.id, containerId };
+}
+
+/**
+ * Post a first comment on an already-published IG media (photo, reel,
+ * carousel). Best-effort in V1: if the `instagram_manage_comments` scope is
+ * missing (or the user turned comments off), the caller catches and moves on.
+ *
+ * Docs: https://developers.facebook.com/docs/instagram-platform/reference/ig-media/comments
+ */
+export async function postComment(
+  accessToken: string,
+  mediaId: string,
+  message: string
+): Promise<{ commentId: string }> {
+  const clean = message.trim();
+  if (!clean) throw new InstagramApiError("Commentaire vide.");
+  const res = await axios
+    .post<{ id: string }>(
+      `${BASE}/${API_VERSION}/${mediaId}/comments`,
+      null,
+      {
+        params: {
+          message: clean.slice(0, 2200),
+          access_token: accessToken,
+        },
+      }
+    )
+    .then((r) => r.data)
+    .catch(handleError);
+  return { commentId: res.id };
 }
 
 /**

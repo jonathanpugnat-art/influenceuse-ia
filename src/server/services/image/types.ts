@@ -43,6 +43,13 @@ export interface ImageGenerationInput {
   isReelSceneFrame?: boolean;
   identityPack?: IdentityPackRecord | null;
   premiumFaceRefUrl?: string;
+  /**
+   * Pro/Agency trained LoRA weights URL. When present alongside
+   * `loraTriggerWord`, the default face-lock path uses FLUX LoRA + wizard
+   * portrait img2img instead of PuLID (max fidelity upgrade).
+   */
+  loraUrl?: string;
+  loraTriggerWord?: string;
   instagramShot?: boolean;
   trendContext?: {
     title?: string;

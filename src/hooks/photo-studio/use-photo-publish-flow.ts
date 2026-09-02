@@ -68,6 +68,17 @@ export function usePhotoPublishFlow(contentKind: PublishStudioKind = "PHOTO") {
   const [isGenVariants, setIsGenVariants] = useState(false);
   const [captionTone, setCaptionTone] = useState<CaptionToneId>("casual");
 
+  // ── Social Publish V1 fields ───────────────────────────────────────────
+  // First comment posted right after IG publish (optional, best-effort).
+  const [firstComment, setFirstComment] = useState("");
+  // Whether the IG reel mirrors to the main feed (default true).
+  const [shareToFeed, setShareToFeed] = useState(true);
+  // TikTok Direct Post privacy. Composer starts on SELF_ONLY (safe default);
+  // the server clamps to SELF_ONLY when TIKTOK_AUDIT_APPROVED != "true".
+  const [tiktokPrivacyLevel, setTiktokPrivacyLevel] = useState<
+    "PUBLIC_TO_EVERYONE" | "MUTUAL_FOLLOW_FRIENDS" | "FOLLOWER_OF_CREATOR" | "SELF_ONLY"
+  >("SELF_ONLY");
+
   const captionMutation = trpc.content.generateCaption.useMutation();
   const variantsMutation = trpc.content.generateCaptionVariants.useMutation();
   const hashtagMutation = trpc.content.generateHashtags.useMutation();
@@ -341,6 +352,12 @@ export function usePhotoPublishFlow(contentKind: PublishStudioKind = "PHOTO") {
         return;
       }
 
+      const socialOptions = {
+        firstComment: firstComment.trim() || undefined,
+        shareToFeed,
+        tiktokPrivacyLevel,
+      };
+
       if (scheduleMode === "schedule" && scheduledAt) {
         if (!canSchedule) {
           toast.error(t("publishSchedulePlanLocked"));
@@ -354,6 +371,7 @@ export function usePhotoPublishFlow(contentKind: PublishStudioKind = "PHOTO") {
           contentId,
           platforms: platformList,
           scheduledAt: scheduledAt.toISOString(),
+          ...socialOptions,
         });
         toast.success(t("publishToastScheduled"));
         return;
@@ -372,6 +390,7 @@ export function usePhotoPublishFlow(contentKind: PublishStudioKind = "PHOTO") {
         const { results } = await publishNowMutation.mutateAsync({
           contentId,
           platforms: autoPlatforms,
+          ...socialOptions,
         });
         const failed = results.filter((r) => r.status === "FAILED");
         if (failed.length > 0) {
@@ -450,6 +469,13 @@ export function usePhotoPublishFlow(contentKind: PublishStudioKind = "PHOTO") {
     bundleMutation,
     publishNowMutation,
     scheduleMutation,
+    // Social Publish V1
+    firstComment,
+    setFirstComment,
+    shareToFeed,
+    setShareToFeed,
+    tiktokPrivacyLevel,
+    setTiktokPrivacyLevel,
   };
 }
 

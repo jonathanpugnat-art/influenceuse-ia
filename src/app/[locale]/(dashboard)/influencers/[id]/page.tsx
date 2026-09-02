@@ -6,7 +6,9 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
+  Film,
   ImagePlus,
+  MessageSquareText,
   Pencil,
   MoreHorizontal,
   Pause,
@@ -234,6 +236,20 @@ export default function InfluencerDetailPage({
                 <span className="hidden sm:inline">Créer du contenu</span>
               </Link>
               <Link
+                href={`/influencers/${id}/scene`}
+                className="flex h-10 items-center gap-2 rounded-xl border border-fuchsia-500/40 bg-fuchsia-500/10 px-3 text-sm font-medium text-fuchsia-200 transition-colors hover:bg-fuchsia-500/20"
+              >
+                <Film className="h-4 w-4" />
+                <span className="hidden sm:inline">Vidéo scène</span>
+              </Link>
+              <Link
+                href={`/influencers/${id}/talking-head`}
+                className="flex h-10 items-center gap-2 rounded-xl border border-violet-500/40 bg-violet-500/10 px-3 text-sm font-medium text-violet-200 transition-colors hover:bg-violet-500/20"
+              >
+                <MessageSquareText className="h-4 w-4" />
+                <span className="hidden sm:inline">Fais-le parler</span>
+              </Link>
+              <Link
                 href={`/influencers/${id}/edit`}
                 className="flex h-10 items-center gap-2 rounded-xl border border-slate-700 px-3 text-sm text-slate-300 transition-colors hover:bg-slate-800 hover:text-white"
               >
@@ -338,6 +354,7 @@ export default function InfluencerDetailPage({
               thumbnailUrl: c.thumbnailUrl,
               platforms: c.platforms,
               caption: c.caption,
+              errorMessage: c.errorMessage ?? null,
             }))}
             totalContents={influencer._count.contents}
           />

@@ -15,6 +15,9 @@ import { trendsRouter } from "./routers/trends";
 import { photoAgentRouter } from "./routers/photo-agent";
 import { agentRouter } from "./routers/agent";
 import { basePortraitRouter } from "./routers/base-portrait";
+import { talkingHeadRouter } from "./routers/talking-head";
+import { remixRouter } from "./routers/remix";
+import { seedanceRouter } from "./routers/seedance";
 
 export const appRouter = createTRPCRouter({
   influencer: influencerRouter,
@@ -37,6 +40,12 @@ export const appRouter = createTRPCRouter({
   trends: trendsRouter,
   // Sprint B — pre-generated base portraits gallery (wizard step 2)
   basePortrait: basePortraitRouter,
+  // Viral Remix V1 — user pastes/uploads clip → locked character replays motion
+  remix: remixRouter,
+  // Talking-head V1 — Hedra Avatar + ElevenLabs voice
+  talkingHead: talkingHeadRouter,
+  // Seedance scene-video V1 — 10-30s locked-face scene with native audio
+  seedance: seedanceRouter,
 });
 
 export type AppRouter = typeof appRouter;
