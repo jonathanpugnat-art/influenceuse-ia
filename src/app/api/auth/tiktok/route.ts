@@ -99,7 +99,10 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.redirect(
-      new URL(`/${defaultLocale}/influencers?tiktok_error=${encodeURIComponent(message)}`, APP_URL)
+      new URL(
+        `/${defaultLocale}/influencers/${influencerId}?tab=social&tiktok_error=${encodeURIComponent(message)}`,
+        APP_URL
+      )
     );
   }
 }

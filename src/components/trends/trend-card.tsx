@@ -16,6 +16,8 @@ import {
   Loader2,
   Play,
   Calendar,
+  Heart,
+  Eye,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +39,9 @@ export interface TrendCardProps {
     hashtags: string[];
     soundName: string | null;
     growthScore: number | null;
+    viewCount?: number | null;
+    likesCount?: number | null;
+    commentsCount?: number | null;
     sourceUrl: string | null;
     embedUrl?: string | null;
     /**
@@ -102,9 +107,19 @@ function platformLabel(p: TrendCardProps["trend"]["platform"]): string {
       return "TikTok";
     case "INSTAGRAM":
       return "Instagram";
-    default:
+    case "ONLYFANS":
       return "OnlyFans";
+    default: {
+      const _exhaustive: never = p;
+      return _exhaustive;
+    }
   }
+}
+
+function compactCount(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
+  return String(value);
 }
 
 /** Neutral placeholder surface used when no thumbnail is available. */
@@ -255,6 +270,18 @@ export function TrendCard({
             >
               {t("videoTrendBadge")}
             </Badge>
+          )}
+          {typeof trend.likesCount === "number" && trend.likesCount > 0 && (
+            <span className="flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 text-xs font-medium text-white/90 backdrop-blur-md">
+              <Heart className="h-3 w-3" />
+              {compactCount(trend.likesCount)}
+            </span>
+          )}
+          {typeof trend.viewCount === "number" && trend.viewCount > 0 && (
+            <span className="flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 text-xs font-medium text-white/90 backdrop-blur-md">
+              <Eye className="h-3 w-3" />
+              {compactCount(trend.viewCount)}
+            </span>
           )}
           {typeof trend.growthScore === "number" && (
             <span className="flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 text-xs font-medium text-emerald-300 backdrop-blur-md">

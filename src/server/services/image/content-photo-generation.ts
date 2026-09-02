@@ -344,6 +344,13 @@ export async function generateContentImage(
         })
       : [];
 
+  const inspirationRefs = sendsRefImage
+    ? (enrichedInput.trendContext?.inspirationImageUrls ?? [])
+        .filter((url) => url.startsWith("http") && !refs.includes(url))
+        .slice(0, 2)
+    : [];
+  const imageInput = [...refs, ...inspirationRefs].slice(0, 6);
+
   const kontextPlan: ModelPlan = {
     model: MODEL_SFW_KONTEXT,
     params: {
@@ -361,7 +368,7 @@ export async function generateContentImage(
           params: {
             ...SEEDREAM_DEFAULTS,
             prompt,
-            image_input: refs,
+            image_input: imageInput,
           },
           fallback: sendsRefImage && input.baseImageUrl ? kontextPlan : undefined,
         }
@@ -370,7 +377,7 @@ export async function generateContentImage(
           params: {
             ...NANO_BANANA_DEFAULTS,
             prompt,
-            image_input: refs,
+            image_input: imageInput,
           },
           fallback: sendsRefImage && input.baseImageUrl ? kontextPlan : undefined,
         };

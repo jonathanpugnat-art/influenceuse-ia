@@ -19,13 +19,17 @@ export function PhotoPublishPlatformSection({
 }) {
   const t = useTranslations("content");
   const {
+    contentKind,
     params,
     platforms,
     instagramSelected,
+    tiktokSelected,
     instagramCheck,
+    tiktokCheck,
     publishReminders,
     togglePlatform,
   } = flow;
+  const showTikTok = contentKind === "REEL";
 
   return (
     <div className="space-y-2">
@@ -37,12 +41,14 @@ export function PhotoPublishPlatformSection({
           selected={platforms.includes("INSTAGRAM")}
           onToggle={() => togglePlatform("INSTAGRAM")}
         />
-        <PlatformCard
-          icon={<TikTokIcon className="h-4 w-4 text-white" />}
-          name="TikTok"
-          selected={platforms.includes("TIKTOK")}
-          onToggle={() => togglePlatform("TIKTOK")}
-        />
+        {showTikTok && (
+          <PlatformCard
+            icon={<TikTokIcon className="h-4 w-4 text-white" />}
+            name="TikTok"
+            selected={platforms.includes("TIKTOK")}
+            onToggle={() => togglePlatform("TIKTOK")}
+          />
+        )}
         <PlatformCard
           icon={<OnlyFansIcon className="h-4 w-4 text-blue-400" />}
           name="OnlyFans"
@@ -70,6 +76,23 @@ export function PhotoPublishPlatformSection({
                 className="inline-flex font-medium text-rose-400 underline-offset-2 hover:underline"
               >
                 {t("publishConnectInstagram")}
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
+
+      {tiktokSelected && params.influencerId && (
+        <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/30 p-2.5 text-[11px] text-muted-foreground">
+          <TikTokIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <div className="space-y-1.5">
+            <p className="leading-snug">{t("publishTiktokApiHint")}</p>
+            {tiktokCheck && !tiktokCheck.ok && (
+              <Link
+                href={`/influencers/${params.influencerId}?tab=social`}
+                className="inline-flex font-medium text-rose-400 underline-offset-2 hover:underline"
+              >
+                {t("publishConnectTiktok")}
               </Link>
             )}
           </div>

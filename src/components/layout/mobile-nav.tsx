@@ -9,12 +9,15 @@ import {
   BarChart3,
   CreditCard,
   Settings,
+  FolderOpen,
+  TrendingUp,
   X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
+import { isNavHrefActive } from "@/lib/nav-active";
 
 export function MobileNav() {
   const t = useTranslations("layout");
@@ -24,26 +27,24 @@ export function MobileNav() {
 
   const mainItems = [
     { label: t("dashboard"), icon: LayoutDashboard, href: "/influencers" },
-    { label: t("create"), icon: ImagePlus, href: "/content" },
+    { label: t("trends"), icon: TrendingUp, href: "/trends" },
+    { label: t("create"), icon: ImagePlus, href: "/content/photo" },
     { label: t("calendar"), icon: Calendar, href: "/calendar" },
   ];
 
   const moreItems = [
+    { label: t("library"), icon: FolderOpen, href: "/content" },
     { label: t("analytics"), icon: BarChart3, href: "/analytics" },
     { label: t("billing"), icon: CreditCard, href: "/billing" },
     { label: t("settings"), icon: Settings, href: "/settings" },
   ];
 
-  const isActive = (href: string) => {
-    if (href === "/") return pathname === "/";
-    return pathname.startsWith(href);
-  };
-
-  const isMoreActive = moreItems.some((item) => isActive(item.href));
+  const isMoreActive = moreItems.some((item) =>
+    isNavHrefActive(pathname, item.href)
+  );
 
   return (
     <>
-      {/* More drawer overlay */}
       <AnimatePresence>
         {showMore && (
           <>
@@ -80,7 +81,7 @@ export function MobileNav() {
                     onClick={() => setShowMore(false)}
                     className={cn(
                       "flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors",
-                      isActive(item.href)
+                      isNavHrefActive(pathname, item.href)
                         ? "bg-accent text-foreground"
                         : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
                     )}
@@ -95,31 +96,35 @@ export function MobileNav() {
         )}
       </AnimatePresence>
 
-      {/* Bottom nav bar — floating pill */}
       <nav className="fixed bottom-4 left-4 right-4 z-40 rounded-full border border-border/50 bg-card/70 shadow-lg shadow-black/30 backdrop-blur-2xl pb-[env(safe-area-inset-bottom,0px)] md:hidden">
-        <div className="flex items-center justify-around px-2 py-2.5">
+        <div className="flex items-center justify-around px-1 py-2.5">
           {mainItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
               className={cn(
-                "flex flex-col items-center gap-0.5 rounded-full px-3 py-1.5 transition-colors",
-                isActive(item.href) ? "text-foreground" : "text-muted-foreground"
+                "flex min-w-0 flex-col items-center gap-0.5 rounded-full px-2 py-1.5 transition-colors",
+                isNavHrefActive(pathname, item.href)
+                  ? "text-foreground"
+                  : "text-muted-foreground"
               )}
             >
               <item.icon className="h-5 w-5" />
-              <span className="text-xs font-medium">{item.label}</span>
+              <span className="max-w-[4.5rem] truncate text-[10px] font-medium">
+                {item.label}
+              </span>
             </Link>
           ))}
           <button
+            type="button"
             onClick={() => setShowMore(true)}
             className={cn(
-              "flex flex-col items-center gap-0.5 rounded-full px-3 py-1.5 transition-colors",
+              "flex flex-col items-center gap-0.5 rounded-full px-2 py-1.5 transition-colors",
               isMoreActive ? "text-foreground" : "text-muted-foreground"
             )}
           >
             <MoreHorizontal className="h-5 w-5" />
-            <span className="text-xs font-medium">{t("more")}</span>
+            <span className="text-[10px] font-medium">{t("more")}</span>
           </button>
         </div>
       </nav>

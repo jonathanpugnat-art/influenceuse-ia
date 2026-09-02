@@ -19,6 +19,7 @@ export { resolveTrendsProvider } from "./resolve-provider";
 export { extractPostMediaUrls } from "./apify/mappers";
 
 import {
+  mapInstagramPost,
   mapInstagramVideoPost,
   mapTikTokVideoRow,
 } from "@/lib/trends/trend-video-items";
@@ -34,6 +35,7 @@ import {
 } from "./apify/mappers";
 import {
   resolveInstagramHashtags,
+  resolveMinLikes,
   resolveMinVideoViews,
   resolveTikTokCountry,
   resolveTikTokPeriod,
@@ -41,15 +43,17 @@ import {
   resolveTrendsFetchLimit,
 } from "./apify/env-config";
 import {
+  isUsefulVideoHashtag,
   keepHighReachItem,
   rankByReach,
-} from "./apify/apify-provider";
+} from "./apify/quality";
 
 /** Exported for unit tests. */
 export const __test__ = {
   mapTikTokRow,
   normalizeTikTokHashtagRow,
   mapTikTokVideoRow,
+  mapInstagramPost,
   mapInstagramVideoPost,
   aggregateInstagramPosts,
   extractPostMediaUrls,
@@ -62,7 +66,9 @@ export const __test__ = {
   resolveTikTokVideoHashtags,
   resolveTrendsFetchLimit,
   resolveMinVideoViews,
+  resolveMinLikes,
   keepHighReachItem,
   rankByReach,
+  isUsefulVideoHashtag,
   dedupeTrendItems,
 };

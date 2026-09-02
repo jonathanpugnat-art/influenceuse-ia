@@ -13,20 +13,17 @@ import {
 } from "@/lib/premium-content";
 import { usePhotoCreator } from "@/hooks/use-photo-creator";
 import { PLANS } from "@/lib/constants";
-import { trpc } from "@/lib/trpc";
 import { useInfluencers } from "@/hooks/use-influencers";
 import { useCurrentPlan } from "@/hooks/use-current-plan";
 import { cn } from "@/lib/utils";
 
 function LaneChip({
   label,
-  emoji,
   selected,
   disabled,
   onClick,
 }: {
   label: string;
-  emoji?: string;
   selected: boolean;
   disabled?: boolean;
   onClick: () => void;
@@ -45,7 +42,6 @@ function LaneChip({
         disabled && !selected && "hover:border-slate-700"
       )}
     >
-      {emoji && <span className="mr-1">{emoji}</span>}
       {label}
     </button>
   );
@@ -108,14 +104,12 @@ export function ContentLanePicker({
         <div className="flex flex-wrap gap-1.5">
           <LaneChip
             label={t("contentLaneSocial")}
-            emoji="📱"
             selected={contentLane === "social"}
             onClick={() => setContentLane("social")}
           />
           {allowNsfw && (
             <LaneChip
               label={t("contentLanePremium")}
-              emoji="🔒"
               selected={contentLane === "premium"}
               onClick={() => setContentLane("premium")}
             />

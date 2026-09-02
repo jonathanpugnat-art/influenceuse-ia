@@ -3,11 +3,13 @@ import {
   formatBriefToPhotoSeed,
   formatBriefToReelSeed,
   briefToPromptContext,
+  mergeInspirationIntoContext,
   type TrendPromptContext,
 } from "@/lib/trends/trend-format-brief";
 import {
   inferStudioLookFromBrief,
   isVideoTrendItem,
+  pickInspirationImageUrls,
 } from "@/lib/trends/trend-video-items";
 import { resolveTrendSourceVideoUrl } from "@/server/services/trend-video-storage.service";
 import { applyStudioLook } from "@/lib/photo-studio-looks";
@@ -138,7 +140,14 @@ export function recommendationToCreatorParams(
   hashtags: string[],
   trendItem: Pick<
     TrendItem,
-    "formatBrief" | "mediaKind" | "sourceVideoUrl" | "mediaUrls" | "soundName"
+    | "formatBrief"
+    | "mediaKind"
+    | "sourceVideoUrl"
+    | "mediaUrls"
+    | "soundName"
+    | "thumbnailUrl"
+    | "thumbnailUrlAlt"
+    | "videoFrameUrls"
   >,
   influencer: Pick<Influencer, "isNsfw" | "gender">
 ): ApplyToCreatorResult {
@@ -237,10 +246,13 @@ export function recommendationToCreatorParams(
       instagramShot: !influencerIsNsfw,
       trendItemId: rec.trendItemId,
       recommendationId: rec.id,
-      trendContext: briefToPromptContext(
-        brief,
-        photoBlob.trendContext?.title,
-        photoBlob.trendContext?.hashtags ?? hashtags
+      trendContext: mergeInspirationIntoContext(
+        briefToPromptContext(
+          brief,
+          photoBlob.trendContext?.title,
+          photoBlob.trendContext?.hashtags ?? hashtags
+        ),
+        pickInspirationImageUrls(trendItem)
       ),
     };
   }
@@ -249,5 +261,9 @@ export function recommendationToCreatorParams(
     target: "photo",
     ...photoBlob,
     instagramShot: videoTrend && !influencerIsNsfw,
+    trendContext: mergeInspirationIntoContext(
+      photoBlob.trendContext,
+      pickInspirationImageUrls(trendItem)
+    ),
   };
 }

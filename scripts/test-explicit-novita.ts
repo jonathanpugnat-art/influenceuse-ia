@@ -27,6 +27,14 @@ import {
 } from "../src/lib/prompts/image-prompts";
 import { buildPremiumFaceLockPrompt } from "../src/lib/prompts/premium-face-lock-prompt";
 import { buildPremiumNegativePromptForTier } from "../src/lib/prompts/premium-negative";
+import type { PremiumNsfwLevel } from "../src/lib/premium-content";
+
+/** Tier under test — default "soft" (lingerie, non-nude). Override with BENCH_TIER. */
+const TIER: PremiumNsfwLevel =
+  (process.env.BENCH_TIER as PremiumNsfwLevel) || "soft";
+/** Face-lock strengths — higher = more consistent identity. */
+const ID_STRENGTH = Number(process.env.BENCH_ID_STRENGTH ?? 0.85);
+const ADAPTER_STRENGTH = Number(process.env.BENCH_ADAPTER_STRENGTH ?? 0.85);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
@@ -47,13 +55,8 @@ interface Checkpoint {
 const CHECKPOINTS: Checkpoint[] = [
   {
     id: "realvis-v5",
-    label: "RealVisXL V5.0 (recommandé)",
+    label: "RealVisXL V5.0",
     model: "realvisxlV50_v50.safetensors",
-  },
-  {
-    id: "epicrealism-v1",
-    label: "epiCRealism XL v1.0 (actuel)",
-    model: "epicrealismXL_v10_247189.safetensors",
   },
 ];
 
@@ -72,20 +75,29 @@ const PERSONA = {
 const SCENARIOS = [
   {
     id: "sc1",
-    label: "Boudoir chambre — lumière douce",
+    label: "Boudoir chambre — lingerie dentelle",
     sceneDescription: "intimate bedroom, silk sheets, soft warm lamp light, boudoir atmosphere",
-    outfit: undefined as string | undefined,
+    outfit: "red lace lingerie set, matching lace bra and panties" as string | undefined,
   },
   {
     id: "sc2",
-    label: "Salle de bain miroir — lumière naturelle",
-    sceneDescription: "modern bathroom, large mirror, soft window light, tiled walls",
-    outfit: undefined as string | undefined,
+    label: "Boudoir chambre — body satin (2e variation)",
+    sceneDescription: "intimate bedroom, silk sheets, soft warm lamp light, boudoir atmosphere",
+    outfit: "black satin bodysuit" as string | undefined,
   },
 ];
 
 const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Novita rejects prompt/negative longer than 1024 runes. Cut at a comma. */
+function clampRunes(raw: string, max: number): string {
+  const trimmed = raw.trim();
+  if (trimmed.length <= max) return trimmed;
+  const slice = trimmed.slice(0, max);
+  const lastComma = slice.lastIndexOf(",");
+  return (lastComma > max * 0.7 ? slice.slice(0, lastComma) : slice).trim();
+}
 
 function getNovitaKey(): string {
   const key = process.env.NOVITA_API_KEY?.trim();
@@ -147,8 +159,8 @@ async function submitInstantId(
     face_image_urls: [faceUrl],
     prompt,
     negative_prompt: negativePrompt,
-    id_strength: 0.72,
-    adapter_strength: 0.75,
+    id_strength: ID_STRENGTH,
+    adapter_strength: ADAPTER_STRENGTH,
     steps: 40,
     guidance_scale: 5.0,
     sampler_name: "DPM++ 2M Karras",
@@ -300,8 +312,8 @@ async function writeReport(
   @media (max-width: 900px) { .row, .grid2 { grid-template-columns: 1fr; } }
 </style>
 </head><body>
-  <h1>Explicit Novita A/B</h1>
-  <p class="sub">Run ${RUN_ID} · même visage · même prompt · RealVisXL V5.0 vs epiCRealism v1.0 · InstantID face-lock</p>
+  <h1>Novita InstantID — tier ${TIER}</h1>
+  <p class="sub">Run ${RUN_ID} · même visage · RealVisXL V5.0 · face-lock id=${ID_STRENGTH}/adapter=${ADAPTER_STRENGTH} · lingerie (non nu)</p>
   <div class="row">
     <div class="base">
       <h3>Base portrait <span class="dur">${(baseMs / 1000).toFixed(1)}s</span></h3>
@@ -339,17 +351,10 @@ async function main() {
 
   // Novita InstantID rejects negatives longer than 1024 runes (same clamp as
   // the production provider).
-  const negativeRaw = buildPremiumNegativePromptForTier("explicit", PERSONA.gender, {
+  const negativeRaw = buildPremiumNegativePromptForTier(TIER, PERSONA.gender, {
     lockFace: true,
   });
-  const negative =
-    negativeRaw.length <= 1024
-      ? negativeRaw
-      : (() => {
-          const slice = negativeRaw.slice(0, 1024);
-          const lastComma = slice.lastIndexOf(",");
-          return (lastComma > 700 ? slice.slice(0, lastComma) : slice).trim();
-        })();
+  const negative = clampRunes(negativeRaw, 1024);
   console.log(`[explicit-novita] negative_prompt length: ${negative.length}/1024`);
   const scenarios: ScenarioResult[] = [];
 
@@ -357,7 +362,7 @@ async function main() {
     if (si > 0) await sleep(3000);
     console.log(`\n[2.${si + 1}] ${sc.label}`);
 
-    const prompt = buildPremiumFaceLockPrompt(
+    const promptRaw = buildPremiumFaceLockPrompt(
       {
         gender: PERSONA.gender,
         age: PERSONA.age,
@@ -370,10 +375,12 @@ async function main() {
         outfit: sc.outfit,
         useReferenceFace: true,
         isNsfw: true,
-        nsfwLevel: "explicit",
+        nsfwLevel: TIER,
       },
-      "explicit"
+      TIER
     );
+    const prompt = clampRunes(promptRaw, 1024);
+    console.log(`    prompt length: ${prompt.length}/1024`);
 
     const perCheckpoint: RunResult[] = [];
     // Sequential to avoid Novita rate limits

@@ -67,7 +67,7 @@ export function softenSuggestiveLanguage(text: string): string {
 }
 
 export function softenPromptForEditorial(prompt: string): string {
-  let p = softenSocialFitnessLanguage(prompt);
+  const p = softenSocialFitnessLanguage(prompt);
   if (p.toLowerCase().startsWith(EDITORIAL_PREFIX.toLowerCase().slice(0, 20))) {
     return p;
   }

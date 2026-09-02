@@ -211,7 +211,17 @@ export function LandingPremiumPreview() {
                 >
                   {t("ctaPrimary")} <ArrowRight className="ml-2 size-4" />
                 </Button>
-                <Button size="lg" variant="outline" className="h-14 px-8">
+                <Button
+                  type="button"
+                  size="lg"
+                  variant="outline"
+                  className="h-14 px-8"
+                  onClick={() => {
+                    document
+                      .getElementById("showcase")
+                      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }}
+                >
                   <Play className="mr-2 size-4" /> {t("ctaWatchDemo")}
                 </Button>
               </motion.div>
@@ -219,6 +229,7 @@ export function LandingPremiumPreview() {
 
             {/* Showcase */}
             <motion.div
+              id="showcase"
               initial={{ opacity: 0, y: 32 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.25 }}

@@ -14,15 +14,21 @@ export function isLegacyScrapeengineHashtagActor(actorId: string): boolean {
 /** Build actor input — khadinakbar (pay-per-use) vs scrapeengine (legacy rent). */
 export function buildTikTokHashtagActorInput(
   actorId: string,
-  opts: { country: string; period: "7" | "30" | "120"; limit: number }
+  opts: {
+    country: string;
+    period: "7" | "30" | "120";
+    limit: number;
+    industry?: string;
+  }
 ): Record<string, unknown> {
   const proxyConfiguration = { useApifyProxy: true };
+  const industry = opts.industry?.trim() || "Apparel & Accessories";
 
   if (isKhadinakbarHashtagActor(actorId)) {
     return {
       timePeriod: opts.period,
       country: opts.country,
-      industry: "All Industries",
+      industry,
       maxResults: Math.min(Math.max(opts.limit, 1), 100),
       isNewToTop100: false,
       proxyConfiguration,
@@ -35,7 +41,7 @@ export function buildTikTokHashtagActorInput(
     top100_period: opts.period,
     total_hashtags: Math.min(opts.limit, 100),
     sort_order: "popular",
-    industry: "",
+    industry,
     proxyConfiguration,
   };
 }

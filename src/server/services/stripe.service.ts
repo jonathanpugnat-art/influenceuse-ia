@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 import { db } from "@/server/db";
-import { PLANS } from "@/lib/constants";
+import { CREDIT_PACK_CATALOG, PLANS } from "@/lib/constants";
 
 // ──────────────────────────────────────────────
 // Stripe Client (lazy singleton)
@@ -223,26 +223,19 @@ export interface CreditPack {
   priceId: string | null;
 }
 
-export const CREDIT_PACKS: CreditPack[] = [
+const CREDIT_PACK_PRICE_ENV: Record<(typeof CREDIT_PACK_CATALOG)[number]["id"], string | undefined> =
   {
-    id: "small",
-    credits: 100,
-    priceEur: 9,
-    priceId: process.env.STRIPE_CREDIT_PACK_SMALL_PRICE_ID ?? null,
-  },
-  {
-    id: "medium",
-    credits: 500,
-    priceEur: 39,
-    priceId: process.env.STRIPE_CREDIT_PACK_MEDIUM_PRICE_ID ?? null,
-  },
-  {
-    id: "large",
-    credits: 1500,
-    priceEur: 99,
-    priceId: process.env.STRIPE_CREDIT_PACK_LARGE_PRICE_ID ?? null,
-  },
-];
+    small: process.env.STRIPE_CREDIT_PACK_SMALL_PRICE_ID,
+    medium: process.env.STRIPE_CREDIT_PACK_MEDIUM_PRICE_ID,
+    large: process.env.STRIPE_CREDIT_PACK_LARGE_PRICE_ID,
+  };
+
+export const CREDIT_PACKS: CreditPack[] = CREDIT_PACK_CATALOG.map((pack) => ({
+  id: pack.id,
+  credits: pack.credits,
+  priceEur: pack.priceEur,
+  priceId: CREDIT_PACK_PRICE_ENV[pack.id] ?? null,
+}));
 
 export function getCreditPack(id: CreditPack["id"]): CreditPack | null {
   return CREDIT_PACKS.find((p) => p.id === id) ?? null;

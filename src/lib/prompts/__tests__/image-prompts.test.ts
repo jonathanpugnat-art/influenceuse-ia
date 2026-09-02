@@ -287,6 +287,21 @@ describe("image-prompts", () => {
       expect(result).toContain("trend lighting: fluorescent overhead");
     });
 
+    it("adds composition-reference instruction when inspiration images are present", () => {
+      const result = buildFullPrompt({
+        gender: "female",
+        sceneDescription: "mirror selfie",
+        useReferenceFace: true,
+        trendContext: {
+          title: "GRWM",
+          inspirationImageUrls: ["https://cdn.example.com/viral.jpg"],
+        },
+        expression: "natural",
+      });
+      expect(result).toMatch(/COMPOSITION REFERENCE/i);
+      expect(result).toMatch(/Never copy the other face/i);
+    });
+
     it("injects style v2 fields into subject and mood blocks", () => {
       const result = buildFullPrompt({
         gender: "female",

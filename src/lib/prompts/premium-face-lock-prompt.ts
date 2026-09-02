@@ -64,16 +64,15 @@ export function buildPremiumFaceLockPrompt(
 ): string {
   const outfit = input.outfit?.trim();
   const parts: string[] = [
-    "half body shot, waist-up framing, full upper body and torso visible in frame,",
+    "medium-full mirror selfie, framed head to hips, whole room visible around her,",
     // Clothing FIRST — must precede any sensual/suggestive scene wording.
     clothingBlock(input, tier) + ",",
-    "natural candid smartphone mirror selfie, full body in mirror,",
-    "soft even ambient indoor light, evenly lit, well exposed,",
-    "no harsh flash, no sunbeam, no light stripe, no hard shadow line,",
-    "analog film photo, subtle film grain,",
-    "natural matte skin texture with visible pores, slight skin imperfections and fine lines,",
-    "not retouched, not airbrushed, same exact person as the reference face photo,",
-    "same body shape, proportions and curves as the reference,",
+    "candid mirror selfie holding a smartphone up, phone clearly visible in the mirror reflection,",
+    "full-length wall mirror, room and furniture visible behind her,",
+    "soft even ambient indoor light, well exposed, no harsh flash, no hard shadow line,",
+    "analog film photo, subtle grain,",
+    "natural matte skin with visible pores and slight imperfections, not retouched,",
+    "same person as the reference face, same body shape and proportions as the reference,",
   ];
 
   const rawScene =
@@ -86,12 +85,8 @@ export function buildPremiumFaceLockPrompt(
   if (tier !== "explicit") parts.push("sensual soft boudoir mood,");
 
   if (tier !== "explicit") {
-    parts.push("waist-up half body composition, NOT a face close-up,");
-    if (outfit) {
-      parts.push(`still wearing ${outfit}`);
-    } else {
-      parts.push("still wearing the full lingerie set");
-    }
+    parts.push("medium-full framing, room visible, phone up, NOT a face close-up,");
+    parts.push(outfit ? `still wearing ${outfit}` : "still wearing the full lingerie set");
   }
 
   return parts.join(" ");

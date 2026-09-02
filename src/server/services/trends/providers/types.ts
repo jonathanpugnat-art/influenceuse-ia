@@ -18,6 +18,8 @@ export interface RawTrendItem {
   growthScore?: number;
   /** Raw play/view count when the provider exposes it (used to rank viral posts). */
   viewCount?: number;
+  likesCount?: number;
+  commentsCount?: number;
   sourceUrl?: string;
   thumbnailUrl?: string;
   thumbnailUrlAlt?: string;

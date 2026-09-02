@@ -32,6 +32,7 @@ export const photoCreatorInputSchema = z
             inspirationNotes: z.string().max(500).optional(),
           })
           .optional(),
+        inspirationImageUrls: z.array(z.string().url()).max(6).optional(),
       })
       .optional(),
     trendItemId: z.string().optional(),

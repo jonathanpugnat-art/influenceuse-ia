@@ -5,6 +5,15 @@ import { TREND_FEED_TTL_HOURS } from "../constants";
 import { hashPayload, normalizeHashtags, normalizeNicheTags } from "../normalization";
 import type { CronRunResult } from "./cron-types";
 
+const INT32_MAX = 2_147_483_647;
+
+function toStoredInt(value: number | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+  return Math.min(Math.floor(value), INT32_MAX);
+}
+
 export async function persistRawTrends(
   provider: TrendsProvider,
   raw: RawTrendItem[],
@@ -68,6 +77,9 @@ export async function persistRawTrends(
       hashtags: normalizeHashtags(item.hashtags),
       soundName: item.soundName?.slice(0, 200) ?? null,
       growthScore: typeof item.growthScore === "number" ? item.growthScore : null,
+      viewCount: toStoredInt(item.viewCount),
+      likesCount: toStoredInt(item.likesCount),
+      commentsCount: toStoredInt(item.commentsCount),
       sourceUrl: item.sourceUrl?.slice(0, 500) ?? null,
       thumbnailUrl: item.thumbnailUrl?.slice(0, 1000) ?? null,
       thumbnailUrlAlt: item.thumbnailUrlAlt?.slice(0, 1000) ?? null,

@@ -28,6 +28,7 @@ import { useSidebarStore } from "@/hooks/use-sidebar-store";
 import { useCurrentPlan } from "@/hooks/use-current-plan";
 import { useTrpcPrefetch } from "@/hooks/use-trpc-prefetch";
 import { cn } from "@/lib/utils";
+import { isNavHrefActive } from "@/lib/nav-active";
 
 // Dynamic clerk hooks wrapper to avoid SSR issues without ClerkProvider
 const ClerkUserSection = dynamic(
@@ -39,7 +40,7 @@ const hasClerk = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 const mainNavItems = [
   { labelKey: "common.dashboard", icon: LayoutDashboard, href: "/influencers" },
-  { labelKey: "dashboard.createContent", icon: ImagePlus, href: "/content" },
+  { labelKey: "dashboard.createContent", icon: ImagePlus, href: "/content/photo" },
   { labelKey: "common.calendar", icon: Calendar, href: "/calendar" },
   { labelKey: "common.library", icon: FolderOpen, href: "/library" },
   { labelKey: "common.trends", icon: TrendingUp, href: "/trends" },
@@ -240,15 +241,12 @@ export function Sidebar() {
   const { prefetchContent, prefetchTrends, prefetchDashboard } = useTrpcPrefetch();
 
   const prefetchForHref = (href: string) => {
-    if (href === "/content") return prefetchContent;
+    if (href === "/content/photo") return prefetchContent;
     if (href === "/trends") return prefetchTrends;
     return prefetchDashboard;
   };
 
-  const isActive = (href: string) => {
-    if (href === "/") return pathname === "/";
-    return pathname.startsWith(href);
-  };
+  const isActive = (href: string) => isNavHrefActive(pathname, href);
 
   return (
     <motion.aside

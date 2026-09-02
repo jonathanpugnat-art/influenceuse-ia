@@ -203,6 +203,11 @@ export function buildSceneBlock(input: PromptBuildInput): string {
       `viral format inspiration: ${trendBrief.inspirationNotes.trim()}`
     );
   }
+  if ((input.trendContext?.inspirationImageUrls?.length ?? 0) > 0) {
+    parts.push(
+      "COMPOSITION REFERENCE: extra images show a viral post that already worked. Recreate the same framing, lighting, pose energy and setting with the identity-reference person only. Never copy the other face, body, tattoos or clothing logos."
+    );
+  }
 
   appendNicheVisuals(parts, input);
 

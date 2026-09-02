@@ -101,6 +101,19 @@ export function pickVisionUrlsFromTrend(input: {
   return [...new Set(images)].slice(0, 6);
 }
 
+/** Still frames used as composition inspiration (never as face identity). */
+export function pickInspirationImageUrls(
+  input: {
+    thumbnailUrl?: string | null;
+    thumbnailUrlAlt?: string | null;
+    mediaUrls?: string[] | null;
+    videoFrameUrls?: string[] | null;
+  },
+  max = 4
+): string[] {
+  return pickVisionUrlsFromTrend(input).slice(0, max);
+}
+
 export function isVideoTrendItem(mediaKind?: string | null): boolean {
   return mediaKind === "video";
 }
@@ -168,6 +181,8 @@ export function mapTikTokVideoRow(row: TikTokVideoRow): RawTrendItem | null {
     (tagNames[0] ? `#${tagNames[0]} trend` : "TikTok trend");
 
   const views = row.playCount ?? row.diggCount;
+  const likes = row.diggCount;
+  const comments = row.commentCount;
   const cover =
     row.covers?.default ?? row.covers?.origin ?? row.coverUrl ?? undefined;
   const videoUrl = row.videoUrl?.startsWith("http") ? row.videoUrl : undefined;
@@ -176,6 +191,7 @@ export function mapTikTokVideoRow(row: TikTokVideoRow): RawTrendItem | null {
   const description = [
     caption ? `Caption: "${caption.slice(0, 220)}".` : "",
     typeof views === "number" ? `${views.toLocaleString("en-US")} plays.` : "",
+    typeof likes === "number" ? `${likes.toLocaleString("en-US")} likes.` : "",
     row.musicMeta?.musicName ? `Sound: ${row.musicMeta.musicName}.` : "",
   ]
     .filter(Boolean)
@@ -190,6 +206,8 @@ export function mapTikTokVideoRow(row: TikTokVideoRow): RawTrendItem | null {
     soundName: row.musicMeta?.musicName?.slice(0, 200),
     growthScore: viewsToGrowthScore(views),
     viewCount: typeof views === "number" ? views : undefined,
+    likesCount: typeof likes === "number" ? likes : undefined,
+    commentsCount: typeof comments === "number" ? comments : undefined,
     sourceUrl: webUrl ?? `https://www.tiktok.com/video/${id}`,
     embedUrl: webUrl,
     thumbnailUrl: cover,
@@ -218,53 +236,64 @@ export interface InstagramVideoPostRow {
   ownerUsername?: string;
 }
 
-export function mapInstagramVideoPost(row: InstagramVideoPostRow): RawTrendItem | null {
-  const isVideo =
-    row.type?.toLowerCase() === "video" || Boolean(row.videoUrl?.startsWith("http"));
-  if (!isVideo) return null;
-
+export function mapInstagramPost(row: InstagramVideoPostRow): RawTrendItem | null {
   const postUrl = row.url?.trim();
   const shortCode = row.shortCode?.trim();
   if (!postUrl && !shortCode) return null;
 
+  const isVideo =
+    row.type?.toLowerCase() === "video" || Boolean(row.videoUrl?.startsWith("http"));
   const caption = row.caption?.trim() ?? "";
   const tags = (row.hashtags ?? []).map((h) => h.replace(/^#/, "").toLowerCase());
   const title =
     caption.split(/\n/)[0]?.slice(0, 80).trim() ||
-    (tags[0] ? `#${tags[0]} reel` : "Instagram reel");
+    (tags[0] ? `#${tags[0]} ${isVideo ? "reel" : "post"}` : "Instagram trend");
 
   const views = row.videoViewCount ?? row.playCount;
+  const likes = row.likesCount;
+  const comments = row.commentsCount;
   const engagementProxy =
     typeof views === "number" && views > 0
       ? views
-      : (row.likesCount ?? 0) * 20 + (row.commentsCount ?? 0) * 100;
+      : (likes ?? 0) * 20 + (comments ?? 0) * 100;
 
   const thumb = row.displayUrl ?? row.thumbnailSrc;
   const videoUrl = row.videoUrl?.startsWith("http") ? row.videoUrl : undefined;
-  const mediaUrls = [thumb, videoUrl].filter((u): u is string => Boolean(u?.startsWith("http")));
+  const mediaUrls = [thumb, videoUrl].filter((u): u is string =>
+    Boolean(u?.startsWith("http"))
+  );
 
   return {
-    externalId: `apify-instagram-video-${row.id ?? shortCode ?? postUrl}`,
+    externalId: `apify-instagram-post-${row.id ?? shortCode ?? postUrl}`,
     platform: "INSTAGRAM",
     title,
     description: [
-      caption ? `Caption: "${caption.slice(0, 220)}".` : "Trending Instagram reel.",
+      caption ? `Caption: "${caption.slice(0, 220)}".` : "Trending Instagram post.",
       typeof views === "number" ? `${views.toLocaleString("en-US")} views.` : "",
+      typeof likes === "number" ? `${likes.toLocaleString("en-US")} likes.` : "",
     ]
       .filter(Boolean)
       .join(" "),
     hashtags: tags.length > 0 ? tags : ["reels"],
     growthScore: viewsToGrowthScore(Math.max(engagementProxy, 1)),
     viewCount: typeof views === "number" ? views : undefined,
+    likesCount: typeof likes === "number" ? likes : undefined,
+    commentsCount: typeof comments === "number" ? comments : undefined,
     sourceUrl: postUrl ?? `https://www.instagram.com/reel/${shortCode}/`,
     embedUrl: postUrl,
     thumbnailUrl: thumb,
     authorHandle: row.ownerUsername ? `@${row.ownerUsername.replace(/^@/, "")}` : undefined,
     nicheTags: inferNicheFromHashtags(tags.length ? tags : ["reels"]),
     isNsfw: false,
-    mediaKind: "video",
+    mediaKind: isVideo ? "video" : "image",
     mediaUrls,
   };
+}
+
+export function mapInstagramVideoPost(row: InstagramVideoPostRow): RawTrendItem | null {
+  const item = mapInstagramPost(row);
+  if (!item || item.mediaKind !== "video") return null;
+  return item;
 }
 
 function viewsToGrowthScore(views: number | undefined): number | undefined {

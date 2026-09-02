@@ -702,6 +702,12 @@ model TrendItem {
   soundName     String?
   /// 0..100 score from the provider (or normalized in service).
   growthScore   Float?
+  /// Play/view count of the scraped post (not Creative Center aggregates).
+  viewCount     Int?
+  /// Like / digg count of the scraped post.
+  likesCount    Int?
+  /// Comment count when the provider exposes it.
+  commentsCount Int?
   /// Where the trend lives publicly (TikTok discover URL, IG explore tag…).
   sourceUrl     String?
   /// Visual preview URL — used as the hero image of the TrendCard.
@@ -734,8 +740,8 @@ model TrendItem {
   /// When this trend should be considered stale and hidden from the feed.
   /// NULL = no expiry (still up to `fetchedAt` recency to decide).
   expiresAt     DateTime?
-  /// Public media URLs from top scraped posts (images / video posters). Never
-  /// sent to image models as identity reference — only analyzed for format.
+  /// Public media URLs from top scraped posts (images / video posters).
+  /// Used as composition inspiration (not identity) when generating content.
   mediaUrls       String[] @default([])
   /// Persisted copy of the source trend MP4 (R2) for motion-control reels.
   sourceVideoUrl  String?
@@ -756,6 +762,8 @@ model TrendItem {
   @@index([fetchedAt])
   @@index([platform, isNsfw, fetchedAt])
   @@index([snapshotId])
+  @@index([likesCount])
+  @@index([viewCount])
 }
 
 /// Per-influencer LLM-personalized recommendation derived from a TrendItem.

@@ -66,7 +66,12 @@ export async function analyzeTopTrendsFormat(limit: number): Promise<number> {
       fetchedAt: { gte: freshSince },
       thumbnailUrl: { not: null },
     },
-    orderBy: [{ growthScore: "desc" }, { fetchedAt: "desc" }],
+    orderBy: [
+      { likesCount: { sort: "desc", nulls: "last" } },
+      { viewCount: { sort: "desc", nulls: "last" } },
+      { growthScore: "desc" },
+      { fetchedAt: "desc" },
+    ],
     take: limit,
     select: { id: true },
   });
@@ -80,7 +85,12 @@ export async function analyzeTopTrendsFormat(limit: number): Promise<number> {
         thumbnailUrl: null,
         id: { notIn: candidates.map((c) => c.id) },
       },
-      orderBy: [{ growthScore: "desc" }, { fetchedAt: "desc" }],
+      orderBy: [
+        { likesCount: { sort: "desc", nulls: "last" } },
+        { viewCount: { sort: "desc", nulls: "last" } },
+        { growthScore: "desc" },
+        { fetchedAt: "desc" },
+      ],
       take: limit - candidates.length,
       select: { id: true },
     });

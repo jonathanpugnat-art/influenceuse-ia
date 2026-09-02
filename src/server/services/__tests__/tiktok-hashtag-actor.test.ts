@@ -27,7 +27,7 @@ describe("tiktok-hashtag-actor", () => {
     ).toEqual({
       timePeriod: "7",
       country: "FR",
-      industry: "All Industries",
+      industry: "Apparel & Accessories",
       maxResults: 40,
       isNewToTop100: false,
       proxyConfiguration: { useApifyProxy: true },
@@ -47,7 +47,7 @@ describe("tiktok-hashtag-actor", () => {
       top100_period: "30",
       total_hashtags: 80,
       sort_order: "popular",
-      industry: "",
+      industry: "Apparel & Accessories",
       proxyConfiguration: { useApifyProxy: true },
     });
   });

@@ -232,6 +232,14 @@ export async function publishContent(content: ContentWithInfluencer): Promise<Pu
         }
 
         case "TIKTOK": {
+          if (content.type !== "REEL") {
+            results.push({
+              platform,
+              status: "FAILED",
+              error: "TikTok n'accepte que les vidéos (reels).",
+            });
+            break;
+          }
           const videoUrl = content.mediaUrls[0];
           if (!videoUrl) {
             results.push({

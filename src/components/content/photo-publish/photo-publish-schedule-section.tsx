@@ -22,6 +22,7 @@ export function PhotoPublishScheduleSection({
     scheduleTime,
     setScheduleTime,
     slotsQuery,
+    canSchedule,
   } = flow;
 
   return (
@@ -42,12 +43,17 @@ export function PhotoPublishScheduleSection({
         </button>
         <button
           type="button"
-          onClick={() => setScheduleMode("schedule")}
+          onClick={() => {
+            if (!canSchedule) return;
+            setScheduleMode("schedule");
+          }}
+          disabled={!canSchedule}
           className={cn(
             "flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition-colors",
             scheduleMode === "schedule"
               ? "border-rose-400/60 bg-rose-500/10 text-rose-200"
-              : "border-border bg-muted/30 text-muted-foreground hover:border-foreground/30"
+              : "border-border bg-muted/30 text-muted-foreground hover:border-foreground/30",
+            !canSchedule && "cursor-not-allowed opacity-50 hover:border-border"
           )}
         >
           <Calendar className="mr-1 inline h-3 w-3" />
@@ -78,6 +84,11 @@ export function PhotoPublishScheduleSection({
             />
           </div>
         </div>
+      )}
+      {!canSchedule && (
+        <p className="text-[10px] leading-snug text-muted-foreground">
+          {t("publishSchedulePlanLockedHint")}
+        </p>
       )}
     </div>
   );

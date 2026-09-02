@@ -44,6 +44,7 @@ import { filterCalendarEventsByInfluencer } from "@/lib/calendar-utils";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useCalendarAgentStore } from "@/hooks/use-calendar-agent-store";
+import { calendarAutoPublishPlatforms } from "@/lib/publish-platforms";
 import type { CalendarEvent, CalendarView } from "@/components/calendar/types";
 
 const sectionVariants: Variants = {
@@ -136,7 +137,6 @@ export default function CalendarPage() {
         })();
 
     // Deep-link from trends: open schedule dialog with suggested slot (one-shot).
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- URL-driven dialog bootstrap
     setCurrentDate(day);
     setScheduleDay(day);
     setScheduleOpen(true);
@@ -228,9 +228,14 @@ export default function CalendarPage() {
   };
 
   const handlePublishNow = (event: CalendarEvent) => {
+    const platforms = calendarAutoPublishPlatforms(event);
+    if (platforms.length === 0) {
+      toast.error(t("publishNeedConnectedPlatform"));
+      return;
+    }
     publishMutation.mutate({
       contentId: event.id,
-      platforms: event.platforms as ["INSTAGRAM"],
+      platforms,
     });
   };
 
@@ -278,7 +283,7 @@ export default function CalendarPage() {
             {t("generatePlan")}
           </button>
           <Link
-            href="/content"
+            href="/content/photo"
             className="flex min-h-10 items-center gap-2 rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-foreground/90"
           >
             <Plus className="h-4 w-4" />
@@ -392,7 +397,7 @@ export default function CalendarPage() {
               {t("noEventsHint")}
             </p>
             <Button asChild className="mt-4">
-              <Link href="/content">{tDashboard("createContent")}</Link>
+              <Link href="/content/photo">{tDashboard("createContent")}</Link>
             </Button>
           </div>
         ) : view === "month" ? (

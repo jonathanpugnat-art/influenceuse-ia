@@ -25,7 +25,8 @@ const POLL_INTERVAL_MS = 2500;
 /** RealVisXL InstantID routinely takes 90–120s; keep headroom for queue spikes. */
 const POLL_TIMEOUT_MS = 180_000;
 
-/** Novita InstantID rejects NegativePrompt longer than 1024 runes. */
+/** Novita InstantID rejects Prompt / NegativePrompt longer than 1024 runes. */
+const NOVITA_PROMPT_MAX = 1024;
 const NOVITA_NEGATIVE_PROMPT_MAX = 1024;
 
 type NovitaSubmitResponse = { task_id?: string };
@@ -47,17 +48,15 @@ function sleep(ms: number): Promise<void> {
 }
 
 /** Truncate at a comma boundary when possible so we don't cut mid-token. */
-function clampNovitaNegativePrompt(raw: string): string {
+function clampNovitaText(raw: string, max: number, label: string): string {
   const trimmed = raw.trim();
-  if (trimmed.length <= NOVITA_NEGATIVE_PROMPT_MAX) return trimmed;
-  const slice = trimmed.slice(0, NOVITA_NEGATIVE_PROMPT_MAX);
+  if (trimmed.length <= max) return trimmed;
+  const slice = trimmed.slice(0, max);
   const lastComma = slice.lastIndexOf(",");
   const clamped =
-    lastComma > NOVITA_NEGATIVE_PROMPT_MAX * 0.7
-      ? slice.slice(0, lastComma).trim()
-      : slice.trim();
+    lastComma > max * 0.7 ? slice.slice(0, lastComma).trim() : slice.trim();
   console.warn(
-    `[novita-instantid] negative_prompt truncated ${trimmed.length} → ${clamped.length} (Novita max ${NOVITA_NEGATIVE_PROMPT_MAX})`
+    `[novita-instantid] ${label} truncated ${trimmed.length} → ${clamped.length} (Novita max ${max})`
   );
   return clamped;
 }
@@ -73,8 +72,12 @@ async function submitInstantIdTask(
   const body = {
     model_name: model,
     face_image_urls: [faceUrl],
-    prompt,
-    negative_prompt: clampNovitaNegativePrompt(negativePrompt),
+    prompt: clampNovitaText(prompt, NOVITA_PROMPT_MAX, "prompt"),
+    negative_prompt: clampNovitaText(
+      negativePrompt,
+      NOVITA_NEGATIVE_PROMPT_MAX,
+      "negative_prompt"
+    ),
     id_strength: resolveNovitaIdStrength(),
     adapter_strength: resolveNovitaAdapterStrength(),
     steps: resolveNovitaSteps(),

@@ -47,6 +47,13 @@ export interface ImageGenerationInput {
   trendContext?: {
     title?: string;
     hashtags?: string[];
+    brief?: {
+      cameraStyle?: string;
+      lighting?: string;
+      mood?: string;
+      inspirationNotes?: string;
+    };
+    inspirationImageUrls?: string[];
   };
 }
 

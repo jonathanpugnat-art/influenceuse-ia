@@ -27,5 +27,5 @@ export const KNOWN_NICHE_TAGS = [
 export const TRENDS_AUTO_ANALYZE_LIMIT = (() => {
   const raw = Number(process.env.TRENDS_AUTO_ANALYZE_LIMIT);
   if (Number.isFinite(raw) && raw >= 0) return Math.floor(raw);
-  return 6;
+  return 30;
 })();

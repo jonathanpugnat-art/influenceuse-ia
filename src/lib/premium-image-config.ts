@@ -66,18 +66,18 @@ function resolveUnitInterval(
   return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : fallback;
 }
 
-/** InstantID identity lock strength (0–1). Higher = closer to the face. Default 0.8. */
+/** InstantID identity lock strength (0–1). Higher = closer to the face. Default 0.85. */
 export function resolveNovitaIdStrength(
   env: Record<string, string | undefined> = process.env
 ): number {
-  return resolveUnitInterval(env.PREMIUM_NOVITA_ID_STRENGTH?.trim(), 0.72);
+  return resolveUnitInterval(env.PREMIUM_NOVITA_ID_STRENGTH?.trim(), 0.85);
 }
 
-/** InstantID IP-Adapter strength (0–1). Higher = stronger face features. Default 0.75. */
+/** InstantID IP-Adapter strength (0–1). Higher = stronger face features. Default 0.85. */
 export function resolveNovitaAdapterStrength(
   env: Record<string, string | undefined> = process.env
 ): number {
-  return resolveUnitInterval(env.PREMIUM_NOVITA_ADAPTER_STRENGTH?.trim(), 0.75);
+  return resolveUnitInterval(env.PREMIUM_NOVITA_ADAPTER_STRENGTH?.trim(), 0.85);
 }
 
 /** InstantID sampling steps. Default 40 (more detail than legacy 35). Clamp 20–60. */

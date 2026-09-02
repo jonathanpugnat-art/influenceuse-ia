@@ -37,7 +37,12 @@ export async function refreshTrendItemsFeedTtl(opts?: {
           }
         : {}),
     },
-    orderBy: [{ growthScore: "desc" }, { fetchedAt: "desc" }],
+    orderBy: [
+      { likesCount: { sort: "desc", nulls: "last" } },
+      { viewCount: { sort: "desc", nulls: "last" } },
+      { growthScore: "desc" },
+      { fetchedAt: "desc" },
+    ],
     take: limit,
     select: { id: true },
   });
@@ -77,7 +82,12 @@ export async function getFeedForInfluencer(
         { nicheTags: { isEmpty: true } },
       ],
     },
-    orderBy: [{ growthScore: "desc" }, { fetchedAt: "desc" }],
+    orderBy: [
+      { likesCount: { sort: "desc", nulls: "last" } },
+      { viewCount: { sort: "desc", nulls: "last" } },
+      { growthScore: { sort: "desc", nulls: "last" } },
+      { fetchedAt: "desc" },
+    ],
     take: hardCap + 1,
     ...(opts.cursor
       ? { skip: 1, cursor: { id: opts.cursor } }
@@ -112,7 +122,12 @@ export async function getGlobalTrendFeed(
       fetchedAt: { gte: freshSince },
       ...(opts.platform ? { platform: opts.platform } : {}),
     },
-    orderBy: [{ growthScore: "desc" }, { fetchedAt: "desc" }],
+    orderBy: [
+      { likesCount: { sort: "desc", nulls: "last" } },
+      { viewCount: { sort: "desc", nulls: "last" } },
+      { growthScore: { sort: "desc", nulls: "last" } },
+      { fetchedAt: "desc" },
+    ],
     take: hardCap + 1,
     ...(opts.cursor
       ? { skip: 1, cursor: { id: opts.cursor } }
@@ -156,7 +171,12 @@ export async function getWizardTrendInspiration(opts: {
         { nicheTags: { isEmpty: true } },
       ],
     },
-    orderBy: [{ growthScore: "desc" }, { fetchedAt: "desc" }],
+    orderBy: [
+      { likesCount: { sort: "desc", nulls: "last" } },
+      { viewCount: { sort: "desc", nulls: "last" } },
+      { growthScore: "desc" },
+      { fetchedAt: "desc" },
+    ],
     take: limit,
     select: {
       id: true,

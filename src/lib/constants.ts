@@ -165,3 +165,10 @@ export const CREDIT_COSTS = {
   /** Vision/text analysis of scraped post media (one trend). */
   TREND_FORMAT_ANALYZE: 0.2,
 } as const;
+
+/** Display catalog for credit packs (Stripe price IDs live in stripe.service). */
+export const CREDIT_PACK_CATALOG = [
+  { id: "small", credits: 100, priceEur: 9 },
+  { id: "medium", credits: 500, priceEur: 39 },
+  { id: "large", credits: 1500, priceEur: 99 },
+] as const;

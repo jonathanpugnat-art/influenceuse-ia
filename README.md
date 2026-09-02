@@ -214,9 +214,9 @@ pnpm lint                # ESLint
 | Plan | Prix | Influenceurs | Crédits / mois | Vidéos | Webhooks | API publique | Workspaces |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Free | 0€ | 1 | 50 | ❌ | ❌ | ❌ | ❌ |
-| Creator | 9€ | 2 | 150 | ❌ | ❌ | ❌ | ❌ |
-| Pro | 29€ | 5 | 500 | ✅ | ✅ | ✅ | ❌ |
-| Agency | 99€ | ∞ | ∞ | ✅ | ✅ | ✅ | ✅ |
+| Creator | 29€ | 2 | 500 | ❌ | ❌ | ❌ | ❌ |
+| Pro | 79€ | 5 | 1500 | ✅ | ✅ | ✅ | ❌ |
+| Agency | 199€ | ∞ | 5000 | ✅ | ✅ | ✅ | ✅ |
 
 **Add-ons crédits** (achat unique) : Boost (100/9€), Pro (500/39€), Studio (1500/99€).
 

@@ -20,6 +20,12 @@ import {
   usesInstagramDirectLogin,
 } from "@/lib/instagram-oauth-config";
 import { buildSignedOAuthState } from "@/lib/oauth-state";
+import { PLANS } from "@/lib/constants";
+import {
+  contentKindFromType,
+  invalidPlatformsForContent,
+  type PublishPlatform,
+} from "@/lib/publish-platforms";
 
 // ──────────────────────────────────────────────
 // Helpers
@@ -201,7 +207,26 @@ export const publishRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const user = await getDbUser(ctx.userId);
+      if (!PLANS[user.plan].hasAutoPublish) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "La programmation automatique est disponible à partir du plan Creator.",
+        });
+      }
       const content = await verifyContentOwnership(input.contentId, user.id);
+
+      const invalidForSchedule = invalidPlatformsForContent(
+        input.platforms,
+        contentKindFromType(content.type)
+      );
+      if (invalidForSchedule.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "TikTok n'accepte que les reels. Retirez-le des photos et carrousels.",
+        });
+      }
 
       if (content.status !== "READY" && content.status !== "DRAFT") {
         throw new TRPCError({
@@ -270,6 +295,18 @@ export const publishRouter = createTRPCRouter({
       const user = await getDbUser(ctx.userId);
       const content = await verifyContentOwnership(input.contentId, user.id);
 
+      const invalidForPublish = invalidPlatformsForContent(
+        input.platforms,
+        contentKindFromType(content.type)
+      );
+      if (invalidForPublish.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "TikTok n'accepte que les reels. Retirez-le des photos et carrousels.",
+        });
+      }
+
       if (content.status !== "READY" && content.status !== "SCHEDULED") {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -328,7 +365,7 @@ export const publishRouter = createTRPCRouter({
         );
         const results = await doPublish({
           ...contentWithInfluencer,
-          platforms: input.platforms as ("INSTAGRAM" | "TIKTOK" | "ONLYFANS")[],
+          platforms: input.platforms as PublishPlatform[],
         });
         resultsCount = results.length;
         await savePublishResults(input.contentId, results);
@@ -445,6 +482,10 @@ export const publishRouter = createTRPCRouter({
         (process.env.INSTAGRAM_REQUIRE_LOGIN_CONFIG_ID === "true" ||
           Boolean(process.env.FACEBOOK_LOGIN_CONFIG_ID?.trim())),
       alternateRedirectUris: buildAlternateInstagramRedirectUris(redirectUri),
+      hasTiktokCredentials: Boolean(
+        process.env.TIKTOK_CLIENT_KEY && process.env.TIKTOK_CLIENT_SECRET
+      ),
+      tiktokRedirectUri: getTikTokOAuthRedirectUri(),
     };
   }),
 

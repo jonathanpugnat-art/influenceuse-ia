@@ -256,11 +256,11 @@ describe("trend-provider", () => {
       it("resolveInstagramHashtags falls back to defaults", () => {
         const list = __test__.resolveInstagramHashtags();
         expect(list.length).toBeGreaterThan(0);
-        expect(list).toEqual(expect.arrayContaining(["fashion", "fitness"]));
-        expect(list).toEqual(expect.arrayContaining(["grwm", "viral"]));
+        expect(list).toEqual(expect.arrayContaining(["grwm", "ootd"]));
+        expect(list).not.toEqual(expect.arrayContaining(["viral"]));
       });
-      it("resolveTrendsFetchLimit defaults to 120 and respects env/ctx", () => {
-        expect(__test__.resolveTrendsFetchLimit()).toBe(120);
+      it("resolveTrendsFetchLimit defaults to 250 and respects env/ctx", () => {
+        expect(__test__.resolveTrendsFetchLimit()).toBe(250);
         expect(__test__.resolveTrendsFetchLimit(80)).toBe(80);
         process.env.TRENDS_FETCH_LIMIT = "150";
         expect(__test__.resolveTrendsFetchLimit()).toBe(150);
@@ -315,6 +315,36 @@ describe("trend-provider", () => {
           )
         ).toBe(true);
       });
+      it("keepHighReachItem drops low-like IG posts when min likes is set", () => {
+        expect(
+          __test__.keepHighReachItem(
+            {
+              externalId: "ig-weak",
+              platform: "INSTAGRAM",
+              title: "x",
+              hashtags: ["grwm"],
+              mediaKind: "image",
+              likesCount: 900,
+            },
+            100_000,
+            5_000
+          )
+        ).toBe(false);
+        expect(
+          __test__.keepHighReachItem(
+            {
+              externalId: "ig-strong",
+              platform: "INSTAGRAM",
+              title: "x",
+              hashtags: ["grwm"],
+              mediaKind: "image",
+              likesCount: 48_000,
+            },
+            100_000,
+            5_000
+          )
+        ).toBe(true);
+      });
       it("rankByReach prefers higher viewCount", () => {
         const a = {
           externalId: "a",
@@ -336,6 +366,51 @@ describe("trend-provider", () => {
           "a",
           "b",
         ]);
+      });
+      it("rankByReach prefers likes then views, and posts over hashtag signals", () => {
+        const signal = {
+          externalId: "sig",
+          platform: "TIKTOK" as const,
+          title: "#celeb",
+          hashtags: ["celeb"],
+          mediaKind: "hashtag_signal",
+          growthScore: 100,
+        };
+        const weak = {
+          externalId: "weak",
+          platform: "INSTAGRAM" as const,
+          title: "weak",
+          hashtags: ["grwm"],
+          mediaKind: "image" as const,
+          likesCount: 900,
+        };
+        const strong = {
+          externalId: "strong",
+          platform: "TIKTOK" as const,
+          title: "strong",
+          hashtags: ["grwm"],
+          mediaKind: "video" as const,
+          likesCount: 80_000,
+          viewCount: 2_000_000,
+        };
+        expect(
+          [signal, weak, strong].sort(__test__.rankByReach).map((x) => x.externalId)
+        ).toEqual(["strong", "weak", "sig"]);
+      });
+      it("resolveMinLikes defaults to 5000", () => {
+        expect(__test__.resolveMinLikes()).toBe(5_000);
+        process.env.TRENDS_MIN_LIKES = "0";
+        expect(__test__.resolveMinLikes()).toBe(0);
+        process.env.TRENDS_MIN_LIKES = "12000";
+        expect(__test__.resolveMinLikes()).toBe(12_000);
+        delete process.env.TRENDS_MIN_LIKES;
+      });
+      it("isUsefulVideoHashtag drops fyp/viral and keeps format tags", () => {
+        expect(__test__.isUsefulVideoHashtag("fyp")).toBe(false);
+        expect(__test__.isUsefulVideoHashtag("viral")).toBe(false);
+        expect(__test__.isUsefulVideoHashtag("haydenpanettiere")).toBe(false);
+        expect(__test__.isUsefulVideoHashtag("grwm")).toBe(true);
+        expect(__test__.isUsefulVideoHashtag("ootd")).toBe(true);
       });
     });
   });

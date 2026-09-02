@@ -51,6 +51,15 @@ describe("briefToPromptContext", () => {
     expect(ctx?.brief).toBeUndefined();
   });
 
+  it("carries inspiration image URLs for generation", () => {
+    const ctx = briefToPromptContext(null, "GRWM", ["grwm"], [
+      "https://cdn.example.com/cover.jpg",
+    ]);
+    expect(ctx?.inspirationImageUrls).toEqual([
+      "https://cdn.example.com/cover.jpg",
+    ]);
+  });
+
   it("returns metadata-only context when brief is null", () => {
     const ctx = briefToPromptContext(null, "Just a title", []);
     expect(ctx).toEqual({ title: "Just a title" });

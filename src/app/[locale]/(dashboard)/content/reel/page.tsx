@@ -13,6 +13,7 @@ import { ReelPromptStudio } from "@/components/content/reel-prompt-studio";
 import { ReelPreview } from "@/components/content/reel-preview";
 import { PhotoPublish } from "@/components/content/photo-publish";
 import { useReelCreator } from "@/hooks/use-reel-creator";
+import { useAutoSelectSoleInfluencer } from "@/hooks/use-auto-select-sole-influencer";
 import { trpc } from "@/lib/trpc";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
@@ -29,12 +30,17 @@ export default function ReelCreatorPage() {
     applyReelBrief,
   } = useReelCreator();
   const showPublish = !!videoUrl && !isGenerating;
-  const [mobileConfigOpen, setMobileConfigOpen] = useState(false);
-  const trendSeededRef = useRef(false);
-
   const influencerIdFromUrl = searchParams.get("influencer");
   const trendItemIdFromUrl = searchParams.get("trendItemId");
   const recommendationIdFromUrl = searchParams.get("recommendationId");
+  const hasTrendDeepLink = Boolean(trendItemIdFromUrl || recommendationIdFromUrl);
+  const [mobileConfigOpen, setMobileConfigOpen] = useState(
+    () =>
+      Boolean(
+        searchParams.get("trendItemId") || searchParams.get("recommendationId")
+      )
+  );
+  const trendSeededRef = useRef(false);
 
   const trendSeedQuery = trpc.trends.getReelSeed.useQuery(
     {
@@ -44,17 +50,15 @@ export default function ReelCreatorPage() {
     },
     {
       enabled:
-        Boolean(influencerIdFromUrl) &&
-        Boolean(trendItemIdFromUrl || recommendationIdFromUrl) &&
-        !trendSeededRef.current,
+        Boolean(influencerIdFromUrl) && hasTrendDeepLink,
     }
   );
 
-  useEffect(() => {
-    if (influencerIdFromUrl && influencerIdFromUrl !== params.influencerId) {
-      updateParams({ influencerId: influencerIdFromUrl });
-    }
-  }, [influencerIdFromUrl, params.influencerId, updateParams]);
+  useAutoSelectSoleInfluencer(
+    params.influencerId,
+    influencerIdFromUrl,
+    updateParams
+  );
 
   useEffect(() => {
     const infId = influencerIdFromUrl;
@@ -63,7 +67,6 @@ export default function ReelCreatorPage() {
     if (!trendSeedQuery.data?.brief) return;
     trendSeededRef.current = true;
     applyReelBrief(trendSeedQuery.data.brief, infId);
-    setMobileConfigOpen(true);
   }, [
     applyReelBrief,
     influencerIdFromUrl,
@@ -78,10 +81,7 @@ export default function ReelCreatorPage() {
     }
   }, [trendSeedQuery.error, trendSeedQuery.isError]);
 
-  const trendHydrating =
-    Boolean(trendItemIdFromUrl || recommendationIdFromUrl) &&
-    trendSeedQuery.isLoading &&
-    !trendSeededRef.current;
+  const trendHydrating = hasTrendDeepLink && trendSeedQuery.isPending;
 
   return (
     <div className="-mx-4 -my-6 flex h-[calc(100vh-4rem)] flex-col md:-mx-6 lg:-mx-8">
@@ -131,7 +131,7 @@ export default function ReelCreatorPage() {
               transition={{ type: "spring", bounce: 0.08, duration: 0.35 }}
               className="hidden shrink-0 overflow-hidden border-l border-slate-800/50 xl:block"
             >
-              <PhotoPublish />
+              <PhotoPublish contentKind="REEL" />
             </motion.aside>
           )}
         </AnimatePresence>
@@ -146,7 +146,7 @@ export default function ReelCreatorPage() {
             transition={{ type: "spring", bounce: 0.15 }}
             className="fixed inset-x-0 bottom-0 z-50 max-h-[min(88vh,100dvh)] overflow-y-auto border-t border-slate-800/60 bg-slate-900 shadow-2xl xl:hidden"
           >
-            <PhotoPublish mobileSheet />
+            <PhotoPublish contentKind="REEL" mobileSheet />
           </motion.div>
         )}
       </AnimatePresence>

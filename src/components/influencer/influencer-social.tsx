@@ -52,7 +52,7 @@ const PLATFORM_META: Record<
     iconColor: "text-white",
     gradient: "from-cyan-500/20 to-pink-500/20",
     descriptionKey: "descTiktok",
-    oauthSupported: false,
+    oauthSupported: true,
   },
   ONLYFANS: {
     name: "OnlyFans",
@@ -103,6 +103,16 @@ export function InfluencerSocial({ influencerId }: { influencerId: string }) {
     },
   });
 
+  const connectTiktokMut = trpc.publish.connectTiktok.useMutation({
+    onSuccess: (res) => {
+      window.location.href = res.url;
+    },
+    onError: (err) => {
+      setConnectingPlatform(null);
+      toast.error(err.message);
+    },
+  });
+
   const disconnectMut = trpc.publish.disconnectAccount.useMutation({
     onSuccess: () => {
       utils.publish.getConnectedAccounts.invalidate({ influencerId });
@@ -115,17 +125,26 @@ export function InfluencerSocial({ influencerId }: { influencerId: string }) {
   // re-fire the toast indefinitely. We intentionally keep this effect minimal:
   // setSearchParams isn't a thing in Next 16 yet, so we router.replace instead.
   useEffect(() => {
-    const connected = searchParams.get("instagram");
-    const error = searchParams.get("instagram_error");
+    const igConnected = searchParams.get("instagram");
+    const igError = searchParams.get("instagram_error");
+    const tiktokConnected = searchParams.get("tiktok");
+    const tiktokError = searchParams.get("tiktok_error");
 
-    if (connected === "connected") {
+    if (igConnected === "connected") {
       toast.success(t("toastConnected"));
       utils.publish.getConnectedAccounts.invalidate({ influencerId });
       setShowMetaHelp(false);
       router.replace(`/influencers/${influencerId}?tab=social`);
-    } else if (error) {
-      toast.error(formatInstagramOAuthError(error), { duration: 12000 });
+    } else if (igError) {
+      toast.error(formatInstagramOAuthError(igError), { duration: 12000 });
       setShowMetaHelp(true);
+      router.replace(`/influencers/${influencerId}?tab=social`);
+    } else if (tiktokConnected === "connected") {
+      toast.success(t("toastConnectedTiktok"));
+      utils.publish.getConnectedAccounts.invalidate({ influencerId });
+      router.replace(`/influencers/${influencerId}?tab=social`);
+    } else if (tiktokError) {
+      toast.error(tiktokError, { duration: 12000 });
       router.replace(`/influencers/${influencerId}?tab=social`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -135,14 +154,31 @@ export function InfluencerSocial({ influencerId }: { influencerId: string }) {
     accounts?.find((a) => a.platform === platform);
 
   const handleConnect = (platform: Platform) => {
-    if (platform !== "INSTAGRAM") return;
-    if (oauthSetup && !oauthSetup.hasCredentials) {
-      toast.error(t("toastOauthNotConfigured"));
-      setShowMetaHelp(true);
-      return;
+    switch (platform) {
+      case "INSTAGRAM":
+        if (oauthSetup && !oauthSetup.hasCredentials) {
+          toast.error(t("toastOauthNotConfigured"));
+          setShowMetaHelp(true);
+          return;
+        }
+        setConnectingPlatform("INSTAGRAM");
+        connectInstagramMut.mutate({ influencerId });
+        return;
+      case "TIKTOK":
+        if (oauthSetup && oauthSetup.hasTiktokCredentials === false) {
+          toast.error(t("toastTiktokOauthNotConfigured"));
+          return;
+        }
+        setConnectingPlatform("TIKTOK");
+        connectTiktokMut.mutate({ influencerId });
+        return;
+      case "ONLYFANS":
+        return;
+      default: {
+        const _never: never = platform;
+        return _never;
+      }
     }
-    setConnectingPlatform(platform);
-    connectInstagramMut.mutate({ influencerId });
   };
 
   const handleDisconnect = (socialAccountId: string) => {
@@ -168,6 +204,7 @@ export function InfluencerSocial({ influencerId }: { influencerId: string }) {
               <li>{t("onboardDirectLogin")}</li>
             )}
             <li>{t("onboardRevocable")}</li>
+            <li>{t("onboardTiktok")}</li>
           </ul>
         </div>
       </div>
@@ -196,6 +233,19 @@ export function InfluencerSocial({ influencerId }: { influencerId: string }) {
             <p className="mt-2 rounded-lg bg-red-500/15 px-2 py-1.5 text-xs font-medium text-red-200">
               {t("credentialsMissing")}
             </p>
+          )}
+          {oauthSetup.hasTiktokCredentials === false && (
+            <p className="mt-2 rounded-lg bg-amber-500/15 px-2 py-1.5 text-xs text-amber-100">
+              {t("tiktokCredentialsMissing")}
+            </p>
+          )}
+          {oauthSetup.tiktokRedirectUri && (
+            <div className="mt-3 border-t border-slate-800 pt-3">
+              <p className="text-xs text-slate-400">{t("tiktokRedirectUriTitle")}</p>
+              <code className="mt-1 block break-all rounded-lg bg-black/40 px-2 py-2 text-xs text-emerald-300">
+                {oauthSetup.tiktokRedirectUri}
+              </code>
+            </div>
           )}
           {oauthSetup.hasCredentials &&
             !oauthSetup.instagramLogin &&
@@ -378,7 +428,9 @@ export function InfluencerSocial({ influencerId }: { influencerId: string }) {
                     disabled={
                       isConnecting ||
                       (platform === "INSTAGRAM" &&
-                        oauthSetup?.hasCredentials === false)
+                        oauthSetup?.hasCredentials === false) ||
+                      (platform === "TIKTOK" &&
+                        oauthSetup?.hasTiktokCredentials === false)
                     }
                     className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-500 px-3 py-1.5 text-xs font-medium text-white shadow-lg shadow-violet-500/25 transition-all hover:opacity-90 disabled:opacity-50"
                   >

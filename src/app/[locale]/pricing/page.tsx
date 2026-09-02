@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { ArrowLeft, Check, Sparkles } from "lucide-react";
 import { Link } from "@/i18n/navigation";
-import { PLANS } from "@/lib/constants";
+import { CREDIT_PACK_CATALOG, PLANS } from "@/lib/constants";
+import { PRODUCT_NAME, SUPPORT_EMAIL } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: "Tarifs — Influenceuse IA",
+  title: `Tarifs — ${PRODUCT_NAME}`,
   description:
-    "Tarifs simples et transparents pour Influenceuse IA. Free, Creator, Pro et Agency — choisissez le plan qui correspond à votre volume de génération.",
+    `Tarifs simples et transparents pour ${PRODUCT_NAME}. Free, Creator, Pro et Agency — choisissez le plan qui correspond à votre volume de génération.`,
 };
 
 /**
@@ -68,11 +69,14 @@ export default async function PricingPage({
       name: PLANS.STARTER.name,
       price: PLANS.STARTER.price,
       description: t("creatorDesc"),
+      featured: true,
       features: [
         fmtInfluencers(PLANS.STARTER.maxInfluencers),
         fmtCredits(PLANS.STARTER.credits),
         t("featPhotos"),
         t("featAutoPublish"),
+        t("featTrends"),
+        t("featTiktok"),
         t("featContentPlan"),
         t("featTemplates"),
       ],
@@ -82,13 +86,13 @@ export default async function PricingPage({
       name: PLANS.PRO.name,
       price: PLANS.PRO.price,
       description: t("proDesc"),
-      featured: true,
       features: [
         fmtInfluencers(PLANS.PRO.maxInfluencers),
         fmtCredits(PLANS.PRO.credits),
         t("featPhotos"),
         t("featVideos"),
         t("featAutoPublish"),
+        t("featTrends"),
         t("featBatch"),
         t("featContentPlan"),
         t("featWebhooks"),
@@ -102,7 +106,7 @@ export default async function PricingPage({
       enterprise: true,
       features: [
         t("featInfluencersUnlimited"),
-        t("featCreditsUnlimited"),
+        fmtCredits(PLANS.ENTERPRISE.credits),
         t("featVideos"),
         t("featBatch"),
         t("featAnalytics"),
@@ -115,14 +119,15 @@ export default async function PricingPage({
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-50 selection:bg-violet-500/30">
       <header className="container mx-auto px-6 h-16 flex items-center justify-between border-b border-zinc-800/50">
-        <Link href="/home" className="flex items-center gap-2 group">
+        <Link href="/home" locale={locale} className="flex items-center gap-2 group">
           <div className="size-8 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
             <Sparkles className="size-4 text-white" />
           </div>
-          <span className="font-bold text-lg tracking-tight">Influenceuse IA</span>
+          <span className="font-bold text-lg tracking-tight">{PRODUCT_NAME}</span>
         </Link>
         <Link
           href="/home"
+          locale={locale}
           className="text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-2"
         >
           <ArrowLeft className="size-4" /> {tLanding("navFeatures")}
@@ -142,7 +147,7 @@ export default async function PricingPage({
             const priceLabel =
               plan.price === 0 ? t("free") : `${plan.price}€`;
             const ctaHref = plan.enterprise
-              ? "mailto:hello@influenceuse-ia.com"
+              ? `mailto:${SUPPORT_EMAIL}`
               : "/sign-up";
             const ctaLabel = plan.enterprise
               ? t("ctaContact")
@@ -183,7 +188,7 @@ export default async function PricingPage({
                     {ctaLabel}
                   </a>
                 ) : (
-                  <Link href="/sign-up">
+                  <Link href="/sign-up" locale={locale}>
                     <span
                       className={`inline-flex items-center justify-center w-full mb-6 h-10 px-4 rounded-md text-sm font-medium transition-colors ${
                         plan.featured
@@ -212,15 +217,42 @@ export default async function PricingPage({
           })}
         </div>
 
-        <p className="text-center text-zinc-500 text-sm mt-12">
-          {t("ctaCreditPacks")}{" "}
-          <Link
-            href="/billing"
-            className="text-violet-400 hover:text-violet-300 underline-offset-4 hover:underline"
-          >
-            {t("creditPacksLink")}
-          </Link>
+        <p className="text-center text-zinc-500 text-sm mt-12 mb-8">
+          {t("ctaCreditPacks")}
         </p>
+
+        <section
+          id="credit-packs"
+          className="max-w-4xl mx-auto scroll-mt-24"
+        >
+          <h2 className="text-2xl font-bold text-center mb-2">{t("packsTitle")}</h2>
+          <p className="text-zinc-400 text-center text-sm mb-8">{t("packsSubtitle")}</p>
+          <div className="grid sm:grid-cols-3 gap-4">
+            {CREDIT_PACK_CATALOG.map((pack) => (
+              <div
+                key={pack.id}
+                className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6 text-center"
+              >
+                <p className="text-sm font-medium text-zinc-400 mb-1">
+                  {t(`packName.${pack.id}`)}
+                </p>
+                <p className="text-3xl font-bold mb-1">{pack.priceEur}€</p>
+                <p className="text-sm text-zinc-400">
+                  {t("packCredits", { count: pack.credits })}
+                </p>
+              </div>
+            ))}
+          </div>
+          <div className="text-center mt-8">
+            <Link
+              href="/sign-up"
+              locale={locale}
+              className="text-violet-400 hover:text-violet-300 underline-offset-4 hover:underline text-sm"
+            >
+              {t("packsCta")}
+            </Link>
+          </div>
+        </section>
       </main>
     </div>
   );

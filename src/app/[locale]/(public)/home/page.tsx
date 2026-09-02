@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslations, useLocale } from "next-intl";
 import { Link, usePathname } from "@/i18n/navigation";
 import { Button } from "@/components/ui/button";
-import { PLANS } from "@/lib/constants";
+import { PLANS, CREDIT_COSTS } from "@/lib/constants";
+import { PRODUCT_NAME, SUPPORT_EMAIL } from "@/lib/site";
 import {
   Sparkles,
   Layers,
@@ -27,7 +28,6 @@ import {
   Bookmark,
   Camera,
   Quote,
-  Zap,
   Globe,
 } from "lucide-react";
 
@@ -138,6 +138,7 @@ export default function LandingPage() {
           : `${PLANS.STARTER.maxInfluencers} influencers`,
         isFr ? "Plan éditorial IA" : "AI editorial plan",
         isFr ? "Publication auto" : "Auto-publishing",
+        isFr ? "Feed tendances" : "Trend feed",
       ],
     },
     {
@@ -154,6 +155,20 @@ export default function LandingPage() {
           : `${PLANS.PRO.maxInfluencers} influencers`,
         isFr ? "Génération vidéo" : "Video generation",
         isFr ? "Génération batch" : "Batch generation",
+      ],
+    },
+    {
+      id: "ENTERPRISE",
+      name: PLANS.ENTERPRISE.name,
+      price: `${PLANS.ENTERPRISE.price}€`,
+      desc: isFr ? "Pour les agences" : "For agencies",
+      features: [
+        isFr ? "Influenceuses illimitées" : "Unlimited influencers",
+        isFr
+          ? `${PLANS.ENTERPRISE.credits} crédits / mois`
+          : `${PLANS.ENTERPRISE.credits} credits / month`,
+        isFr ? "Génération batch" : "Batch generation",
+        isFr ? "Analytics avancés" : "Advanced analytics",
       ],
     },
   ];
@@ -194,12 +209,12 @@ export default function LandingPage() {
             >
               {otherLocale.toUpperCase()}
             </Link>
-            <Link href="/sign-in">
+            <Link href="/sign-in" locale={locale}>
               <Button variant="ghost" className="text-muted-foreground hover:text-foreground">
                 {t("signIn")}
               </Button>
             </Link>
-            <Link href="/sign-up">
+            <Link href="/sign-up" locale={locale}>
               <Button size="sm">{t("tryFree")}</Button>
             </Link>
           </div>
@@ -254,7 +269,7 @@ export default function LandingPage() {
                 {otherLocale.toUpperCase()}
               </Link>
               <div className="flex flex-col gap-2 pt-4">
-                <Link href="/sign-in" onClick={() => setMobileMenuOpen(false)}>
+                <Link href="/sign-in" locale={locale} onClick={() => setMobileMenuOpen(false)}>
                   <Button
                     variant="outline"
                     className="w-full border-border bg-transparent text-foreground"
@@ -262,7 +277,7 @@ export default function LandingPage() {
                     {t("signIn")}
                   </Button>
                 </Link>
-                <Link href="/sign-up" onClick={() => setMobileMenuOpen(false)}>
+                <Link href="/sign-up" locale={locale} onClick={() => setMobileMenuOpen(false)}>
                   <Button className="w-full bg-foreground text-background border-0">
                     {t("tryFree")}
                   </Button>
@@ -321,15 +336,21 @@ export default function LandingPage() {
                 transition={{ duration: 0.6, delay: 0.3 }}
                 className="flex flex-col items-center justify-center gap-4 sm:flex-row"
               >
-                <Link href="/sign-up">
+                <Link href="/sign-up" locale={locale}>
                   <Button size="lg" className="h-14 w-full px-8 sm:w-auto">
                     {t("ctaPrimary")} <ArrowRight className="ml-2 size-4" />
                   </Button>
                 </Link>
                 <Button
+                  type="button"
                   size="lg"
                   variant="outline"
                   className="h-14 w-full px-8 sm:w-auto"
+                  onClick={() => {
+                    document
+                      .getElementById("showcase")
+                      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }}
                 >
                   <Play className="mr-2 size-4" /> {t("ctaWatchDemo")}
                 </Button>
@@ -353,10 +374,10 @@ export default function LandingPage() {
               <div className="relative overflow-hidden rounded-3xl border border-border/50 bg-card/40 p-3 shadow-2xl shadow-black/50 backdrop-blur-sm md:p-4">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
                   {[
-                    { src: "/landing/showcase/luna-gym.jpg", caption: t("showcaseCaptionGym"), likes: "12.4K" },
-                    { src: "/landing/showcase/amani-restaurant.jpg", caption: t("showcaseCaptionRestaurant"), likes: "8.7K" },
-                    { src: "/landing/showcase/kenji-tokyo.jpg", caption: t("showcaseCaptionTokyo"), likes: "15.2K" },
-                    { src: "/landing/showcase/marco-nyc.jpg", caption: t("showcaseCaptionNyc"), likes: "21.8K" },
+                    { src: "/landing/showcase/luna-gym.jpg", caption: t("showcaseCaptionGym") },
+                    { src: "/landing/showcase/amani-restaurant.jpg", caption: t("showcaseCaptionRestaurant") },
+                    { src: "/landing/showcase/kenji-tokyo.jpg", caption: t("showcaseCaptionTokyo") },
+                    { src: "/landing/showcase/marco-nyc.jpg", caption: t("showcaseCaptionNyc") },
                   ].map((shot, i) => (
                     <motion.div
                       key={shot.src}
@@ -375,15 +396,9 @@ export default function LandingPage() {
                       />
                       {/* IG-style overlay */}
                       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent p-3 md:p-4">
-                        <div className="flex items-center justify-between text-white text-xs md:text-sm">
-                          <div className="flex items-center gap-1.5 font-semibold">
-                            <Heart className="size-3.5 md:size-4 fill-rose-500 text-rose-500" />
-                            {shot.likes}
-                          </div>
-                          <span className="text-white/80 truncate ml-2">
-                            {shot.caption}
-                          </span>
-                        </div>
+                        <p className="truncate text-xs text-white/90 md:text-sm">
+                          {shot.caption}
+                        </p>
                       </div>
                       <div className="absolute top-3 right-3 size-7 rounded-full bg-background/60 backdrop-blur flex items-center justify-center border border-border">
                         <Sparkles className="size-3.5 text-primary" />
@@ -399,12 +414,12 @@ export default function LandingPage() {
         {/* Stats strip + social proof */}
         <section className="py-12 border-y border-border bg-card/30">
           <div className="container mx-auto px-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-10 mb-10 max-w-5xl mx-auto">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-10 mb-4 max-w-5xl mx-auto">
               {[
-                { value: "1.2M+", label: t("statsPhotosGenerated"), icon: ImageIcon },
-                { value: "21s", label: t("statsAvgGenTime"), icon: Zap },
-                { value: "32", label: t("statsCountries"), icon: Globe },
-                { value: "45+", label: t("statsActiveAgencies"), icon: Users },
+                { value: `${CREDIT_COSTS.PHOTO}`, label: t("statsPhotosGenerated"), icon: ImageIcon },
+                { value: `${CREDIT_COSTS.REEL}`, label: t("statsAvgGenTime"), icon: Video },
+                { value: "IG + TT", label: t("statsCountries"), icon: Send },
+                { value: "FR / EN", label: t("statsActiveAgencies"), icon: Globe },
               ].map((stat) => (
                 <div key={stat.label} className="text-center">
                   <div className="flex justify-center mb-2">
@@ -420,28 +435,14 @@ export default function LandingPage() {
               ))}
             </div>
 
-            <p className="text-center text-xs text-muted-foreground font-medium mb-5 uppercase tracking-wider">
+            <p className="text-center text-xs text-muted-foreground font-medium uppercase tracking-wider">
               {t("socialProofTitle")}
             </p>
-            <div className="flex flex-wrap justify-center items-center gap-8 md:gap-14 opacity-40 grayscale">
-              <div className="text-lg font-bold flex items-center gap-2">
-                <Sparkles className="size-4" /> Stripe
-              </div>
-              <div className="text-lg font-bold flex items-center gap-2">
-                <Layers className="size-4" /> Clerk
-              </div>
-              <div className="text-lg font-bold flex items-center gap-2">
-                <Wand2 className="size-4" /> Anthropic
-              </div>
-              <div className="text-lg font-bold flex items-center gap-2">
-                <ImageIcon className="size-4" /> Replicate
-              </div>
-            </div>
           </div>
         </section>
 
         {/* Showcase — 4 personas with Instagram-style cards */}
-        <section className="py-24 md:py-32 relative overflow-hidden">
+        <section id="showcase" className="py-24 md:py-32 relative overflow-hidden scroll-mt-24">
           <div className="container mx-auto px-6">
             <div className="text-center max-w-2xl mx-auto mb-14">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-border bg-card text-muted-foreground text-xs font-medium mb-4">
@@ -474,7 +475,7 @@ export default function LandingPage() {
                   avatar: "/landing/influencers/amani.jpg",
                   posts: [
                     { src: "/landing/showcase/amani-restaurant.jpg", caption: t("showcaseCaptionRestaurant"), likes: "21.3K", comments: "503" },
-                    { src: "/landing/showcase/amani-shopping.jpg", caption: "Shopping day 🛍️", likes: "9.1K", comments: "187" },
+                    { src: "/landing/showcase/amani-shopping.jpg", caption: "Shopping day", likes: "9.1K", comments: "187" },
                   ],
                 },
                 {
@@ -483,7 +484,7 @@ export default function LandingPage() {
                   avatar: "/landing/influencers/kenji.jpg",
                   posts: [
                     { src: "/landing/showcase/kenji-tokyo.jpg", caption: t("showcaseCaptionTokyo"), likes: "18.6K", comments: "402" },
-                    { src: "/landing/showcase/kenji-street1.jpg", caption: "Daylight fit 🇯🇵", likes: "11.2K", comments: "231" },
+                    { src: "/landing/showcase/kenji-street1.jpg", caption: "Daylight fit", likes: "11.2K", comments: "231" },
                     { src: "/landing/showcase/kenji-shop.jpg", caption: "Vintage finds", likes: "7.4K", comments: "98" },
                   ],
                 },
@@ -493,8 +494,8 @@ export default function LandingPage() {
                   avatar: "/landing/influencers/marco.jpg",
                   posts: [
                     { src: "/landing/showcase/marco-nyc.jpg", caption: t("showcaseCaptionNyc"), likes: "24.1K", comments: "612" },
-                    { src: "/landing/showcase/marco-cafe.jpg", caption: "Espresso run ☕", likes: "9.8K", comments: "204" },
-                    { src: "/landing/showcase/marco-park.jpg", caption: "Park days 🌳", likes: "13.5K", comments: "318" },
+                    { src: "/landing/showcase/marco-cafe.jpg", caption: "Espresso run", likes: "9.8K", comments: "204" },
+                    { src: "/landing/showcase/marco-park.jpg", caption: "Park days", likes: "13.5K", comments: "318" },
                   ],
                 },
               ].map((persona, idx) => (
@@ -544,22 +545,16 @@ export default function LandingPage() {
                   {/* IG-style actions */}
                   <div className="p-4">
                     <div className="flex items-center gap-4 mb-2 text-white">
-                      <Heart className="size-6 hover:text-rose-500 transition-colors cursor-pointer" />
-                      <MessageCircle className="size-6 cursor-pointer" />
-                      <Send className="size-6 cursor-pointer" />
-                      <Bookmark className="size-6 ml-auto cursor-pointer" />
-                    </div>
-                    <div className="text-sm font-semibold text-white">
-                      {persona.posts[0].likes} likes
+                      <Heart className="size-6" />
+                      <MessageCircle className="size-6" />
+                      <Send className="size-6" />
+                      <Bookmark className="size-6 ml-auto" />
                     </div>
                     <div className="text-sm text-foreground/80 mt-1 line-clamp-2">
                       <span className="font-semibold text-white mr-1.5">
                         {persona.handle}
                       </span>
                       {persona.posts[0].caption}
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {persona.posts[0].comments} comments
                     </div>
                   </div>
 
@@ -591,7 +586,7 @@ export default function LandingPage() {
             </div>
 
             <div className="text-center mt-12">
-              <Link href="/sign-up">
+              <Link href="/sign-up" locale={locale}>
                 <Button
                   variant="outline"
                   className="border-border bg-card text-foreground hover:bg-accent h-11 px-6"
@@ -799,7 +794,7 @@ export default function LandingPage() {
               <p className="text-muted-foreground text-lg">{t("pricingSubtitle")}</p>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto mb-12">
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 max-w-6xl mx-auto mb-12">
               {plansForCards.map((plan, i) => (
                 <div
                   key={i}
@@ -825,7 +820,7 @@ export default function LandingPage() {
                   </div>
                   <p className="text-muted-foreground text-sm mb-6">{plan.desc}</p>
 
-                  <Link href="/sign-up">
+                  <Link href="/sign-up" locale={locale}>
                     <Button
                       variant={plan.featured ? "default" : "outline"}
                       className={`w-full mb-6 ${
@@ -885,19 +880,16 @@ export default function LandingPage() {
                   quote: t("testimonial1Quote"),
                   name: t("testimonial1Name"),
                   role: t("testimonial1Role"),
-                  avatar: "/landing/influencers/luna.jpg",
                 },
                 {
                   quote: t("testimonial2Quote"),
                   name: t("testimonial2Name"),
                   role: t("testimonial2Role"),
-                  avatar: "/landing/influencers/marco.jpg",
                 },
                 {
                   quote: t("testimonial3Quote"),
                   name: t("testimonial3Name"),
                   role: t("testimonial3Role"),
-                  avatar: "/landing/influencers/amani.jpg",
                 },
               ].map((tt, i) => (
                 <motion.div
@@ -910,22 +902,11 @@ export default function LandingPage() {
                 >
                   <Quote className="absolute top-5 right-5 size-7 text-muted-foreground/30" />
                   <p className="text-foreground/90 leading-relaxed mb-6 text-[15px]">
-                    &ldquo;{tt.quote}&rdquo;
+                    {tt.quote}
                   </p>
-                  <div className="flex items-center gap-3">
-                    <div className="relative size-11 rounded-full overflow-hidden ring-1 ring-border shrink-0">
-                      <Image
-                        src={tt.avatar}
-                        alt={tt.name}
-                        fill
-                        sizes="44px"
-                        className="object-cover"
-                      />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-sm font-bold text-foreground">{tt.name}</div>
-                      <div className="text-xs text-muted-foreground">{tt.role}</div>
-                    </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-foreground">{tt.name}</div>
+                    <div className="text-xs text-muted-foreground">{tt.role}</div>
                   </div>
                 </motion.div>
               ))}
@@ -967,7 +948,7 @@ export default function LandingPage() {
                   {t("ctaFinalSubtitle")}
                 </p>
 
-                <Link href="/sign-up">
+                <Link href="/sign-up" locale={locale}>
                   <Button
                     size="lg"
                     className="h-14 px-8 text-base bg-foreground text-background hover:bg-foreground/90 transition-colors"
@@ -991,21 +972,44 @@ export default function LandingPage() {
               <span className="font-semibold text-foreground">Aura Influences</span>
             </div>
 
-            <div className="flex gap-6 text-sm text-muted-foreground">
+            <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
               <Link
                 href="/changelog"
+                locale={locale}
                 className="hover:text-foreground transition-colors"
               >
                 {t("navChangelog")}
               </Link>
               <Link
                 href="/pricing"
+                locale={locale}
                 className="hover:text-foreground transition-colors"
               >
                 {t("navPricing")}
               </Link>
+              <Link
+                href="/privacy"
+                locale={locale}
+                className="hover:text-foreground transition-colors"
+              >
+                {t("footerPrivacy")}
+              </Link>
+              <Link
+                href="/terms"
+                locale={locale}
+                className="hover:text-foreground transition-colors"
+              >
+                {t("footerTerms")}
+              </Link>
+              <Link
+                href="/mentions"
+                locale={locale}
+                className="hover:text-foreground transition-colors"
+              >
+                {t("footerMentions")}
+              </Link>
               <a
-                href="mailto:hello@influenceuse-ia.com"
+                href={`mailto:${SUPPORT_EMAIL}`}
                 className="hover:text-foreground transition-colors"
               >
                 {t("footerSupport")}
@@ -1013,7 +1017,7 @@ export default function LandingPage() {
             </div>
 
             <p className="text-sm text-muted-foreground/70">
-              © {new Date().getFullYear()} Aura Influences. {t("footerRights")}
+              © {new Date().getFullYear()} {PRODUCT_NAME}. {t("footerRights")}
             </p>
           </div>
         </div>

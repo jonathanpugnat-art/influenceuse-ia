@@ -58,6 +58,14 @@ export function dedupeTrendFeedItems(items: TrendItem[]): TrendItem[] {
   }
 
   return out.sort((a, b) => {
+    const kindDiff =
+      (FEED_MEDIA_KIND_RANK[b.mediaKind ?? ""] ?? 0) -
+      (FEED_MEDIA_KIND_RANK[a.mediaKind ?? ""] ?? 0);
+    if (kindDiff !== 0) return kindDiff;
+    const likesDiff = (b.likesCount ?? 0) - (a.likesCount ?? 0);
+    if (likesDiff !== 0) return likesDiff;
+    const viewsDiff = (b.viewCount ?? 0) - (a.viewCount ?? 0);
+    if (viewsDiff !== 0) return viewsDiff;
     const scoreDiff = (b.growthScore ?? 0) - (a.growthScore ?? 0);
     if (scoreDiff !== 0) return scoreDiff;
     return new Date(b.fetchedAt).getTime() - new Date(a.fetchedAt).getTime();

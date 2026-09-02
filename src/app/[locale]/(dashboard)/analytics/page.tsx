@@ -386,7 +386,7 @@ export default function AnalyticsPage() {
               Publiez du contenu pour voir les performances ici.
             </p>
             <Button asChild className="mt-4">
-              <Link href="/content">Créer du contenu</Link>
+              <Link href="/content/photo">Créer du contenu</Link>
             </Button>
           </div>
         ) : tableData ? (

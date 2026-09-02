@@ -32,6 +32,11 @@ import { useLocale, useTranslations } from "next-intl";
 import { MediaViewerDialog } from "@/components/media/media-viewer-dialog";
 import { downloadMediaUrl } from "@/lib/download-media";
 import { PublishConfirmDialog } from "@/components/publish/publish-confirm-dialog";
+import {
+  calendarAutoPublishPlatforms,
+  contentKindFromType,
+  sanitizePlatformsForContent,
+} from "@/lib/publish-platforms";
 import type { CalendarEvent } from "./types";
 
 type ConfirmAction = "instagram" | "now" | null;
@@ -152,7 +157,10 @@ export function ContentDetailModal({
     }
     rescheduleMutation.mutate({
       contentId: event.id,
-      platforms: event.platforms as ["INSTAGRAM"],
+      platforms: sanitizePlatformsForContent(
+        event.platforms,
+        contentKindFromType(event.type)
+      ),
       scheduledAt: new Date(`${rescheduleDate}T${rescheduleTime}`).toISOString(),
     });
   };
@@ -166,9 +174,14 @@ export function ContentDetailModal({
       return;
     }
     if (confirmAction === "now") {
+      const platforms = calendarAutoPublishPlatforms(event);
+      if (platforms.length === 0) {
+        toast.error(t("publishNeedConnectedPlatform"));
+        return;
+      }
       publishMutation.mutate({
         contentId: event.id,
-        platforms: event.platforms as ["INSTAGRAM"],
+        platforms,
       });
     }
   };
@@ -176,9 +189,7 @@ export function ContentDetailModal({
   const confirmPlatforms =
     confirmAction === "instagram"
       ? (["INSTAGRAM"] as const)
-      : ((event.platforms.length > 0
-          ? event.platforms
-          : ["INSTAGRAM"]) as ("INSTAGRAM" | "TIKTOK" | "ONLYFANS")[]);
+      : calendarAutoPublishPlatforms(event);
 
   return (
     <>

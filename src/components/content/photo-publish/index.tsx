@@ -3,16 +3,25 @@
 import { motion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
-import { usePhotoPublishFlow } from "@/hooks/photo-studio";
+import {
+  usePhotoPublishFlow,
+  type PublishStudioKind,
+} from "@/hooks/photo-studio";
 import { PhotoPublishCaptionSection } from "./photo-publish-caption-section";
 import { PhotoPublishHashtagsSection } from "./photo-publish-hashtags-section";
 import { PhotoPublishPlatformSection } from "./photo-publish-platform-section";
 import { PhotoPublishScheduleSection } from "./photo-publish-schedule-section";
 import { PhotoPublishActionsSection } from "./photo-publish-actions-section";
 
-export function PhotoPublish({ mobileSheet = false }: { mobileSheet?: boolean }) {
+export function PhotoPublish({
+  mobileSheet = false,
+  contentKind = "PHOTO",
+}: {
+  mobileSheet?: boolean;
+  contentKind?: PublishStudioKind;
+}) {
   const t = useTranslations("content");
-  const flow = usePhotoPublishFlow();
+  const flow = usePhotoPublishFlow(contentKind);
 
   return (
     <motion.div

@@ -4,6 +4,8 @@ import { hasLocale } from "next-intl";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n";
 import type { Metadata } from "next";
+import { ClerkLocaleProvider } from "@/components/layout/clerk-locale-provider";
+import { HtmlLang } from "@/components/layout/html-lang";
 
 type Props = {
   children: React.ReactNode;
@@ -39,8 +41,11 @@ export default async function LocaleLayout({ children, params }: Props) {
   const messages = await getMessages();
 
   return (
-    <NextIntlClientProvider messages={messages} locale={locale}>
-      {children}
-    </NextIntlClientProvider>
+    <ClerkLocaleProvider locale={locale}>
+      <NextIntlClientProvider messages={messages} locale={locale}>
+        <HtmlLang locale={locale} />
+        {children}
+      </NextIntlClientProvider>
+    </ClerkLocaleProvider>
   );
 }

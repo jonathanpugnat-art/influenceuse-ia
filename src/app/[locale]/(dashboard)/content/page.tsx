@@ -10,7 +10,6 @@ import {
   Clock,
   Upload,
   Trash2,
-  Image,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";

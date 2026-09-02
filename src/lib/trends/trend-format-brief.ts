@@ -157,6 +157,8 @@ export type TrendPromptContext = {
     mood?: string;
     inspirationNotes?: string;
   };
+  /** Viral post stills for composition (never used as face identity). */
+  inspirationImageUrls?: string[];
 };
 
 export function parseTrendFormatBrief(raw: unknown): TrendFormatBrief | null {
@@ -168,12 +170,15 @@ export function parseTrendFormatBrief(raw: unknown): TrendFormatBrief | null {
 export function briefToPromptContext(
   brief: TrendFormatBrief | null,
   title?: string,
-  hashtags?: string[]
+  hashtags?: string[],
+  inspirationImageUrls?: string[]
 ): TrendPromptContext | undefined {
   const ctx: TrendPromptContext = {};
   const cleanTitle = title?.trim();
   if (cleanTitle) ctx.title = cleanTitle;
   if (hashtags && hashtags.length > 0) ctx.hashtags = hashtags;
+  const images = (inspirationImageUrls ?? []).filter((u) => u.startsWith("http"));
+  if (images.length > 0) ctx.inspirationImageUrls = images.slice(0, 4);
 
   if (brief) {
     const briefPart = {
@@ -192,7 +197,21 @@ export function briefToPromptContext(
     }
   }
 
-  return ctx.title || ctx.hashtags || ctx.brief ? ctx : undefined;
+  return ctx.title || ctx.hashtags || ctx.brief || ctx.inspirationImageUrls
+    ? ctx
+    : undefined;
+}
+
+export function mergeInspirationIntoContext(
+  ctx: TrendPromptContext | undefined,
+  urls: string[]
+): TrendPromptContext | undefined {
+  const images = urls.filter((u) => u.startsWith("http")).slice(0, 4);
+  if (!ctx && images.length === 0) return undefined;
+  return {
+    ...(ctx ?? {}),
+    inspirationImageUrls: images.length > 0 ? images : ctx?.inspirationImageUrls,
+  };
 }
 
 /** Map analyzed videoType hints to reel creator keys. */

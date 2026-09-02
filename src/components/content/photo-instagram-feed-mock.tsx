@@ -118,9 +118,6 @@ export function PhotoInstagramFeedMock({
 
       {/* Caption */}
       <div className="space-y-1 px-3 pb-4 text-left">
-        <p className="text-xs font-semibold text-white">
-          {t("studioFeedLikes")}
-        </p>
         <p className="text-sm leading-snug text-slate-200">
           <span className="font-semibold text-white">{username}</span>{" "}
           {caption?.trim() ? (

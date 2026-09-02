@@ -209,6 +209,9 @@ describe("trends.service / pure helpers", () => {
       hashtags: ["fitness"],
       soundName: null,
       growthScore: 50,
+      viewCount: null,
+      likesCount: null,
+      commentsCount: null,
       sourceUrl: null,
       thumbnailUrl: null,
       thumbnailUrlAlt: null,
@@ -273,6 +276,31 @@ describe("trends.service / pure helpers", () => {
       };
       const out = dedupeTrendFeedItems([a, b]);
       expect(out).toHaveLength(2);
+    });
+
+    it("ranks higher likes before growthScore", () => {
+      const popular = {
+        ...base,
+        id: "popular",
+        platform: "INSTAGRAM" as const,
+        title: "OOTD",
+        hashtags: ["ootd"],
+        mediaKind: "image" as const,
+        likesCount: 80_000,
+        growthScore: 40,
+      };
+      const weaker = {
+        ...base,
+        id: "weaker",
+        platform: "INSTAGRAM" as const,
+        title: "Cafe",
+        hashtags: ["cafe"],
+        mediaKind: "image" as const,
+        likesCount: 6_000,
+        growthScore: 90,
+      };
+      const out = dedupeTrendFeedItems([weaker, popular]);
+      expect(out[0]?.id).toBe("popular");
     });
   });
 

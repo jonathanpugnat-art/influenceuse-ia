@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { usePhotoCreator } from "@/hooks/use-photo-creator";
+import { useReelCreator } from "@/hooks/use-reel-creator";
+import { useCurrentPlan } from "@/hooks/use-current-plan";
 import { buildPhotoContentDescription } from "@/lib/photo-content-context";
 import {
   captionToneHint,
@@ -16,21 +18,43 @@ import {
   toDateInputValue,
   toTimeInputValue,
 } from "@/components/content/photo-publish/photo-publish-utils";
+import {
+  autoPublishablePlatforms,
+  defaultPlatformsForContent,
+  platformsAllowedForContent,
+  type PublishPlatform,
+} from "@/lib/publish-platforms";
 
-export function usePhotoPublishFlow() {
+export type PublishStudioKind = "PHOTO" | "REEL";
+
+export function usePhotoPublishFlow(contentKind: PublishStudioKind = "PHOTO") {
   const t = useTranslations("content");
-  const {
-    params,
-    contentId,
-    caption,
-    hashtags,
-    platforms,
-    scheduledAt,
-    setCaption,
-    setHashtags,
-    setPlatforms,
-    setScheduledAt,
-  } = usePhotoCreator();
+  const photo = usePhotoCreator();
+  const reel = useReelCreator();
+  const isReel = contentKind === "REEL";
+  const planQuery = useCurrentPlan();
+  const canSchedule = planQuery.data?.features.hasAutoPublish ?? false;
+
+  const influencerId = isReel
+    ? reel.params.influencerId
+    : photo.params.influencerId;
+  const contentId = isReel ? reel.contentId : photo.contentId;
+  const caption = isReel ? reel.caption : photo.caption;
+  const hashtags = isReel ? reel.hashtags : photo.hashtags;
+  const platforms = isReel ? reel.platforms : photo.platforms;
+  const scheduledAt = isReel ? reel.scheduledAt : photo.scheduledAt;
+  const setCaption = isReel ? reel.setCaption : photo.setCaption;
+  const setHashtags = isReel ? reel.setHashtags : photo.setHashtags;
+  const setPlatforms = isReel ? reel.setPlatforms : photo.setPlatforms;
+  const setScheduledAt = isReel ? reel.setScheduledAt : photo.setScheduledAt;
+  const contentMode = isReel
+    ? reel.params.contentMode
+    : photo.params.contentMode;
+  const previewUrl = isReel
+    ? (reel.thumbnailUrl ?? reel.videoUrl)
+    : (photo.generatedUrls[photo.selectedImageIndex] ??
+      photo.generatedUrls[0] ??
+      null);
 
   const [language, setLanguage] = useState<"fr" | "en">("fr");
   const [captionPlatform, setCaptionPlatform] = useState("INSTAGRAM");
@@ -54,34 +78,38 @@ export function usePhotoPublishFlow() {
 
   const influencersQuery = useInfluencers();
   const selectedInf = influencersQuery.data?.influencers?.find(
-    (i) => i.id === params.influencerId
+    (i) => i.id === influencerId
   );
 
   const readinessQuery = trpc.publish.checkPublishReadiness.useQuery(
     {
-      influencerId: params.influencerId ?? "",
+      influencerId: influencerId ?? "",
       platforms: platforms as ("INSTAGRAM" | "TIKTOK" | "ONLYFANS")[],
     },
     {
-      enabled: Boolean(params.influencerId) && platforms.length > 0,
+      enabled: Boolean(influencerId) && platforms.length > 0,
       staleTime: 30_000,
     }
   );
   const instagramSelected = platforms.includes("INSTAGRAM");
+  const tiktokSelected = platforms.includes("TIKTOK");
   const instagramCheck = readinessQuery.data?.checks.find(
     (c) => c.platform === "INSTAGRAM"
+  );
+  const tiktokCheck = readinessQuery.data?.checks.find(
+    (c) => c.platform === "TIKTOK"
   );
 
   const slotsQuery = trpc.analytics.suggestSlots.useQuery(
     {
-      influencerId: params.influencerId,
+      influencerId,
       count: 1,
     },
     {
       enabled:
         scheduleMode === "schedule" &&
-        Boolean(params.influencerId) &&
-        instagramSelected,
+        Boolean(influencerId) &&
+        (instagramSelected || tiktokSelected),
       staleTime: 60_000,
     }
   );
@@ -102,6 +130,12 @@ export function usePhotoPublishFlow() {
     if (merged) setScheduledAt(merged);
   }, [scheduleDate, scheduleTime, scheduleMode, setScheduledAt]);
 
+  useEffect(() => {
+    if (!canSchedule && scheduleMode === "schedule") {
+      setScheduleMode("now");
+    }
+  }, [canSchedule, scheduleMode]);
+
   const publishReminders = useMemo(() => {
     const items: string[] = [];
     if (!contentId) items.push(t("publishReminderNeedMedia"));
@@ -109,7 +143,10 @@ export function usePhotoPublishFlow() {
     if (instagramSelected && instagramCheck && !instagramCheck.ok) {
       items.push(instagramCheck.reason ?? t("publishConnectInstagram"));
     }
-    if (instagramSelected && !caption.trim()) {
+    if (tiktokSelected && tiktokCheck && !tiktokCheck.ok) {
+      items.push(tiktokCheck.reason ?? t("publishConnectTiktok"));
+    }
+    if ((instagramSelected || tiktokSelected) && !caption.trim()) {
       items.push(t("publishReminderCaption"));
     }
     return items;
@@ -118,53 +155,66 @@ export function usePhotoPublishFlow() {
     platforms.length,
     instagramSelected,
     instagramCheck,
+    tiktokSelected,
+    tiktokCheck,
     caption,
     t,
   ]);
 
-  const photoContentDescription = useCallback(
-    () =>
-      buildPhotoContentDescription(
-        {
-          scene: params.scene,
-          sceneDescription: params.sceneDescription,
-          pose: params.pose,
-          outfit: params.outfit,
-          expression: params.expression,
-          photoStyle: params.photoStyle,
-          timeOfDay: params.timeOfDay,
-          location: params.location,
-          customPrompt: params.customPrompt,
-          contentMode: params.contentMode,
-          nsfwLevel: params.nsfwLevel,
-        },
-        language
-      ),
-    [params, language]
-  );
+  const photoContentDescription = useCallback(() => {
+    if (isReel) {
+      return [reel.params.sceneDescription, reel.params.script]
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .join("\n");
+    }
+    return buildPhotoContentDescription(
+      {
+        scene: photo.params.scene,
+        sceneDescription: photo.params.sceneDescription,
+        pose: photo.params.pose,
+        outfit: photo.params.outfit,
+        expression: photo.params.expression,
+        photoStyle: photo.params.photoStyle,
+        timeOfDay: photo.params.timeOfDay,
+        location: photo.params.location,
+        customPrompt: photo.params.customPrompt,
+        contentMode: photo.params.contentMode,
+        nsfwLevel: photo.params.nsfwLevel,
+      },
+      language
+    );
+  }, [isReel, language, photo.params, reel.params]);
 
   useEffect(() => {
-    if (params.contentMode !== "NSFW") return;
-    setCaptionPlatform("ONLYFANS");
-    setPlatforms(
-      platforms.includes("ONLYFANS") ? platforms : ["ONLYFANS"]
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when entering Premium lane
-  }, [params.contentMode]);
+    if (contentMode === "NSFW") {
+      setCaptionPlatform("ONLYFANS");
+      setPlatforms(
+        platforms.includes("ONLYFANS") ? platforms : ["ONLYFANS"]
+      );
+      return;
+    }
+    if (platforms.length === 0) {
+      setPlatforms([...defaultPlatformsForContent(contentKind)]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed defaults / Premium lane once
+  }, [contentMode, contentKind]);
 
   const captionDescriptionWithTone = useCallback(
     () => `${photoContentDescription()}\n\nTone: ${captionToneHint(captionTone)}`,
     [photoContentDescription, captionTone]
   );
 
+  const captionPlatformTyped = captionPlatform as PublishPlatform;
+
   const handleGenCaption = useCallback(async () => {
-    if (!params.influencerId) return;
+    if (!influencerId) return;
     setIsGenCaption(true);
     try {
       const result = await captionMutation.mutateAsync({
-        influencerId: params.influencerId,
+        influencerId,
         contentDescription: captionDescriptionWithTone(),
-        platform: captionPlatform as "INSTAGRAM",
+        platform: captionPlatformTyped,
         language,
       });
       setCaption("");
@@ -179,8 +229,8 @@ export function usePhotoPublishFlow() {
       setIsGenCaption(false);
     }
   }, [
-    params.influencerId,
-    captionPlatform,
+    influencerId,
+    captionPlatformTyped,
     language,
     captionMutation,
     setCaption,
@@ -189,14 +239,14 @@ export function usePhotoPublishFlow() {
   ]);
 
   const handleGenVariants = useCallback(async () => {
-    if (!params.influencerId) return;
+    if (!influencerId) return;
     setIsGenVariants(true);
     setVariants(null);
     try {
       const result = await variantsMutation.mutateAsync({
-        influencerId: params.influencerId,
+        influencerId,
         contentDescription: captionDescriptionWithTone(),
-        platform: captionPlatform as "INSTAGRAM",
+        platform: captionPlatformTyped,
         language,
       });
       setVariants(result.variants);
@@ -206,8 +256,8 @@ export function usePhotoPublishFlow() {
       setIsGenVariants(false);
     }
   }, [
-    params.influencerId,
-    captionPlatform,
+    influencerId,
+    captionPlatformTyped,
     language,
     variantsMutation,
     captionDescriptionWithTone,
@@ -225,7 +275,7 @@ export function usePhotoPublishFlow() {
     try {
       const result = await hashtagMutation.mutateAsync({
         niche: selectedInf.niche,
-        platform: captionPlatform as "INSTAGRAM",
+        platform: captionPlatformTyped,
         description: photoContentDescription(),
         count: 15,
       });
@@ -237,7 +287,7 @@ export function usePhotoPublishFlow() {
     }
   }, [
     selectedInf,
-    captionPlatform,
+    captionPlatformTyped,
     hashtagMutation,
     setHashtags,
     photoContentDescription,
@@ -257,6 +307,13 @@ export function usePhotoPublishFlow() {
   };
 
   const togglePlatform = (p: string) => {
+    if (
+      p === "TIKTOK" &&
+      !platformsAllowedForContent(contentKind).includes("TIKTOK")
+    ) {
+      toast.info(t("publishTiktokReelsOnly"));
+      return;
+    }
     setPlatforms(
       platforms.includes(p) ? platforms.filter((x) => x !== p) : [...platforms, p]
     );
@@ -285,6 +342,10 @@ export function usePhotoPublishFlow() {
       }
 
       if (scheduleMode === "schedule" && scheduledAt) {
+        if (!canSchedule) {
+          toast.error(t("publishSchedulePlanLocked"));
+          return;
+        }
         if (platformList.length === 0) {
           toast.error(t("publishToastNeedPlatform"));
           return;
@@ -298,15 +359,19 @@ export function usePhotoPublishFlow() {
         return;
       }
 
-      const igPlatforms = platformList.filter((p) => p === "INSTAGRAM");
-      if (igPlatforms.length > 0) {
-        if (instagramCheck && !instagramCheck.ok) {
+      const autoPlatforms = autoPublishablePlatforms(platformList, contentKind);
+      if (autoPlatforms.length > 0) {
+        if (instagramSelected && instagramCheck && !instagramCheck.ok) {
           toast.error(instagramCheck.reason ?? t("publishToastIgNotReady"));
+          return;
+        }
+        if (tiktokSelected && tiktokCheck && !tiktokCheck.ok) {
+          toast.error(tiktokCheck.reason ?? t("publishToastTiktokNotReady"));
           return;
         }
         const { results } = await publishNowMutation.mutateAsync({
           contentId,
-          platforms: igPlatforms,
+          platforms: autoPlatforms,
         });
         const failed = results.filter((r) => r.status === "FAILED");
         if (failed.length > 0) {
@@ -338,7 +403,8 @@ export function usePhotoPublishFlow() {
   };
 
   return {
-    params,
+    contentKind,
+    params: { influencerId, contentMode },
     contentId,
     caption,
     setCaption,
@@ -364,7 +430,11 @@ export function usePhotoPublishFlow() {
     isGenVariants,
     selectedInf,
     instagramSelected,
+    tiktokSelected,
     instagramCheck,
+    tiktokCheck,
+    canSchedule,
+    previewUrl,
     publishReminders,
     slotsQuery,
     handleGenCaption,

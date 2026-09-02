@@ -95,6 +95,7 @@ export interface PromptBuildInput {
       mood?: string;
       inspirationNotes?: string;
     };
+    inspirationImageUrls?: string[];
   };
 
   /** Creative director brief from influencer row. */

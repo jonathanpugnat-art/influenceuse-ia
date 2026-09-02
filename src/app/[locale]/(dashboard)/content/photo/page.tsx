@@ -15,6 +15,7 @@ import { PhotoWelcomeBanner } from "@/components/content/photo-welcome-banner";
 import { PhotoPromptStudio } from "@/components/content/photo-prompt-studio";
 import { PhotoFeedGridStrip } from "@/components/content/photo-feed-grid-strip";
 import { usePhotoCreator } from "@/hooks/use-photo-creator";
+import { useAutoSelectSoleInfluencer } from "@/hooks/use-auto-select-sole-influencer";
 import { consumeWizardWelcomePhotoSeed } from "@/lib/wizard-photo-seed";
 import { trpc } from "@/lib/trpc";
 import { useInfluencers } from "@/hooks/use-influencers";
@@ -28,16 +29,21 @@ export default function PhotoCreatorPage() {
   const { generatedUrls, isGenerating, params, updateParams, applySeed, applyViralBrief, requestGenerate } =
     usePhotoCreator();
   const showPublish = generatedUrls.length > 0 && !isGenerating;
-  const [mobileConfigOpen, setMobileConfigOpen] = useState(false);
+  const influencerIdFromUrl = searchParams.get("influencer");
+  const trendItemIdFromUrl = searchParams.get("trendItemId");
+  const recommendationIdFromUrl = searchParams.get("recommendationId");
+  const autoGenerate = searchParams.get("autoGenerate") === "1";
+  const hasTrendDeepLink = Boolean(trendItemIdFromUrl || recommendationIdFromUrl);
+  const [mobileConfigOpen, setMobileConfigOpen] = useState(
+    () =>
+      searchParams.get("welcome") === "1" ||
+      Boolean(searchParams.get("trendItemId") || searchParams.get("recommendationId"))
+  );
   const [welcomeDismissed, setWelcomeDismissed] = useState(false);
   const seededRef = useRef(false);
   const trendSeededRef = useRef(false);
   const autoGenerateFiredRef = useRef(false);
 
-  const influencerIdFromUrl = searchParams.get("influencer");
-  const trendItemIdFromUrl = searchParams.get("trendItemId");
-  const recommendationIdFromUrl = searchParams.get("recommendationId");
-  const autoGenerate = searchParams.get("autoGenerate") === "1";
   const isWelcomeFlow =
     searchParams.get("welcome") === "1" && !welcomeDismissed;
 
@@ -75,9 +81,7 @@ export default function PhotoCreatorPage() {
     },
     {
       enabled:
-        Boolean(influencerIdFromUrl) &&
-        Boolean(trendItemIdFromUrl || recommendationIdFromUrl) &&
-        !trendSeededRef.current,
+        Boolean(influencerIdFromUrl) && hasTrendDeepLink,
     }
   );
 
@@ -95,13 +99,11 @@ export default function PhotoCreatorPage() {
     }
   }, [identityPackStatus, t]);
 
-  useEffect(() => {
-    const id = influencerIdFromUrl;
-    if (id && id !== params.influencerId) {
-      updateParams({ influencerId: id });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [influencerIdFromUrl]);
+  useAutoSelectSoleInfluencer(
+    params.influencerId,
+    influencerIdFromUrl,
+    updateParams
+  );
 
   useEffect(() => {
     if (!isWelcomeFlow || !welcomeInfluencer || seededRef.current) return;
@@ -112,8 +114,6 @@ export default function PhotoCreatorPage() {
     if (wizardSeed) {
       applySeed({ ...wizardSeed, influencerId: welcomeInfluencer.id });
     }
-
-    setMobileConfigOpen(true);
   }, [applySeed, isWelcomeFlow, updateParams, welcomeInfluencer]);
 
   useEffect(() => {
@@ -123,7 +123,6 @@ export default function PhotoCreatorPage() {
     if (!trendSeedQuery.data?.brief) return;
     trendSeededRef.current = true;
     applyViralBrief(trendSeedQuery.data.brief, infId);
-    setMobileConfigOpen(true);
   }, [
     applyViralBrief,
     influencerIdFromUrl,
@@ -144,7 +143,7 @@ export default function PhotoCreatorPage() {
       Boolean(params.sceneDescription?.trim());
     if (!hasTrendIds && !hasSceneOutfit) return;
     // Wait for seed from applySeed or getPhotoSeed when coming from trends.
-    if (hasTrendIds && !hasSceneOutfit && !trendSeededRef.current) {
+    if (hasTrendIds && !hasSceneOutfit) {
       // Store may already be seeded by trends page before navigation.
       if (!params.recommendationId && !params.trendItemId) return;
     }

@@ -263,7 +263,7 @@ export async function pingWebhook(webhookId: string): Promise<{
     timestamp: new Date().toISOString(),
     data: {
       test: true,
-      message: "This is a test ping from Influenceuse IA.",
+      message: "This is a test ping from Aura Influences.",
     },
   };
   const delivery = await db.webhookDelivery.create({

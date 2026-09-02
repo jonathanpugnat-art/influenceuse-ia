@@ -121,6 +121,10 @@ export function ReelPromptStudio() {
               {t("createLink")}
             </Link>
           </div>
+        ) : influencers.length === 1 ? (
+          <p className="mt-3 truncate text-sm font-medium text-white">
+            {influencers[0]?.name}
+          </p>
         ) : (
           <Select
             value={params.influencerId}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ChevronDown, Coins, Loader2, Sparkles } from "lucide-react";
@@ -31,6 +31,7 @@ import { type InfluencerGender } from "@/lib/photo-niche-defaults";
 import { CREDIT_COSTS } from "@/lib/constants";
 import { useInfluencers } from "@/hooks/use-influencers";
 import { useCurrentPlan } from "@/hooks/use-current-plan";
+import { ContentLanePicker } from "@/components/content/content-lane-picker";
 import { cn } from "@/lib/utils";
 
 const PROMPT_EXAMPLES = [
@@ -82,16 +83,6 @@ export function PhotoPromptStudio({
   const hasNsfwPlan = plan?.features.hasNsfw ?? false;
   const composeCost = params.numberOfImages * CREDIT_COSTS.PHOTO;
 
-  // Welcome / trends seed → fill the freeform box so day-1 is one click.
-  useEffect(() => {
-    if (seedSynced || prompt.trim()) return;
-    const draft = draftPromptFromParams(params);
-    if (draft.length >= MIN_USER_SCENE_LENGTH) {
-      setPrompt(draft);
-      setSeedSynced(true);
-    }
-  }, [params, prompt, seedSynced]);
-
   const canGenerate =
     hasInfluencer &&
     prompt.trim().length >= MIN_USER_SCENE_LENGTH &&
@@ -102,6 +93,16 @@ export function PhotoPromptStudio({
     () => PROMPT_EXAMPLES.map((key) => ({ key, text: t(key) })),
     [t]
   );
+
+  const draftFromParams = draftPromptFromParams(params);
+  if (
+    !seedSynced &&
+    !prompt.trim() &&
+    draftFromParams.length >= MIN_USER_SCENE_LENGTH
+  ) {
+    setPrompt(draftFromParams);
+    setSeedSynced(true);
+  }
 
   const handleGenerate = () => {
     if (identityPackPending) {
@@ -124,12 +125,20 @@ export function PhotoPromptStudio({
       influencerIsNsfw: selected?.isNsfw ?? false,
       hasNsfwPlan,
     });
+    const nextParams =
+      params.contentMode === "NSFW"
+        ? {
+            ...composed,
+            contentMode: "NSFW" as const,
+            nsfwLevel: params.nsfwLevel,
+          }
+        : composed;
 
     const issues = validatePhotoIntent({
-      contentMode: composed.contentMode ?? "SFW",
-      sceneDescription: composed.sceneDescription,
-      outfit: composed.outfit,
-      scene: composed.scene,
+      contentMode: nextParams.contentMode ?? "SFW",
+      sceneDescription: nextParams.sceneDescription,
+      outfit: nextParams.outfit,
+      scene: nextParams.scene,
       locale,
     });
     for (const issue of issues.filter((i) => i.severity === "warning")) {
@@ -141,7 +150,7 @@ export function PhotoPromptStudio({
       return;
     }
 
-    applyParamsAndGenerate(composed);
+    applyParamsAndGenerate(nextParams);
   };
 
   return (
@@ -181,6 +190,10 @@ export function PhotoPromptStudio({
               {t("createLink")}
             </Link>
           </div>
+        ) : influencers.length === 1 ? (
+          <p className="mt-3 truncate text-sm font-medium text-foreground">
+            {influencers[0]?.name}
+          </p>
         ) : (
           <Select
             value={params.influencerId}
@@ -199,6 +212,17 @@ export function PhotoPromptStudio({
           </Select>
         )}
       </div>
+
+      {hasInfluencer ? (
+        <div className="px-4 pb-1">
+          <ContentLanePicker
+            variant="studio"
+            showFaceReference={false}
+            showSceneFirst={false}
+            showPremiumIntensity
+          />
+        </div>
+      ) : null}
 
       <div className="flex min-h-0 flex-1 flex-col px-4 py-4">
         <Label className="mb-2 text-xs text-muted-foreground">

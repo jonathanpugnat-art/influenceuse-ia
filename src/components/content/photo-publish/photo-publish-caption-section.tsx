@@ -38,6 +38,7 @@ export function PhotoPublishCaptionSection({
     handleGenCaption,
     handleGenVariants,
     pickVariant,
+    contentKind,
   } = flow;
 
   return (
@@ -139,9 +140,11 @@ export function PhotoPublishCaptionSection({
               <SelectItem value="INSTAGRAM" className="text-xs">
                 Instagram
               </SelectItem>
-              <SelectItem value="TIKTOK" className="text-xs">
-                TikTok
-              </SelectItem>
+              {contentKind === "REEL" && (
+                <SelectItem value="TIKTOK" className="text-xs">
+                  TikTok
+                </SelectItem>
+              )}
               <SelectItem value="ONLYFANS" className="text-xs">
                 OnlyFans
               </SelectItem>

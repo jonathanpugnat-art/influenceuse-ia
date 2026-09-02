@@ -8,17 +8,23 @@ type ParticlesProps = {
   quantity?: number;
 };
 
+/** Deterministic 0–1 hash so particle layout is stable across renders. */
+function unit(seed: number): number {
+  const x = Math.sin(seed * 12.9898) * 43758.5453;
+  return x - Math.floor(x);
+}
+
 export function Particles({ className, quantity = 40 }: ParticlesProps) {
   const particles = useMemo(
     () =>
       Array.from({ length: quantity }, (_, i) => ({
         id: i,
-        x: Math.random() * 100,
-        y: Math.random() * 100,
-        size: Math.random() * 2 + 1,
-        duration: Math.random() * 10 + 10,
-        delay: Math.random() * 5,
-        opacity: Math.random() * 0.4 + 0.1,
+        x: unit(i + 1) * 100,
+        y: unit(i + 17) * 100,
+        size: unit(i + 31) * 2 + 1,
+        duration: unit(i + 47) * 10 + 10,
+        delay: unit(i + 61) * 5,
+        opacity: unit(i + 79) * 0.4 + 0.1,
       })),
     [quantity],
   );

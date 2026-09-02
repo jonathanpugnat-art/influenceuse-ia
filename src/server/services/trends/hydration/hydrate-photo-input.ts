@@ -2,7 +2,11 @@ import {
   trendTopPickFromItem,
   viralBriefFromTrendPick,
 } from "@/lib/viral-brief";
-import type { TrendPromptContext } from "@/lib/trends/trend-format-brief";
+import {
+  mergeInspirationIntoContext,
+  type TrendPromptContext,
+} from "@/lib/trends/trend-format-brief";
+import { pickInspirationImageUrls } from "@/lib/trends/trend-video-items";
 import { db } from "@/server/db";
 import { recommendationToCreatorParams } from "../apply/recommendation-params";
 
@@ -43,6 +47,9 @@ export async function hydrateTrendPhotoInput(opts: {
             mediaUrls: true,
             soundName: true,
             sourceVideoUrl: true,
+            thumbnailUrl: true,
+            thumbnailUrlAlt: true,
+            videoFrameUrls: true,
           },
         },
       },
@@ -67,7 +74,10 @@ export async function hydrateTrendPhotoInput(opts: {
     );
     if (blob.target !== "photo") return {};
     return {
-      trendContext: blob.trendContext,
+      trendContext: mergeInspirationIntoContext(
+        blob.trendContext,
+        pickInspirationImageUrls(rec.trendItem)
+      ),
       scene: blob.scene,
       sceneDescription: blob.sceneDescription,
       pose: blob.pose,
@@ -87,7 +97,10 @@ export async function hydrateTrendPhotoInput(opts: {
     const pick = trendTopPickFromItem(trendItem);
     const viral = viralBriefFromTrendPick(pick, "trend_apply");
     return {
-      trendContext: viral.trendContext,
+      trendContext: mergeInspirationIntoContext(
+        viral.trendContext,
+        pickInspirationImageUrls(trendItem)
+      ),
       scene: viral.scene,
       sceneDescription: viral.sceneDescription,
       pose: viral.pose,

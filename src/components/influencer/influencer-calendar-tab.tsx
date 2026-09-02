@@ -32,6 +32,7 @@ import { trpc } from "@/lib/trpc";
 import { filterCalendarEventsByInfluencer } from "@/lib/calendar-utils";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { calendarAutoPublishPlatforms } from "@/lib/publish-platforms";
 import type { CalendarEvent, CalendarView } from "@/components/calendar/types";
 
 interface InfluencerCalendarTabProps {
@@ -106,9 +107,14 @@ export function InfluencerCalendarTab({ influencerId }: InfluencerCalendarTabPro
   };
 
   const handlePublishNow = (event: CalendarEvent) => {
+    const platforms = calendarAutoPublishPlatforms(event);
+    if (platforms.length === 0) {
+      toast.error(t("publishNeedConnectedPlatform"));
+      return;
+    }
     publishMutation.mutate({
       contentId: event.id,
-      platforms: event.platforms as ["INSTAGRAM"],
+      platforms,
     });
   };
 

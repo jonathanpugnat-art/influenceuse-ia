@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { PLANS } from "@/lib/constants";
 
 export type UpgradeReason =
   | "max_influencers"
@@ -120,7 +121,11 @@ export function UpgradeModal() {
               {t("recommended")}
             </span>
             <span className="text-2xl font-bold text-white">
-              {minPlan === "STARTER" ? "9€" : minPlan === "PRO" ? "29€" : "99€"}
+              {minPlan === "STARTER"
+                ? `${PLANS.STARTER.price}€`
+                : minPlan === "PRO"
+                  ? `${PLANS.PRO.price}€`
+                  : `${PLANS.ENTERPRISE.price}€`}
               <span className="text-sm font-normal text-slate-400">/mois</span>
             </span>
           </div>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   inferStudioLookFromBrief,
+  mapInstagramPost,
   mapInstagramVideoPost,
   mapTikTokVideoRow,
   pickPosterUrlFromTrend,
@@ -18,6 +19,7 @@ describe("trend-video-items", () => {
       webVideoUrl: "https://www.tiktok.com/@luna/video/7123",
       videoUrl: "https://cdn.example.com/v.mp4",
       playCount: 500_000,
+      diggCount: 12_000,
       covers: { default: "https://cdn.example.com/cover.jpg" },
       authorMeta: { uniqueId: "luna" },
       hashtags: [{ name: "grwm" }, { name: "cafe" }],
@@ -27,6 +29,22 @@ describe("trend-video-items", () => {
     expect(item?.mediaUrls).toContain("https://cdn.example.com/cover.jpg");
     expect(item?.hashtags).toEqual(["grwm", "cafe"]);
     expect(item?.viewCount).toBe(500_000);
+    expect(item?.likesCount).toBe(12_000);
+  });
+
+  it("mapInstagramPost keeps high-engagement photos as image trends", () => {
+    const post = mapInstagramPost({
+      type: "Image",
+      shortCode: "xyz",
+      url: "https://www.instagram.com/p/xyz/",
+      displayUrl: "https://cdn.example.com/p.jpg",
+      caption: "OOTD #fashion",
+      hashtags: ["fashion"],
+      likesCount: 62_000,
+    });
+    expect(post?.mediaKind).toBe("image");
+    expect(post?.likesCount).toBe(62_000);
+    expect(post?.thumbnailUrl).toBe("https://cdn.example.com/p.jpg");
   });
 
   it("mapInstagramVideoPost requires video type or videoUrl", () => {
@@ -42,6 +60,7 @@ describe("trend-video-items", () => {
       likesCount: 1200,
     });
     expect(reel?.mediaKind).toBe("video");
+    expect(reel?.likesCount).toBe(1200);
     expect(reel?.thumbnailUrl).toBe("https://cdn.example.com/thumb.jpg");
   });
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { format } from "date-fns";
 import { fr, enUS } from "date-fns/locale";
 import {
@@ -50,15 +50,13 @@ export function BatchReviewPanel({
     [query.data?.contents]
   );
 
+  const pendingIds = useMemo(
+    () => pendingDrafts.map((c) => c.id),
+    [pendingDrafts]
+  );
+  const pendingKey = pendingIds.join(",");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    if (!query.data) return;
-    const ids = query.data.contents
-      .filter((c) => c.status === "DRAFT" && !c.approvedForBatch)
-      .map((c) => c.id);
-    setSelected(new Set(ids));
-  }, [query.data]);
+  const [syncedKey, setSyncedKey] = useState("");
 
   const approveMut = trpc.content.approveBatch.useMutation({
     onSuccess: (res) => {
@@ -80,6 +78,11 @@ export function BatchReviewPanel({
     },
     onError: (err) => toast.error(err.message),
   });
+
+  if (query.data && pendingKey !== syncedKey) {
+    setSyncedKey(pendingKey);
+    setSelected(new Set(pendingIds));
+  }
 
   if (!batchId) return null;
 

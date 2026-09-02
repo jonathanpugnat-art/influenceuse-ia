@@ -73,7 +73,7 @@ export function ListView({
           {t("listEmptyHint")}
         </p>
         <Button asChild className="mt-4">
-          <Link href="/content">{t("createContent")}</Link>
+          <Link href="/content/photo">{t("createContent")}</Link>
         </Button>
       </div>
     );

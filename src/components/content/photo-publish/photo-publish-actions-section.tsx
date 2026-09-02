@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Package } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { PhotoPublishFlowState } from "@/hooks/photo-studio";
-import { usePhotoCreator } from "@/hooks/use-photo-creator";
 import { PublishConfirmDialog } from "@/components/publish/publish-confirm-dialog";
 
 export function PhotoPublishActionsSection({
@@ -22,6 +21,8 @@ export function PhotoPublishActionsSection({
     caption,
     hashtags,
     selectedInf,
+    contentKind,
+    previewUrl,
     handleSave,
     handleOFBundle,
     updateMutation,
@@ -30,12 +31,8 @@ export function PhotoPublishActionsSection({
     scheduleMutation,
   } = flow;
 
-  const { generatedUrls, selectedImageIndex } = usePhotoCreator();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
-
-  const previewUrl =
-    generatedUrls[selectedImageIndex] ?? generatedUrls[0] ?? null;
 
   const runPublish = async () => {
     setIsConfirming(true);
@@ -93,10 +90,11 @@ export function PhotoPublishActionsSection({
           }
           preview={{
             mediaUrl: previewUrl,
-            isVideo: false,
+            isVideo: contentKind === "REEL",
             caption,
             hashtags,
-            contentType: tCommon("photo"),
+            contentType:
+              contentKind === "REEL" ? tCommon("reel") : tCommon("photo"),
             influencerName: selectedInf?.name,
           }}
           confirmLabel={

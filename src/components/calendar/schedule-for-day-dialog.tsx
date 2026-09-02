@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { format } from "date-fns";
 import { fr, enUS } from "date-fns/locale";
 import {
@@ -35,6 +35,11 @@ import {
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import {
+  contentKindFromType,
+  platformsAllowedForContent,
+  sanitizePlatformsForContent,
+} from "@/lib/publish-platforms";
 
 const PLATFORMS = ["INSTAGRAM", "TIKTOK", "ONLYFANS"] as const;
 type Platform = (typeof PLATFORMS)[number];
@@ -66,13 +71,13 @@ export function ScheduleForDayDialog({
   const locale = useLocale();
   const dfnLocale = locale === "fr" ? fr : enUS;
   const router = useRouter();
-  const appliedSlotRef = useRef(false);
 
   const [selectedContentId, setSelectedContentId] = useState<string | null>(
     null
   );
   const [time, setTime] = useState("09:00");
   const [platforms, setPlatforms] = useState<Platform[]>(["INSTAGRAM"]);
+  const [appliedSlotKey, setAppliedSlotKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -80,7 +85,7 @@ export function ScheduleForDayDialog({
       setSelectedContentId(null);
       setTime("09:00");
       setPlatforms(["INSTAGRAM"]);
-      appliedSlotRef.current = false;
+      setAppliedSlotKey(null);
     }
   }, [open]);
 
@@ -92,6 +97,17 @@ export function ScheduleForDayDialog({
     }
   );
 
+  const selectedContent = useMemo(
+    () => readyQuery.data?.find((c) => c.id === selectedContentId) ?? null,
+    [readyQuery.data, selectedContentId]
+  );
+
+  const contentKind = selectedContent
+    ? contentKindFromType(selectedContent.type)
+    : "PHOTO";
+  const availablePlatforms = platformsAllowedForContent(contentKind);
+  const visiblePlatforms = sanitizePlatformsForContent(platforms, contentKind);
+
   const slotsQuery = trpc.analytics.suggestSlots.useQuery(
     { influencerId: influencerId!, count: 1 },
     {
@@ -100,25 +116,16 @@ export function ScheduleForDayDialog({
     }
   );
 
-  useEffect(() => {
-    if (!open || appliedSlotRef.current) return;
-    const slot = slotsQuery.data?.[0];
-    if (!slot) return;
-    appliedSlotRef.current = true;
-    const at = new Date(slot.at);
-    setTime(toTimeInputValue(at));
-  }, [open, slotsQuery.data]);
-
   const readinessQuery = trpc.publish.checkPublishReadiness.useQuery(
     {
       influencerId: influencerId ?? "",
-      platforms,
+      platforms: visiblePlatforms,
     },
     {
       enabled:
         open &&
         Boolean(influencerId) &&
-        platforms.length > 0 &&
+        visiblePlatforms.length > 0 &&
         Boolean(selectedContentId),
       staleTime: 15_000,
     }
@@ -145,12 +152,15 @@ export function ScheduleForDayDialog({
     return d;
   }, [day, time]);
 
-  const selectedContent = useMemo(
-    () => readyQuery.data?.find((c) => c.id === selectedContentId) ?? null,
-    [readyQuery.data, selectedContentId]
-  );
+  const slotAt = slotsQuery.data?.[0]?.at;
+  const slotKey = open && slotAt != null ? String(slotAt) : null;
+  if (open && slotKey && slotKey !== appliedSlotKey) {
+    setAppliedSlotKey(slotKey);
+    setTime(toTimeInputValue(new Date(slotAt!)));
+  }
 
   const togglePlatform = (p: Platform) => {
+    if (!availablePlatforms.includes(p)) return;
     setPlatforms((prev) =>
       prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]
     );
@@ -158,7 +168,7 @@ export function ScheduleForDayDialog({
 
   const readinessOk = readinessQuery.data?.ready ?? false;
   const igBlocked =
-    platforms.includes("INSTAGRAM") &&
+    visiblePlatforms.includes("INSTAGRAM") &&
     Boolean(readinessQuery.data) &&
     !readinessOk;
 
@@ -168,11 +178,12 @@ export function ScheduleForDayDialog({
       return;
     }
     if (!scheduledAt) return;
+    // eslint-disable-next-line react-hooks/purity -- click handler, not render
     if (scheduledAt.getTime() <= Date.now()) {
       toast.error(t("errorPast"));
       return;
     }
-    if (platforms.length === 0) {
+    if (visiblePlatforms.length === 0) {
       toast.error(t("errorNoPlatform"));
       return;
     }
@@ -182,7 +193,7 @@ export function ScheduleForDayDialog({
     }
     scheduleMutation.mutate({
       contentId: selectedContentId,
-      platforms,
+      platforms: visiblePlatforms,
       scheduledAt: scheduledAt.toISOString(),
     });
   };
@@ -369,8 +380,8 @@ export function ScheduleForDayDialog({
               {t("pickPlatforms")}
             </Label>
             <div className="flex flex-wrap gap-2">
-              {PLATFORMS.map((p) => {
-                const active = platforms.includes(p);
+              {availablePlatforms.map((p) => {
+                const active = visiblePlatforms.includes(p);
                 return (
                   <button
                     key={p}
@@ -401,7 +412,7 @@ export function ScheduleForDayDialog({
             </div>
           </div>
 
-          {selectedContentId && influencerId && platforms.length > 0 ? (
+          {selectedContentId && influencerId && visiblePlatforms.length > 0 ? (
             <div className="space-y-1.5 rounded-lg border border-border bg-muted/20 p-3">
               <p className="text-[11px] font-medium text-muted-foreground">
                 {tConfirm("checklistTitle")}
@@ -453,7 +464,7 @@ export function ScheduleForDayDialog({
               disabled={
                 scheduleMutation.isPending ||
                 !selectedContentId ||
-                platforms.length === 0 ||
+                visiblePlatforms.length === 0 ||
                 igBlocked
               }
             >
