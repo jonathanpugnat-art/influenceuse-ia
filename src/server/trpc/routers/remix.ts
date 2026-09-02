@@ -8,6 +8,11 @@ import {
   reconcileRemixJob,
 } from "@/server/services/remix.service";
 import {
+  failStaleVideoJobs,
+  isOpenVideoJobStatus,
+  settleOpenRemixJobIfStale,
+} from "@/server/services/stale-video-job.service";
+import {
   clampRemixDuration,
   estimateRemixCreditsForTier,
   REMIX_ALLOWED_DURATIONS,
@@ -203,11 +208,11 @@ export const remixRouter = createTRPCRouter({
       if (!job) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Job introuvable" });
       }
-      // Poll-on-read recovery: if the webhook was missed, nudge FAL forward.
-      if (job.status === "IN_PROGRESS" && job.falRequestId) {
-        void reconcileRemixJob(job.id);
+      const settled = await settleOpenRemixJobIfStale(job);
+      if (isOpenVideoJobStatus(settled.status) && settled.falRequestId) {
+        void reconcileRemixJob(settled.id);
       }
-      return serializeRemixJob(job);
+      return serializeRemixJob(settled);
     }),
 
   listRemixes: protectedProcedure
@@ -219,6 +224,9 @@ export const remixRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const user = await getDbUser(ctx.userId);
+      await failStaleVideoJobs({ userId: user.id }).catch((err) => {
+        console.warn("[remix.listRemixes] stale sweep failed:", err);
+      });
       const jobs = await db.remixJob.findMany({
         where: {
           userId: user.id,
