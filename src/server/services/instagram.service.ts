@@ -414,6 +414,9 @@ async function waitForContainerReady(
  * Étape 1 : Crée un container média image.
  * Étape 2 : Poll du status jusqu'à FINISHED.
  * Étape 3 : Publie le container.
+ *
+ * Forces `is_ai_generated=true` on the container create — same as reels.
+ * No user opt-out.
  */
 export async function publishPhoto(
   accessToken: string,
@@ -429,6 +432,8 @@ export async function publishPhoto(
         params: {
           image_url: imageUrl,
           caption: caption.slice(0, 2200),
+          // Hardcoded AI disclosure — same as reels. No user opt-out.
+          is_ai_generated: "true",
           access_token: accessToken,
         },
       }
@@ -463,7 +468,9 @@ export async function publishPhoto(
 }
 
 /**
- * Carousel : créer un container par image (is_carousel_item=true), puis un container parent avec children[].
+ * Carousel : créer un container par image (is_carousel_item=true), puis un
+ * container parent avec children[]. Every Graph `/media` create sends
+ * `is_ai_generated=true`. No user opt-out.
  */
 export async function publishCarousel(
   accessToken: string,
@@ -485,6 +492,8 @@ export async function publishCarousel(
           params: {
             image_url: imageUrls[i],
             is_carousel_item: true,
+            // Hardcoded AI disclosure on every child container. No opt-out.
+            is_ai_generated: "true",
             access_token: accessToken,
           },
         }
@@ -503,6 +512,8 @@ export async function publishCarousel(
           media_type: "CAROUSEL",
           children: children.join(","),
           caption: caption.slice(0, 2200),
+          // Hardcoded AI disclosure on the parent container. No opt-out.
+          is_ai_generated: "true",
           access_token: accessToken,
         },
       }
@@ -543,9 +554,9 @@ export type PublishReelOptions = {
 /**
  * Reel : media_type=REELS, video_url, caption, cover_url optionnel.
  *
- * V1 Social Publish forces `is_ai_generated=true` on every reel — Aura only
- * publishes AI-authored assets, and Meta's AI labeling policy requires that
- * disclosure. No user opt-out.
+ * V1 Social Publish forces `is_ai_generated=true` on every container
+ * (photo, carousel, reel) — Aura only publishes AI-authored assets, and
+ * Meta's AI labeling policy requires that disclosure. No user opt-out.
  *
  * Docs: https://developers.facebook.com/docs/instagram-platform/content-publishing
  */
