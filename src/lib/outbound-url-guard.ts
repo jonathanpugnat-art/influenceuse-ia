@@ -128,6 +128,16 @@ function isBlockedIpv6(address: string): boolean {
   if (!hex) return true;
   if (hex === "00000000000000000000000000000000") return true; // ::
   if (hex === "00000000000000000000000000000001") return true; // ::1
+  // IPv4-mapped hex (::ffff:7f00:1, ::ffff:a9fe:a9fe) — dotted :ffff:a.b.c.d
+  // is handled above because expandIpv6 refuses embedded dots.
+  if (hex.startsWith("00000000000000000000ffff")) {
+    const a = Number.parseInt(hex.slice(24, 26), 16);
+    const b = Number.parseInt(hex.slice(26, 28), 16);
+    const c = Number.parseInt(hex.slice(28, 30), 16);
+    const d = Number.parseInt(hex.slice(30, 32), 16);
+    if ([a, b, c, d].some((n) => Number.isNaN(n))) return true;
+    return isBlockedIpv4(`${a}.${b}.${c}.${d}`);
+  }
   const first = Number.parseInt(hex.slice(0, 4), 16);
   if ((first & 0xffc0) === 0xfe80) return true; // fe80::/10
   if ((first & 0xfe00) === 0xfc00) return true; // fc00::/7

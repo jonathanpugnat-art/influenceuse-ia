@@ -32,7 +32,10 @@ describe("outbound-url-guard", () => {
     expect(isBlockedIp("fe80::1")).toBe(true);
     expect(isBlockedIp("fd00:ec2::254")).toBe(true);
     expect(isBlockedIp("::ffff:127.0.0.1")).toBe(true);
+    expect(isBlockedIp("::ffff:7f00:1")).toBe(true);
+    expect(isBlockedIp("::ffff:a9fe:a9fe")).toBe(true);
     expect(isBlockedIp("93.184.216.34")).toBe(false);
+    expect(isBlockedIp("::ffff:5db8:d822")).toBe(false);
   });
 
   it("blocks localhost and cloud metadata hostnames", () => {
@@ -54,6 +57,12 @@ describe("outbound-url-guard", () => {
     );
     expect(() =>
       assertSafeOutboundHttpsUrl("https://metadata.google.internal/")
+    ).toThrow(OutboundUrlBlockedError);
+    expect(() =>
+      assertSafeOutboundHttpsUrl("https://[::ffff:7f00:1]/hook")
+    ).toThrow(OutboundUrlBlockedError);
+    expect(() =>
+      assertSafeOutboundHttpsUrl("https://[::ffff:a9fe:a9fe]/latest/meta-data")
     ).toThrow(OutboundUrlBlockedError);
     expect(assertSafeOutboundHttpsUrl("https://hooks.example.com/a").hostname).toBe(
       "hooks.example.com"
