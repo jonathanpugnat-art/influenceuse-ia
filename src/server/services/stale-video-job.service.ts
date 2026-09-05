@@ -10,10 +10,10 @@
  * N = 20 minutes (`STALE_VIDEO_JOB_MS`). Above a legitimate Seedance
  * 30s / 720p render + queue, same budget as photo/reel
  * `STALE_GENERATION_MS`. After N we:
- *   1. Try one last FAL reconcile (the video may already be ready).
- *   2. If still open, call `failSeedanceJob` / `failRemixJob` — that
- *      path `refundCredits` and marks the row REFUNDED (existing
- *      terminal fail state; the UI stops spinning).
+ *   1. Always `falQueueCheck` via reconcile when `falRequestId` is set.
+ *      COMPLETED + video → finalize (no refund).
+ *   2. Only if the row is still PENDING|IN_PROGRESS, call
+ *      `failSeedanceJob` / `failRemixJob` (atomic claim + refund).
  *
  * Hooked from the process-batches cron (global) and from get/list
  * procedures so a page view unsticks without waiting for cron.

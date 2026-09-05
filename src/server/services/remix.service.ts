@@ -23,6 +23,10 @@ import {
 } from "@/server/services/video-providers/fal-kling-o3-remix.provider";
 import { uploadFromUrl } from "@/server/services/storage.service";
 import { emitEvent } from "@/server/services/webhook.service";
+import {
+  logFalVideoSubmit,
+  MISSING_REMIX_WEBHOOK_SECRET,
+} from "@/server/services/fal-video-webhook";
 import type { RemixJob } from "@/generated/prisma/client";
 
 // ──────────────────────────────────────────────
@@ -139,8 +143,11 @@ async function resolveInfluencerIdentity(
  *   1. Resolve identity pack (frontal + up to 3 refs).
  *   2. Clamp duration to source (max 15s, PRD).
  *   3. Hold credits (deductCredits — refunded on FAIL).
- *   4. Submit to FAL queue with our webhook URL.
- *   5. Persist RemixJob so the webhook can find it by request_id.
+ *   4. Require a signed webhook URL (fail-closed if
+ *      REMIX_WEBHOOK_SECRET is missing — never submit to Fal without
+ *      a callback).
+ *   5. Submit to FAL queue, log host + falRequestId (no secrets).
+ *   6. Persist RemixJob so the webhook can find it by request_id.
  *
  * The caller receives the job id + the credits held so the UI can show
  * the exact charge before render is complete.
@@ -233,6 +240,21 @@ export async function createRemixJob(
   }
 
   try {
+    const webhookUrl = buildRemixWebhookUrl(job.id);
+    if (!webhookUrl) {
+      logFalVideoSubmit({
+        engine: "remix",
+        jobId: job.id,
+        webhookConfigured: false,
+      });
+      await failRemixJob(job.id, MISSING_REMIX_WEBHOOK_SECRET);
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message:
+          "Impossible de lancer le remix. Les crédits ont été remboursés.",
+      });
+    }
+
     const submitted = await submitFalKlingO3Remix({
       tier: input.tier,
       videoUrl: sourceVideoUrl,
@@ -242,7 +264,14 @@ export async function createRemixJob(
       keepAudio: input.keepAudio,
       characterName: identity.characterName,
       extraPromptTail: input.extraPromptTail,
-      webhookUrl: buildRemixWebhookUrl(job.id),
+      webhookUrl,
+    });
+
+    logFalVideoSubmit({
+      engine: "remix",
+      jobId: job.id,
+      webhookConfigured: true,
+      falRequestId: submitted.requestId,
     });
 
     await db.remixJob.update({
@@ -261,6 +290,7 @@ export async function createRemixJob(
       status: "IN_PROGRESS",
     };
   } catch (err) {
+    if (err instanceof TRPCError) throw err;
     const errMsg = err instanceof Error ? err.message : String(err);
     await failRemixJob(job.id, `Submit failed: ${errMsg.slice(0, 200)}`);
     throw new TRPCError({
@@ -398,13 +428,26 @@ export async function reconcileRemixJob(jobId: string): Promise<void> {
 
   try {
     const check = await checkFalKlingO3Remix(job.falModel, job.falRequestId);
-    if (check.state === "COMPLETED") {
-      await finalizeRemixJob(job.id, {
-        videoUrl: check.videoUrl,
-        rawPayload: check.raw,
-      });
-    } else if (check.state === "FAILED") {
-      await failRemixJob(job.id, check.error);
+    switch (check.state) {
+      case "COMPLETED": {
+        await finalizeRemixJob(job.id, {
+          videoUrl: check.videoUrl,
+          rawPayload: check.raw,
+        });
+        return;
+      }
+      case "FAILED": {
+        await failRemixJob(job.id, check.error);
+        return;
+      }
+      case "IN_QUEUE":
+      case "IN_PROGRESS": {
+        return;
+      }
+      default: {
+        const _never: never = check;
+        throw new Error(`Unhandled Remix check state: ${String(_never)}`);
+      }
     }
   } catch (err) {
     console.warn(
