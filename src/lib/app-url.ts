@@ -1,9 +1,40 @@
 /**
- * Canonical app URL for OAuth redirects (must match Meta "Valid OAuth Redirect URIs").
+ * Canonical public origin. Fal Seedance/Remix webhooks must hit
+ * `/api/webhooks/fal-seedance` and `/api/webhooks/fal-remix` on the
+ * www host — apex (`aurainfluenceai.com`) is remapped so a mis-set
+ * `NEXT_PUBLIC_APP_URL` cannot silently drop callbacks.
+ */
+export const PROD_APP_ORIGIN = "https://www.aurainfluenceai.com";
+const PROD_APEX_HOST = "aurainfluenceai.com";
+const PROD_WWW_HOST = "www.aurainfluenceai.com";
+
+/**
+ * Canonical app URL for OAuth redirects and outbound Fal webhooks.
+ * Production apex → www, always https.
  */
 export function getAppUrl(): string {
-  const raw = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  return raw.replace(/\/$/, "");
+  const raw = (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(
+    /\/$/,
+    ""
+  );
+  try {
+    const url = new URL(raw);
+    if (url.hostname === PROD_APEX_HOST || url.hostname === PROD_WWW_HOST) {
+      return PROD_APP_ORIGIN;
+    }
+    return raw;
+  } catch {
+    return raw;
+  }
+}
+
+/** Hostname only — safe to log (no secrets, no query string). */
+export function getAppUrlHost(): string {
+  try {
+    return new URL(getAppUrl()).host;
+  } catch {
+    return "unknown";
+  }
 }
 
 export function getInstagramOAuthRedirectUri(): string {

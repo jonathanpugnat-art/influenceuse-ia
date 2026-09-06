@@ -8,8 +8,11 @@
  *      can race in ahead of the returned request_id).
  *   4. Hold credits (`deductCredits`; refunded via `refundCredits` on
  *      failure).
- *   5. Submit to fal queue with our signed webhook URL.
- *   6. Move row to IN_PROGRESS + persist request_id.
+ *   5. Require a signed webhook URL (fail-closed if
+ *      SEEDANCE_WEBHOOK_SECRET is missing — never submit to Fal
+ *      without a callback).
+ *   6. Submit to fal queue, log host + falRequestId (no secrets).
+ *   7. Move row to IN_PROGRESS + persist request_id.
  *
  * The webhook (or poll-on-read) then finalises to COMPLETED | FAILED |
  * REFUNDED. All state transitions are idempotent.
@@ -47,6 +50,10 @@ import {
 } from "@/server/services/video-providers/fal-seedance.provider";
 import { uploadFromUrl } from "@/server/services/storage.service";
 import { emitEvent } from "@/server/services/webhook.service";
+import {
+  logFalVideoSubmit,
+  MISSING_SEEDANCE_WEBHOOK_SECRET,
+} from "@/server/services/fal-video-webhook";
 import type { SeedanceJob } from "@/generated/prisma/client";
 
 // ──────────────────────────────────────────────
@@ -239,6 +246,21 @@ export async function createSeedanceJob(
   }
 
   try {
+    const webhookUrl = buildSeedanceWebhookUrl(job.id);
+    if (!webhookUrl) {
+      logFalVideoSubmit({
+        engine: "seedance",
+        jobId: job.id,
+        webhookConfigured: false,
+      });
+      await failSeedanceJob(job.id, MISSING_SEEDANCE_WEBHOOK_SECRET);
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message:
+          "Impossible de lancer la scène Seedance. Les crédits ont été remboursés.",
+      });
+    }
+
     const submitted = await submitFalSeedance({
       referenceImageUrls: identity.referenceImageUrls,
       duration,
@@ -248,7 +270,14 @@ export async function createSeedanceJob(
       scenePrompt: input.scenePrompt,
       extraPromptTail: input.extraPromptTail,
       mode: built.mode,
-      webhookUrl: buildSeedanceWebhookUrl(job.id),
+      webhookUrl,
+    });
+
+    logFalVideoSubmit({
+      engine: "seedance",
+      jobId: job.id,
+      webhookConfigured: true,
+      falRequestId: submitted.requestId,
     });
 
     await db.seedanceJob.update({
@@ -269,6 +298,7 @@ export async function createSeedanceJob(
       status: "IN_PROGRESS",
     };
   } catch (err) {
+    if (err instanceof TRPCError) throw err;
     const errMsg = err instanceof Error ? err.message : String(err);
     await failSeedanceJob(job.id, `Submit failed: ${errMsg.slice(0, 200)}`);
     throw new TRPCError({
