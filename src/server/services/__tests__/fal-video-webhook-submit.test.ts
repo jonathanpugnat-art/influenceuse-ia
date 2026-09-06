@@ -168,9 +168,9 @@ describe("Seedance webhook URL + fail-closed submit", () => {
     process.env.SEEDANCE_WEBHOOK_SECRET = "seed-secret";
     falSeedanceMock.submitFalSeedance.mockResolvedValue({
       requestId: "fal-req-1",
-      modelId: "bytedance/seedance-2.5/reference-to-video",
-      mode: "reference_to_video",
-      payload: {},
+      modelId: "bytedance/seedance-2.5/image-to-video",
+      mode: "image_to_video",
+      payload: { image_url: "https://cdn.example.com/luana.jpg" },
       prompt: "ok",
     });
 
@@ -184,11 +184,61 @@ describe("Seedance webhook URL + fail-closed submit", () => {
     });
 
     expect(result.status).toBe("IN_PROGRESS");
+    expect(result.mode).toBe("image_to_video");
     expect(falSeedanceMock.submitFalSeedance).toHaveBeenCalledTimes(1);
     const submitted = falSeedanceMock.submitFalSeedance.mock.calls[0][0];
     expect(submitted.webhookUrl).toContain("job=job-s-1");
     expect(submitted.webhookUrl).toContain("secret=seed-secret");
+    expect(submitted.mode).toBe("image_to_video");
+    expect(submitted.referenceImageUrls).toEqual([
+      "https://cdn.example.com/luana.jpg",
+    ]);
     expect(creditsMock.refundCredits).not.toHaveBeenCalled();
+  });
+
+  it("V1 canary: a 4-shot identity pack still submits i2v with only the frontal", async () => {
+    process.env.SEEDANCE_WEBHOOK_SECRET = "seed-secret";
+    mockDb.influencer.findFirst.mockResolvedValue({
+      id: "inf-1",
+      name: "Luana",
+      baseImageUrl: "https://cdn.example.com/luana.jpg",
+      avatarUrl: null,
+      identityPack: {
+        status: "ready",
+        shots: [
+          { id: "portrait_front", url: "https://cdn.example.com/luana.jpg" },
+          { id: "profile", url: "https://cdn.example.com/profile.jpg" },
+          { id: "three_quarter", url: "https://cdn.example.com/34.jpg" },
+          { id: "full_body", url: "https://cdn.example.com/full.jpg" },
+        ],
+        updatedAt: "2026-09-06T00:00:00.000Z",
+      },
+    });
+    falSeedanceMock.submitFalSeedance.mockResolvedValue({
+      requestId: "fal-i2v-1",
+      modelId: "bytedance/seedance-2.5/image-to-video",
+      mode: "image_to_video",
+      payload: { image_url: "https://cdn.example.com/luana.jpg" },
+      prompt: "ok",
+    });
+
+    await createSeedanceJob({
+      userId: "u1",
+      influencerId: "inf-1",
+      scenePrompt: "walking on a rooftop at sunset",
+      requestedDuration: 10,
+      requestedResolution: "480p",
+      generateAudio: true,
+    });
+
+    const submitted = falSeedanceMock.submitFalSeedance.mock.calls[0][0];
+    expect(submitted.mode).toBe("image_to_video");
+    expect(submitted.referenceImageUrls).toEqual([
+      "https://cdn.example.com/luana.jpg",
+    ]);
+    expect(mockDb.seedanceJob.create.mock.calls[0][0].data.mode).toBe(
+      "IMAGE_TO_VIDEO"
+    );
   });
 
   it("persists Fal 422 status + detail on job.error and sanitizes the user toast", async () => {

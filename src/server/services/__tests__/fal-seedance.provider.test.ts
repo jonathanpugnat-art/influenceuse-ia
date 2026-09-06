@@ -122,14 +122,28 @@ describe("buildFalSeedancePayload — image-to-video fallback", () => {
     ).toThrow(/image-to-video requires/i);
   });
 
-  it("auto-picks image_to_video when refs are empty and no mode override", () => {
-    // Auto-detection returns reference_to_video when refs exist, so pass one
-    // ref but explicitly set mode to i2v (documented fallback path).
-    const { mode } = buildFalSeedancePayload({
+  it("auto-picks image_to_video + image_url when there is exactly one ref", () => {
+    const { payload, mode, modelId } = buildFalSeedancePayload({
       ...base,
       referenceImageUrls: ["https://cdn/only.jpg"],
-      mode: "image_to_video",
     });
     expect(mode).toBe("image_to_video");
+    expect(modelId).toBe("bytedance/seedance-2.5/image-to-video");
+    expect(payload.image_url).toBe("https://cdn/only.jpg");
+    expect(payload).not.toHaveProperty("image_urls");
+  });
+
+  it("never sends more than one image on the i2v path", () => {
+    const { payload, mode } = buildFalSeedancePayload({
+      ...base,
+      mode: "image_to_video",
+      referenceImageUrls: [
+        "https://cdn/frontal.jpg",
+        "https://cdn/profile.jpg",
+      ],
+    });
+    expect(mode).toBe("image_to_video");
+    expect(payload.image_url).toBe("https://cdn/frontal.jpg");
+    expect(payload).not.toHaveProperty("image_urls");
   });
 });

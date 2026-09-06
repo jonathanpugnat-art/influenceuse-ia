@@ -8,11 +8,14 @@
  *      can race in ahead of the returned request_id).
  *   4. Hold credits (`deductCredits`; refunded via `refundCredits` on
  *      failure).
- *   5. Require a signed webhook URL (fail-closed if
+ *   5. V1 canary: plan image-to-video with the frontal still only
+ *      (Fal r2v 422s photoreal packs). No auto-retry on 422.
+ *   6. Require a signed webhook URL (fail-closed if
  *      SEEDANCE_WEBHOOK_SECRET is missing — never submit to Fal
  *      without a callback).
- *   6. Submit to fal queue, log host + falRequestId (no secrets).
- *   7. Move row to IN_PROGRESS + persist request_id.
+ *   7. Submit to fal queue, log host + modelId + mode + refCount
+ *      + falRequestId (no secrets).
+ *   8. Move row to IN_PROGRESS + persist request_id.
  *
  * The webhook (or poll-on-read) then finalises to COMPLETED | FAILED |
  * REFUNDED. All state transitions are idempotent.
@@ -32,7 +35,7 @@ import {
   clampSeedanceDuration,
   clampSeedanceResolution,
   estimateSeedanceCredits,
-  resolveSeedanceMode,
+  planSeedanceSubmit,
   validateSeedanceRequest,
   type SeedanceDuration,
   type SeedanceMode,
@@ -175,11 +178,15 @@ export async function createSeedanceJob(
   const duration = clampSeedanceDuration(input.requestedDuration);
   const resolution = clampSeedanceResolution(input.requestedResolution);
   const cost = estimateSeedanceCredits(resolution, duration);
-  const mode = resolveSeedanceMode(identity.referenceImageUrls);
+  // V1 canary: frontal-only image-to-video. Do not auto-retry r2v 422s —
+  // fail cleanly and let the user retry (credits held once).
+  const plan = planSeedanceSubmit(identity.referenceImageUrls);
 
   const validation = validateSeedanceRequest({
     scenePrompt: input.scenePrompt,
-    referenceImageUrls: identity.referenceImageUrls,
+    referenceImageUrls: plan.imageUrls.length
+      ? plan.imageUrls
+      : identity.referenceImageUrls,
     duration,
     resolution,
   });
@@ -196,14 +203,14 @@ export async function createSeedanceJob(
   }
 
   const built = buildFalSeedancePayload({
-    referenceImageUrls: identity.referenceImageUrls,
+    referenceImageUrls: plan.imageUrls,
     duration,
     resolution,
     generateAudio: input.generateAudio,
     characterName: identity.characterName,
     scenePrompt: input.scenePrompt,
     extraPromptTail: input.extraPromptTail,
-    mode,
+    mode: plan.mode,
   });
 
   // Persist a PENDING row FIRST — before hitting FAL. If the webhook races
@@ -223,7 +230,7 @@ export async function createSeedanceJob(
       generateAudio: input.generateAudio,
       prompt: built.prompt,
       extraPromptTail: input.extraPromptTail ?? null,
-      referenceImageUrls: identity.referenceImageUrls,
+      referenceImageUrls: plan.imageUrls,
       creditsHeld: cost,
       status: "PENDING",
       falRequestId: null,
@@ -263,7 +270,7 @@ export async function createSeedanceJob(
     }
 
     const submitted = await submitFalSeedance({
-      referenceImageUrls: identity.referenceImageUrls,
+      referenceImageUrls: plan.imageUrls,
       duration,
       resolution,
       generateAudio: input.generateAudio,
@@ -279,6 +286,9 @@ export async function createSeedanceJob(
       jobId: job.id,
       webhookConfigured: true,
       falRequestId: submitted.requestId,
+      modelId: submitted.modelId,
+      mode: submitted.mode,
+      refCount: plan.imageUrls.length,
     });
 
     await db.seedanceJob.update({

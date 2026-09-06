@@ -73,12 +73,14 @@ export interface FalSeedanceSubmitResult extends FalSeedanceBuildResult {
 export function buildFalSeedancePayload(
   input: FalSeedanceSubmitInput
 ): FalSeedanceBuildResult {
-  const refs = (input.referenceImageUrls ?? [])
+  const refsRaw = (input.referenceImageUrls ?? [])
     .map((u) => u.trim())
     .filter((u) => u.startsWith("http"))
     .slice(0, SEEDANCE_MAX_REFERENCES);
 
-  const mode: SeedanceMode = input.mode ?? resolveSeedanceMode(refs);
+  const mode: SeedanceMode = input.mode ?? resolveSeedanceMode(refsRaw);
+  const refs =
+    mode === "image_to_video" ? refsRaw.slice(0, 1) : refsRaw;
 
   const prompt = buildSeedancePrompt({
     characterName: input.characterName,
@@ -112,8 +114,7 @@ export function buildFalSeedancePayload(
     }
     case "image_to_video": {
       // The i2v endpoint takes a single `image_url` (start frame).
-      // Fall back to the frontal shot; if refs is empty we throw so the
-      // caller surfaces a clean error rather than fal 400.
+      // Never send image_urls / extra refs on this path.
       const start = refs[0];
       if (!start) {
         throw new Error(

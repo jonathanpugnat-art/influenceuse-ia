@@ -121,16 +121,62 @@ export function clampSeedanceResolution(
 }
 
 /**
- * Given the identity pack we already have on file, pick between
- * `reference_to_video` (≥ 1 identity image + we want @Image1 referencing
- * in the prompt) and `image_to_video` (single still, no identity pack).
+ * V1 canary (Luana 2026-09-06): Fal `reference-to-video` 422s photoreal
+ * identity packs. Always submit `image-to-video` with the frontal still
+ * only (`image_url`, never more than one image). Lift this flag to
+ * re-enable multi-ref r2v after Fal accepts packs.
+ */
+export const SEEDANCE_V1_SINGLE_FRONTAL_I2V = true;
+
+/**
+ * Fal endpoint picker from usable http refs:
+ *   0–1 still → image-to-video (`image_url`)
+ *   2+ stills → reference-to-video (`image_urls`)
+ *
+ * createSeedanceJob does not call this while
+ * `SEEDANCE_V1_SINGLE_FRONTAL_I2V` is on — it always plans i2v + frontal.
  */
 export function resolveSeedanceMode(
   referenceImageUrls: readonly string[]
 ): SeedanceMode {
-  return referenceImageUrls.length >= 1
+  return referenceImageUrls.length >= 2
     ? "reference_to_video"
     : "image_to_video";
+}
+
+export function usableSeedanceRefs(
+  referenceImageUrls: readonly string[]
+): string[] {
+  return referenceImageUrls
+    .map((u) => u.trim())
+    .filter((u) => u.startsWith("http"));
+}
+
+/**
+ * What we actually send to Fal. V1 canary: frontal only + i2v.
+ * When the canary is lifted: 1 ref → i2v, 2+ → r2v (capped).
+ */
+export function planSeedanceSubmit(referenceImageUrls: readonly string[]): {
+  mode: SeedanceMode;
+  imageUrls: string[];
+} {
+  const usable = usableSeedanceRefs(referenceImageUrls);
+  if (SEEDANCE_V1_SINGLE_FRONTAL_I2V) {
+    const frontal = usable[0];
+    return {
+      mode: "image_to_video",
+      imageUrls: frontal ? [frontal] : [],
+    };
+  }
+  const mode = resolveSeedanceMode(usable);
+  if (mode === "image_to_video") {
+    const frontal = usable[0];
+    return { mode, imageUrls: frontal ? [frontal] : [] };
+  }
+  return {
+    mode,
+    imageUrls: usable.slice(0, SEEDANCE_MAX_REFERENCES),
+  };
 }
 
 /**
