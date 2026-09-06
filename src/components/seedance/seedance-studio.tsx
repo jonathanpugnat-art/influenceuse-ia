@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { formatGenerationErrorForUser } from "@/lib/generation-errors";
 import { trpc } from "@/lib/trpc";
 import {
   SEEDANCE_ALLOWED_DURATIONS,
@@ -503,7 +504,9 @@ function JobCard({
         />
       )}
       {(job.status === "REFUNDED" || job.status === "FAILED") && job.error && (
-        <p className="mt-2 text-red-300">{job.error}</p>
+        <p className="mt-2 text-red-300">
+          {formatGenerationErrorForUser(job.error)}
+        </p>
       )}
       {(job.status === "PENDING" || job.status === "IN_PROGRESS") && (
         <p className="mt-2 flex items-center gap-1.5 text-fuchsia-300">

@@ -43,7 +43,14 @@ export async function falQueueSubmit(
 
   if (!submitRes.ok) {
     const text = await submitRes.text();
-    throw new Error(`FAL submit failed (${submitRes.status}): ${text.slice(0, 240)}`);
+    const detail = extractFalErrorDetail(text);
+    logFalSubmitFailure({
+      modelId,
+      input,
+      status: submitRes.status,
+      bodySnippet: detail,
+    });
+    throw new FalQueueSubmitError(submitRes.status, detail);
   }
 
   const submitted = (await submitRes.json()) as { request_id?: string };
@@ -132,4 +139,84 @@ export async function falQueueSubscribe(
   }
 
   throw new Error(`FAL generation timed out after ${Math.round(timeoutMs / 1000)}s`);
+}
+
+/** Thrown when queue.fal.run rejects the submit (no request_id). */
+export class FalQueueSubmitError extends Error {
+  readonly status: number;
+  readonly detail: string;
+
+  constructor(status: number, detail: string) {
+    const safe = redactFalSecrets(detail).slice(0, 200);
+    super(`FAL submit failed (${status}): ${safe}`.slice(0, 280));
+    this.name = "FalQueueSubmitError";
+    this.status = status;
+    this.detail = safe;
+  }
+}
+
+const FAL_DETAIL_MAX = 200;
+
+/**
+ * Pull a short operator-safe snippet from a Fal error body.
+ * Prefers JSON `detail` / `message` / `error`. Never keeps webhook secrets.
+ */
+export function extractFalErrorDetail(body: string): string {
+  const raw = body.trim();
+  if (!raw) return "empty body";
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    const fromJson = pickFalJsonDetail(parsed);
+    if (fromJson) return redactFalSecrets(fromJson).slice(0, FAL_DETAIL_MAX);
+  } catch {
+    // not JSON — fall through to raw text
+  }
+  return redactFalSecrets(raw).slice(0, FAL_DETAIL_MAX);
+}
+
+function pickFalJsonDetail(parsed: unknown): string | null {
+  if (typeof parsed === "string") return parsed;
+  if (!parsed || typeof parsed !== "object") return null;
+  const rec = parsed as Record<string, unknown>;
+  for (const key of ["detail", "message", "error"] as const) {
+    const value = rec[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (Array.isArray(value) && value.length > 0) {
+      const first = value[0];
+      if (typeof first === "string") return first;
+      if (first && typeof first === "object") {
+        const msg = (first as { msg?: unknown; message?: unknown }).msg
+          ?? (first as { message?: unknown }).message;
+        if (typeof msg === "string" && msg.trim()) return msg.trim();
+      }
+    }
+  }
+  return null;
+}
+
+export function redactFalSecrets(text: string): string {
+  return text.replace(/([?&]secret=)[^&\s"'\\]+/gi, "$1***");
+}
+
+function countFalRefs(input: Record<string, unknown>): number {
+  if (Array.isArray(input.image_urls)) return input.image_urls.length;
+  if (Array.isArray(input.elements)) return input.elements.length;
+  if (typeof input.image_url === "string" && input.image_url.trim()) return 1;
+  return 0;
+}
+
+function logFalSubmitFailure(opts: {
+  modelId: string;
+  input: Record<string, unknown>;
+  status: number;
+  bodySnippet: string;
+}): void {
+  console.error("[fal-queue] submit failed", {
+    modelId: opts.modelId,
+    resolution: typeof opts.input.resolution === "string" ? opts.input.resolution : null,
+    duration: opts.input.duration ?? null,
+    refCount: countFalRefs(opts.input),
+    status: opts.status,
+    bodySnippet: redactFalSecrets(opts.bodySnippet).slice(0, FAL_DETAIL_MAX),
+  });
 }

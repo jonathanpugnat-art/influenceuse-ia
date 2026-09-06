@@ -39,6 +39,14 @@ export const MISSING_FACE_REFERENCE_MESSAGE =
 export const PROVIDER_UNAVAILABLE_USER_MESSAGE =
   "Le service de génération est temporairement indisponible. Réessayez dans quelques minutes.";
 
+/**
+ * Fal Seedance / Remix queue rejected the submit (typically HTTP 422
+ * content-policy or likeness on reference stills). Raw status stays on
+ * `job.error` for ops; this copy is the user toast / studio line.
+ */
+export const FAL_REFERENCE_POLICY_USER_MESSAGE =
+  "Fal a refusé les images de référence (politique contenu). Essaie une autre scène ou moins de refs.";
+
 /** @deprecated Use SOCIAL_SAFETY_USER_MESSAGE */
 export const NSFW_USER_MESSAGE = SOCIAL_SAFETY_USER_MESSAGE;
 
@@ -148,6 +156,14 @@ export function formatGenerationErrorForUser(
     return PROVIDER_UNAVAILABLE_USER_MESSAGE;
   }
 
+  if (looksLikeFalReferencePolicyError(msg)) {
+    return FAL_REFERENCE_POLICY_USER_MESSAGE;
+  }
+
+  if (/WEBHOOK_SECRET|FAL_KEY is not configured/i.test(msg)) {
+    return "Impossible de lancer la génération. Les crédits ont été remboursés.";
+  }
+
   if (msg.includes(SUGGESTIVE_REQUIRES_PREMIUM_MESSAGE)) {
     return SUGGESTIVE_REQUIRES_PREMIUM_MESSAGE;
   }
@@ -233,6 +249,25 @@ export function formatPhotoSceneErrorForUser(
   }
 
   return "Le décor n'a pas donné le résultat espéré. Simplifiez la scène (lieu + lumière), évitez les foules, puis regénérez le décor (1 crédit).";
+}
+
+/** Fal queue 422 — content policy / likeness / unexpected inner 422. */
+export function looksLikeFalReferencePolicyError(msg: string): boolean {
+  const lower = msg.toLowerCase();
+  const is422 =
+    /\b422\b/.test(msg) || lower.includes("unexpected status code");
+  if (!is422) return false;
+  return (
+    /fal submit failed/i.test(msg) ||
+    lower.includes("content policy") ||
+    lower.includes("content_policy") ||
+    lower.includes("likeness") ||
+    lower.includes("public figure") ||
+    lower.includes("celebrity") ||
+    lower.includes("image_urls") ||
+    lower.includes("reference image") ||
+    lower.includes("unexpected status code: 422")
+  );
 }
 
 /** Google Nano / Replicate E005 and similar moderation blocks. */

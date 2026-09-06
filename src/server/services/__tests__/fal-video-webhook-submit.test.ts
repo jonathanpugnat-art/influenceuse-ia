@@ -69,6 +69,8 @@ import {
   MISSING_REMIX_WEBHOOK_SECRET,
   MISSING_SEEDANCE_WEBHOOK_SECRET,
 } from "@/server/services/fal-video-webhook";
+import { FalQueueSubmitError } from "@/server/services/image-providers/fal-queue.client";
+import { FAL_REFERENCE_POLICY_USER_MESSAGE } from "@/lib/generation-errors";
 
 const pendingSeedance = {
   id: "job-s-1",
@@ -187,6 +189,41 @@ describe("Seedance webhook URL + fail-closed submit", () => {
     expect(submitted.webhookUrl).toContain("job=job-s-1");
     expect(submitted.webhookUrl).toContain("secret=seed-secret");
     expect(creditsMock.refundCredits).not.toHaveBeenCalled();
+  });
+
+  it("persists Fal 422 status + detail on job.error and sanitizes the user toast", async () => {
+    process.env.SEEDANCE_WEBHOOK_SECRET = "seed-secret";
+    falSeedanceMock.submitFalSeedance.mockRejectedValue(
+      new FalQueueSubmitError(422, "Unexpected status code: 422")
+    );
+
+    let caught: unknown;
+    try {
+      await createSeedanceJob({
+        userId: "u1",
+        influencerId: "inf-1",
+        scenePrompt: "walking on a rooftop at sunset",
+        requestedDuration: 10,
+        requestedResolution: "480p",
+        generateAudio: true,
+      });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(TRPCError);
+    const trpcErr = caught as TRPCError;
+    expect(trpcErr.message).toBe(FAL_REFERENCE_POLICY_USER_MESSAGE);
+    expect(trpcErr.message).not.toContain("https://");
+    expect(trpcErr.message).not.toContain("FAL_KEY");
+    expect(trpcErr.message).not.toContain("seed-secret");
+    expect(trpcErr.message).not.toContain("422");
+
+    const persisted: string =
+      mockDb.seedanceJob.updateMany.mock.calls[0][0].data.error;
+    expect(persisted).toContain("422");
+    expect(persisted).toContain("Unexpected status code: 422");
+    expect(creditsMock.refundCredits).toHaveBeenCalledWith("u1", 180);
   });
 });
 

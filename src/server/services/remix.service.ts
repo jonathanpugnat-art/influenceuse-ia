@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { nanoid } from "nanoid";
 import { db } from "@/server/db";
 import { getAppUrl } from "@/lib/app-url";
+import { formatGenerationErrorForUser } from "@/lib/generation-errors";
 import { parseIdentityPack } from "@/lib/identity-pack";
 import {
   clampRemixDuration,
@@ -292,10 +293,11 @@ export async function createRemixJob(
   } catch (err) {
     if (err instanceof TRPCError) throw err;
     const errMsg = err instanceof Error ? err.message : String(err);
-    await failRemixJob(job.id, `Submit failed: ${errMsg.slice(0, 200)}`);
+    const persisted = `Submit failed: ${errMsg}`.slice(0, 500);
+    await failRemixJob(job.id, persisted);
     throw new TRPCError({
       code: "INTERNAL_SERVER_ERROR",
-      message: "Impossible de lancer le remix. Les crédits ont été remboursés.",
+      message: formatGenerationErrorForUser(persisted),
     });
   }
 }

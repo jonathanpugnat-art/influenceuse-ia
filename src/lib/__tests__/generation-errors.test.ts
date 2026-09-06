@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   FACE_LOCK_USER_MESSAGE,
+  FAL_REFERENCE_POLICY_USER_MESSAGE,
   MISSING_FACE_REFERENCE_MESSAGE,
   PROVIDER_UNAVAILABLE_USER_MESSAGE,
   formatGenerationErrorForUser,
@@ -86,6 +87,27 @@ describe("formatGenerationErrorForUser", () => {
     expect(formatGenerationErrorForUser("429 Too Many Requests")).toContain(
       "Attendez"
     );
+  });
+
+  it("maps Fal Seedance 422 submit to the reference-policy toast without leaking URLs or keys", () => {
+    const raw =
+      "Submit failed: FAL submit failed (422): Unexpected status code: 422 https://queue.fal.run/bytedance/seedance-2.5?fal_webhook=https://www.aurainfluenceai.com/api/webhooks/fal-seedance?job=x&secret=leak-me";
+    const formatted = formatGenerationErrorForUser(raw);
+    expect(formatted).toBe(FAL_REFERENCE_POLICY_USER_MESSAGE);
+    expect(formatted).not.toContain("https://");
+    expect(formatted).not.toContain("422");
+    expect(formatted).not.toContain("fal.run");
+    expect(formatted).not.toContain("leak-me");
+    expect(formatted).not.toContain("FAL_KEY");
+    expect(formatted).not.toContain("secret=");
+  });
+
+  it("maps Fal likeness / content-policy 422 the same way", () => {
+    expect(
+      formatGenerationErrorForUser(
+        "Submit failed: FAL submit failed (422): content policy likeness rejected"
+      )
+    ).toBe(FAL_REFERENCE_POLICY_USER_MESSAGE);
   });
 });
 
