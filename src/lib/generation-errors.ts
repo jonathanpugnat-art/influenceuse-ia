@@ -40,12 +40,13 @@ export const PROVIDER_UNAVAILABLE_USER_MESSAGE =
   "Le service de génération est temporairement indisponible. Réessayez dans quelques minutes.";
 
 /**
- * Fal Seedance / Remix queue rejected the submit (typically HTTP 422
- * content-policy or likeness on reference stills). Raw status stays on
- * `job.error` for ops; this copy is the user toast / studio line.
+ * Fal scene / Remix queue rejected the submit (typically HTTP 422
+ * content-policy or likeness). Raw status stays on `job.error` for ops;
+ * this copy is the user toast / studio line — engine-agnostic (Kling
+ * I2V uses a single `image_url`, not Seedance `image_urls`).
  */
 export const FAL_REFERENCE_POLICY_USER_MESSAGE =
-  "Fal a refusé les images de référence (politique contenu). Essaie une autre scène ou moins de refs.";
+  "Fal a refusé cette génération (politique contenu). Essaie une autre scène ou un autre portrait.";
 
 /** @deprecated Use SOCIAL_SAFETY_USER_MESSAGE */
 export const NSFW_USER_MESSAGE = SOCIAL_SAFETY_USER_MESSAGE;
@@ -265,6 +266,7 @@ export function looksLikeFalReferencePolicyError(msg: string): boolean {
     lower.includes("public figure") ||
     lower.includes("celebrity") ||
     lower.includes("image_urls") ||
+    lower.includes("image_url") ||
     lower.includes("reference image") ||
     lower.includes("unexpected status code: 422")
   );

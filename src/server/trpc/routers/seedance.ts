@@ -7,6 +7,7 @@ import {
   createSeedanceJob,
   reconcileSeedanceJob,
 } from "@/server/services/seedance.service";
+import { createKlingSceneJob } from "@/server/services/kling-scene.service";
 import {
   failStaleVideoJobs,
   isOpenVideoJobStatus,
@@ -16,12 +17,18 @@ import {
   clampSeedanceDuration,
   clampSeedanceResolution,
   estimateSeedanceCredits,
-  getSeedancePricingSnapshot,
-  SEEDANCE_ALLOWED_DURATIONS,
   SEEDANCE_ALLOWED_RESOLUTIONS,
   type SeedanceDuration,
   type SeedanceResolution,
 } from "@/lib/seedance-config";
+import {
+  clampKlingSceneDuration,
+  estimateKlingSceneCredits,
+  getSceneEngine,
+  getScenePricingSnapshot,
+  KLING_SCENE_ALLOWED_DURATIONS,
+  type KlingSceneDuration,
+} from "@/lib/scene-engine";
 import { PLANS } from "@/lib/constants";
 import type { Plan } from "@/generated/prisma/client";
 
@@ -30,6 +37,7 @@ import type { Plan } from "@/generated/prisma/client";
 // ──────────────────────────────────────────────
 
 const durationSchema = z.union([
+  z.literal(5),
   z.literal(10),
   z.literal(15),
   z.literal(30),
@@ -40,7 +48,7 @@ const createSceneInputSchema = z.object({
   influencerId: z.string().min(1),
   scenePrompt: z.string().min(1).max(1200),
   extraPromptTail: z.string().max(300).optional().nullable(),
-  duration: durationSchema.default(15),
+  duration: durationSchema.default(10),
   resolution: resolutionSchema.default("720p"),
   generateAudio: z.boolean().default(true),
   /**
@@ -59,33 +67,44 @@ const createSceneInputSchema = z.object({
 
 export const seedanceRouter = createTRPCRouter({
   /**
-   * Static pricing table. The client renders the full duration×resolution
-   * matrix under the picker so the credit cost is visible BEFORE the
-   * user opens the dropdown. Numbers here are the source of truth — the
-   * mutation validates against the exact same estimator.
+   * Static pricing table. Kling O3 I2V by default (`SCENE_ENGINE`);
+   * Seedance snapshot only when the pause flag is flipped back on.
    */
   pricing: protectedProcedure.query(() => {
-    return getSeedancePricingSnapshot();
+    return getScenePricingSnapshot();
   }),
 
   /**
    * Live cost quote. Cheap — no DB lookup. Used by the studio page for
-   * the CTA label ("Générer — 540 crédits") and for the confirmation
-   * modal on 30s picks.
+   * the CTA label ("Générer — 80 crédits").
    */
   estimate: protectedProcedure
     .input(
       z.object({
         duration: durationSchema,
-        resolution: resolutionSchema,
+        resolution: resolutionSchema.optional(),
+        generateAudio: z.boolean().optional(),
       })
     )
     .query(({ input }) => {
+      if (getSceneEngine() === "kling_o3_i2v") {
+        const duration = clampKlingSceneDuration(input.duration);
+        const generateAudio = input.generateAudio ?? true;
+        return {
+          engine: "kling_o3_i2v" as const,
+          duration,
+          resolution: null,
+          generateAudio,
+          credits: estimateKlingSceneCredits(duration, generateAudio),
+        };
+      }
       const duration = clampSeedanceDuration(input.duration);
       const resolution = clampSeedanceResolution(input.resolution);
       return {
+        engine: "seedance" as const,
         duration,
         resolution,
+        generateAudio: input.generateAudio ?? true,
         credits: estimateSeedanceCredits(resolution, duration),
       };
     }),
@@ -100,13 +119,44 @@ export const seedanceRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const user = await getDbUser(ctx.userId);
 
-      // Video-tier feature — same gating as remix / talking-head.
       const planConfig = PLANS[user.plan as Plan];
       if (!planConfig.hasVideo) {
         throw new TRPCError({
           code: "FORBIDDEN",
           message:
-            "La vidéo scène Seedance nécessite le plan Pro ou Agency (accès vidéo).",
+            "La vidéo scène nécessite le plan Pro ou Agency (accès vidéo).",
+        });
+      }
+
+      if (getSceneEngine() === "kling_o3_i2v") {
+        if (
+          !(KLING_SCENE_ALLOWED_DURATIONS as readonly number[]).includes(
+            input.duration
+          )
+        ) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Durée non supportée. Choisis 5, 10 ou 15 secondes.",
+          });
+        }
+        const duration = clampKlingSceneDuration(input.duration);
+        const cost = estimateKlingSceneCredits(duration, input.generateAudio);
+        if (
+          typeof input.quotedCredits === "number" &&
+          input.quotedCredits !== cost
+        ) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `Le prix a changé (${input.quotedCredits} → ${cost} crédits). Relance la génération pour confirmer.`,
+          });
+        }
+        return createKlingSceneJob({
+          userId: user.id,
+          influencerId: input.influencerId,
+          scenePrompt: input.scenePrompt,
+          extraPromptTail: input.extraPromptTail ?? null,
+          requestedDuration: duration,
+          generateAudio: input.generateAudio,
         });
       }
 
@@ -123,7 +173,7 @@ export const seedanceRouter = createTRPCRouter({
         });
       }
 
-      const result = await createSeedanceJob({
+      return createSeedanceJob({
         userId: user.id,
         influencerId: input.influencerId,
         scenePrompt: input.scenePrompt,
@@ -132,8 +182,6 @@ export const seedanceRouter = createTRPCRouter({
         requestedResolution: resolution,
         generateAudio: input.generateAudio,
       });
-
-      return result;
     }),
 
   getScene: protectedProcedure
@@ -149,8 +197,6 @@ export const seedanceRouter = createTRPCRouter({
           message: "Scène introuvable.",
         });
       }
-      // Timeout first so a Luana-style zombie returns REFUNDED in this
-      // response (refundCredits, spinner stops). Young jobs still nudge FAL.
       const settled = await settleOpenSeedanceJobIfStale(job);
       if (isOpenVideoJobStatus(settled.status) && settled.falRequestId) {
         void reconcileSeedanceJob(settled.id);
@@ -204,12 +250,13 @@ function serializeSeedanceJob(job: {
   createdAt: Date;
   completedAt: Date | null;
 }) {
+  const snapshot = getScenePricingSnapshot();
   return {
     id: job.id,
     influencerId: job.influencerId,
     mode: job.mode,
-    durationSec: job.durationSec as SeedanceDuration,
-    resolution: job.resolution as SeedanceResolution,
+    durationSec: job.durationSec as SeedanceDuration | KlingSceneDuration,
+    resolution: job.resolution as SeedanceResolution | "standard",
     aspectRatio: job.aspectRatio,
     generateAudio: job.generateAudio,
     status: job.status,
@@ -219,9 +266,7 @@ function serializeSeedanceJob(job: {
     prompt: job.prompt,
     createdAt: job.createdAt,
     completedAt: job.completedAt,
-    // Echoed for the UI so a JobRow can render matching filters without
-    // re-computing.
-    allowedDurations: [...SEEDANCE_ALLOWED_DURATIONS] as number[],
-    allowedResolutions: [...SEEDANCE_ALLOWED_RESOLUTIONS] as string[],
+    allowedDurations: snapshot.allowedDurations,
+    allowedResolutions: snapshot.allowedResolutions,
   };
 }
