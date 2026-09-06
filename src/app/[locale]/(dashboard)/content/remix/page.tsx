@@ -42,6 +42,7 @@ import {
   type RemixDuration,
   type RemixTier,
 } from "@/lib/remix-config";
+import { formatGenerationErrorForUser } from "@/lib/generation-errors";
 
 interface UploadedSource {
   url: string;
@@ -753,7 +754,9 @@ function JobRow(props: {
           </span>
         </div>
         {job.error && (
-          <div className="mt-1 truncate text-xs text-red-400">{job.error}</div>
+          <div className="mt-1 truncate text-xs text-red-400">
+            {formatGenerationErrorForUser(job.error)}
+          </div>
         )}
       </div>
     </div>
