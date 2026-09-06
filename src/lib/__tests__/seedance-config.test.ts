@@ -6,8 +6,10 @@ import {
   clampSeedanceResolution,
   estimateSeedanceCredits,
   getSeedancePricingSnapshot,
+  planSeedanceSubmit,
   resolveSeedanceMode,
   resolveSeedanceModelId,
+  SEEDANCE_V1_SINGLE_FRONTAL_I2V,
   SEEDANCE_ALLOWED_DURATIONS,
   SEEDANCE_ALLOWED_RESOLUTIONS,
   validateSeedanceRequest,
@@ -102,15 +104,39 @@ describe("seedance-config model resolution", () => {
 });
 
 describe("seedance-config mode resolution", () => {
-  it("picks reference_to_video when we have identity refs", () => {
+  it("picks image_to_video for exactly one usable ref", () => {
+    expect(resolveSeedanceMode(["https://a"])).toBe("image_to_video");
+    expect(resolveSeedanceMode([])).toBe("image_to_video");
+  });
+
+  it("picks reference_to_video only when 2+ refs are present", () => {
     expect(resolveSeedanceMode(["https://a", "https://b"])).toBe(
       "reference_to_video"
     );
-    expect(resolveSeedanceMode(["https://a"])).toBe("reference_to_video");
+  });
+});
+
+describe("planSeedanceSubmit V1 canary", () => {
+  it("documents V1 as single-frontal image-to-video", () => {
+    expect(SEEDANCE_V1_SINGLE_FRONTAL_I2V).toBe(true);
   });
 
-  it("falls back to image_to_video only when refs are empty", () => {
-    expect(resolveSeedanceMode([])).toBe("image_to_video");
+  it("always plans i2v with at most the frontal still (even with a 4-shot pack)", () => {
+    const plan = planSeedanceSubmit([
+      "https://cdn/frontal.jpg",
+      "https://cdn/profile.jpg",
+      "https://cdn/34.jpg",
+      "https://cdn/full.jpg",
+    ]);
+    expect(plan.mode).toBe("image_to_video");
+    expect(plan.imageUrls).toEqual(["https://cdn/frontal.jpg"]);
+  });
+
+  it("plans i2v + image_url source for a single ref", () => {
+    expect(planSeedanceSubmit(["https://cdn/only.jpg"])).toEqual({
+      mode: "image_to_video",
+      imageUrls: ["https://cdn/only.jpg"],
+    });
   });
 });
 

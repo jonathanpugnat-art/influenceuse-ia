@@ -17,6 +17,9 @@ export function logFalVideoSubmit(opts: {
   jobId: string;
   webhookConfigured: boolean;
   falRequestId?: string | null;
+  modelId?: string | null;
+  mode?: string | null;
+  refCount?: number | null;
 }): void {
   const line = opts.webhookConfigured ? console.info : console.error;
   line(`[${opts.engine}] fal-submit`, {
@@ -24,5 +27,8 @@ export function logFalVideoSubmit(opts: {
     webhookConfigured: opts.webhookConfigured,
     appHost: getAppUrlHost(),
     falRequestId: opts.falRequestId ?? null,
+    modelId: opts.modelId ?? null,
+    mode: opts.mode ?? null,
+    refCount: opts.refCount ?? null,
   });
 }
