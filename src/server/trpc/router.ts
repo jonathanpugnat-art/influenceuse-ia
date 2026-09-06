@@ -44,7 +44,7 @@ export const appRouter = createTRPCRouter({
   remix: remixRouter,
   // Talking-head V1 — Hedra Avatar + ElevenLabs voice
   talkingHead: talkingHeadRouter,
-  // Seedance scene-video V1 — 10-30s locked-face scene with native audio
+  // Scene-video V1 — Kling O3 I2V by default (Seedance paused via SCENE_ENGINE)
   seedance: seedanceRouter,
 });
 
