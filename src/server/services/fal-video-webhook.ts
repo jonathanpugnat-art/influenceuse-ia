@@ -13,13 +13,16 @@ export const MISSING_REMIX_WEBHOOK_SECRET =
  * webhook URL (the secret lives in the query string).
  */
 export function logFalVideoSubmit(opts: {
-  engine: "seedance" | "remix";
+  engine: "seedance" | "remix" | "kling_o3_i2v";
   jobId: string;
   webhookConfigured: boolean;
   falRequestId?: string | null;
   modelId?: string | null;
   mode?: string | null;
   refCount?: number | null;
+  duration?: number | null;
+  generateAudio?: boolean | null;
+  characterId?: string | null;
 }): void {
   const line = opts.webhookConfigured ? console.info : console.error;
   line(`[${opts.engine}] fal-submit`, {
@@ -30,5 +33,8 @@ export function logFalVideoSubmit(opts: {
     modelId: opts.modelId ?? null,
     mode: opts.mode ?? null,
     refCount: opts.refCount ?? null,
+    duration: opts.duration ?? null,
+    generate_audio: opts.generateAudio ?? null,
+    characterId: opts.characterId ?? null,
   });
 }

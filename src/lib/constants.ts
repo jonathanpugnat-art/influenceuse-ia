@@ -195,6 +195,13 @@ export const CREDIT_COSTS = {
    */
   SEEDANCE_480P_PER_SEC: 18,
   SEEDANCE_720P_PER_SEC: 36,
+  /**
+   * Kling O3 Standard image-to-video (scène V1, `SCENE_ENGINE=kling_o3_i2v`).
+   * Aligné sur le remix Standard (10 cr/s audio ON) ; audio OFF 8 cr/s.
+   * 1 crédit ≈ $0.04. Fal Kling O3 std list ~$0.112–0.126/s → ≥3× marge.
+   */
+  KLING_SCENE_I2V_AUDIO_OFF_PER_SEC: 8,
+  KLING_SCENE_I2V_AUDIO_ON_PER_SEC: 10,
 } as const;
 
 /** Display catalog for credit packs (Stripe price IDs live in stripe.service). */

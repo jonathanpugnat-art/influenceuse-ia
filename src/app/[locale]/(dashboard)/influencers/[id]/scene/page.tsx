@@ -56,16 +56,16 @@ export default function SeedanceScenePage({
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2 text-fuchsia-300">
           <Film className="h-5 w-5" />
-          <h1 className="text-2xl font-bold text-white">Vidéo scène</h1>
+          <h1 className="text-2xl font-bold text-white">Vidéo scène (Kling)</h1>
           <span className="rounded-md bg-fuchsia-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-fuchsia-300">
-            Seedance V1
+            Kling O3
           </span>
         </div>
         <p className="max-w-2xl text-sm text-slate-400">
-          Ton personnage tient une scène de 10, 15 ou 30 secondes en 9:16 avec
-          son audio natif (voix + ambiance). L&apos;identité est verrouillée
-          via ton pack de portraits (@Image1, @Image2…). Rien à uploader —
-          c&apos;est le remix qui prend un clip source, pas la scène.
+          Ton personnage tient une scène de 5, 10 ou 15 secondes en 9:16,
+          à partir du portrait frontal. Audio natif optionnel (voix +
+          ambiance). Rien à uploader — c&apos;est le remix qui prend un clip
+          source, pas la scène.
         </p>
       </div>
 

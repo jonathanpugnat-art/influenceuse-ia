@@ -52,6 +52,8 @@ import {
   checkFalSeedance,
   submitFalSeedance,
 } from "@/server/services/video-providers/fal-seedance.provider";
+import { checkFalKlingO3I2v } from "@/server/services/video-providers/fal-kling-o3-i2v.provider";
+import { isKlingSceneModelId } from "@/lib/scene-engine";
 import { uploadFromUrl } from "@/server/services/storage.service";
 import { emitEvent } from "@/server/services/webhook.service";
 import {
@@ -453,7 +455,9 @@ export async function reconcileSeedanceJob(jobId: string): Promise<void> {
   if (!job.falRequestId) return;
 
   try {
-    const check = await checkFalSeedance(job.falModel, job.falRequestId);
+    const check = isKlingSceneModelId(job.falModel)
+      ? await checkFalKlingO3I2v(job.falModel, job.falRequestId)
+      : await checkFalSeedance(job.falModel, job.falRequestId);
     switch (check.state) {
       case "COMPLETED": {
         await finalizeSeedanceJob(job.id, {

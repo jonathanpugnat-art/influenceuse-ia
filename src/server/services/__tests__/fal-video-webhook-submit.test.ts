@@ -33,6 +33,11 @@ const falRemixMock = vi.hoisted(() => ({
   checkFalKlingO3Remix: vi.fn(),
 }));
 
+const falKlingSceneMock = vi.hoisted(() => ({
+  submitFalKlingO3I2v: vi.fn(),
+  checkFalKlingO3I2v: vi.fn(),
+}));
+
 vi.mock("@/server/db", () => ({ db: mockDb }));
 vi.mock("@/server/services/credits.service", () => creditsMock);
 vi.mock("@/server/services/webhook.service", () => ({ emitEvent: vi.fn() }));
@@ -56,11 +61,19 @@ vi.mock("@/server/services/video-providers/fal-kling-o3-remix.provider", async (
     >();
   return { ...actual, ...falRemixMock };
 });
+vi.mock("@/server/services/video-providers/fal-kling-o3-i2v.provider", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/server/services/video-providers/fal-kling-o3-i2v.provider")
+    >();
+  return { ...actual, ...falKlingSceneMock };
+});
 
 import {
   buildSeedanceWebhookUrl,
   createSeedanceJob,
 } from "@/server/services/seedance.service";
+import { createKlingSceneJob } from "@/server/services/kling-scene.service";
 import {
   buildRemixWebhookUrl,
   createRemixJob,
@@ -274,6 +287,183 @@ describe("Seedance webhook URL + fail-closed submit", () => {
     expect(persisted).toContain("422");
     expect(persisted).toContain("Unexpected status code: 422");
     expect(creditsMock.refundCredits).toHaveBeenCalledWith("u1", 180);
+  });
+});
+
+const pendingKlingScene = {
+  id: "job-k-1",
+  userId: "u1",
+  influencerId: "inf-1",
+  status: "PENDING",
+  creditsHeld: 40,
+  durationSec: 5,
+  resolution: "standard",
+  mode: "IMAGE_TO_VIDEO",
+};
+
+describe("Kling O3 scene I2V submit (SCENE_ENGINE default)", () => {
+  const env = process.env;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env = { ...env };
+    process.env.NEXT_PUBLIC_APP_URL = "https://www.aurainfluenceai.com";
+    delete process.env.SEEDANCE_WEBHOOK_SECRET;
+    creditsMock.checkCredits.mockResolvedValue(true);
+    creditsMock.deductCredits.mockResolvedValue(undefined);
+    creditsMock.refundCredits.mockResolvedValue(undefined);
+    stubInfluencer();
+    mockDb.seedanceJob.create.mockResolvedValue(pendingKlingScene);
+    mockDb.seedanceJob.findUnique.mockResolvedValue(pendingKlingScene);
+    mockDb.seedanceJob.updateMany.mockResolvedValue({ count: 1 });
+    mockDb.seedanceJob.update.mockResolvedValue(pendingKlingScene);
+  });
+
+  afterEach(() => {
+    process.env = env;
+  });
+
+  it("does not submit Seedance and refunds when SEEDANCE_WEBHOOK_SECRET is missing", async () => {
+    await expect(
+      createKlingSceneJob({
+        userId: "u1",
+        influencerId: "inf-1",
+        scenePrompt: "walking on a rooftop at sunset",
+        requestedDuration: 5,
+        generateAudio: false,
+      })
+    ).rejects.toBeInstanceOf(TRPCError);
+
+    expect(falKlingSceneMock.submitFalKlingO3I2v).not.toHaveBeenCalled();
+    expect(falSeedanceMock.submitFalSeedance).not.toHaveBeenCalled();
+    expect(mockDb.seedanceJob.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "REFUNDED",
+          error: MISSING_SEEDANCE_WEBHOOK_SECRET,
+        }),
+      })
+    );
+    expect(creditsMock.refundCredits).toHaveBeenCalledWith("u1", 40);
+  });
+
+  it("queues Kling O3 I2V with falRequestId and never calls Seedance", async () => {
+    process.env.SEEDANCE_WEBHOOK_SECRET = "seed-secret";
+    falKlingSceneMock.submitFalKlingO3I2v.mockResolvedValue({
+      requestId: "fal-kling-scene-1",
+      modelId: "fal-ai/kling-video/o3/standard/image-to-video",
+      payload: { image_url: "https://cdn.example.com/luana.jpg" },
+      prompt: "walking on a rooftop at sunset",
+    });
+
+    const result = await createKlingSceneJob({
+      userId: "u1",
+      influencerId: "inf-1",
+      scenePrompt: "walking on a rooftop at sunset",
+      requestedDuration: 5,
+      generateAudio: false,
+    });
+
+    expect(result.status).toBe("IN_PROGRESS");
+    expect(result.mode).toBe("kling_o3_i2v");
+    expect(result.cost).toBe(40);
+    expect(result.durationSec).toBe(5);
+    expect(falSeedanceMock.submitFalSeedance).not.toHaveBeenCalled();
+    expect(falKlingSceneMock.submitFalKlingO3I2v).toHaveBeenCalledTimes(1);
+    const submitted = falKlingSceneMock.submitFalKlingO3I2v.mock.calls[0][0];
+    expect(submitted.imageUrl).toBe("https://cdn.example.com/luana.jpg");
+    expect(submitted.duration).toBe(5);
+    expect(submitted.generateAudio).toBe(false);
+    expect(submitted.webhookUrl).toContain("job=job-k-1");
+    expect(mockDb.seedanceJob.create.mock.calls[0][0].data.creditsHeld).toBe(
+      40
+    );
+    expect(mockDb.seedanceJob.create.mock.calls[0][0].data.resolution).toBe(
+      "standard"
+    );
+    expect(mockDb.seedanceJob.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          falRequestId: "fal-kling-scene-1",
+          falModel: "fal-ai/kling-video/o3/standard/image-to-video",
+        }),
+      })
+    );
+    expect(creditsMock.refundCredits).not.toHaveBeenCalled();
+  });
+
+  it("sends only the frontal still even when the identity pack has 4 shots", async () => {
+    process.env.SEEDANCE_WEBHOOK_SECRET = "seed-secret";
+    mockDb.influencer.findFirst.mockResolvedValue({
+      id: "inf-1",
+      name: "Luana",
+      baseImageUrl: "https://cdn.example.com/luana.jpg",
+      avatarUrl: null,
+      identityPack: {
+        status: "ready",
+        shots: [
+          { id: "portrait_front", url: "https://cdn.example.com/front.jpg" },
+          { id: "profile", url: "https://cdn.example.com/profile.jpg" },
+          { id: "three_quarter", url: "https://cdn.example.com/34.jpg" },
+          { id: "full_body", url: "https://cdn.example.com/full.jpg" },
+        ],
+        updatedAt: "2026-09-06T00:00:00.000Z",
+      },
+    });
+    falKlingSceneMock.submitFalKlingO3I2v.mockResolvedValue({
+      requestId: "fal-kling-front",
+      modelId: "fal-ai/kling-video/o3/standard/image-to-video",
+      payload: {},
+      prompt: "ok",
+    });
+
+    await createKlingSceneJob({
+      userId: "u1",
+      influencerId: "inf-1",
+      scenePrompt: "walking on a rooftop at sunset",
+      requestedDuration: 5,
+      generateAudio: false,
+    });
+
+    const submitted = falKlingSceneMock.submitFalKlingO3I2v.mock.calls[0][0];
+    expect(submitted.imageUrl).toBe("https://cdn.example.com/front.jpg");
+    expect(mockDb.seedanceJob.create.mock.calls[0][0].data.referenceImageUrls).toEqual(
+      ["https://cdn.example.com/front.jpg"]
+    );
+  });
+
+  it("holds 100 credits for 10s audio ON and refunds a Fal 422", async () => {
+    process.env.SEEDANCE_WEBHOOK_SECRET = "seed-secret";
+    const pendingAudioOn = { ...pendingKlingScene, creditsHeld: 100 };
+    mockDb.seedanceJob.create.mockResolvedValue(pendingAudioOn);
+    mockDb.seedanceJob.findUnique.mockResolvedValue(pendingAudioOn);
+    falKlingSceneMock.submitFalKlingO3I2v.mockRejectedValue(
+      new FalQueueSubmitError(422, "Unexpected status code: 422")
+    );
+
+    let caught: unknown;
+    try {
+      await createKlingSceneJob({
+        userId: "u1",
+        influencerId: "inf-1",
+        scenePrompt: "walking on a rooftop at sunset",
+        requestedDuration: 10,
+        generateAudio: true,
+      });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(TRPCError);
+    expect((caught as TRPCError).message).toBe(
+      FAL_REFERENCE_POLICY_USER_MESSAGE
+    );
+    expect((caught as TRPCError).message).not.toContain("images de référence Seedance");
+    expect(mockDb.seedanceJob.create.mock.calls[0][0].data.creditsHeld).toBe(
+      100
+    );
+    expect(creditsMock.refundCredits).toHaveBeenCalledWith("u1", 100);
+    expect(falSeedanceMock.submitFalSeedance).not.toHaveBeenCalled();
   });
 });
 
