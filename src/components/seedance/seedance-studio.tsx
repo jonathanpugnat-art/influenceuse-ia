@@ -54,8 +54,8 @@ export function SeedanceStudio({
   influencerName,
 }: SeedanceStudioProps) {
   const [scenePrompt, setScenePrompt] = useState("");
-  const [duration, setDuration] = useState(10);
-  const [resolution, setResolution] = useState("720p");
+  const [durationPick, setDurationPick] = useState(10);
+  const [resolutionPick, setResolutionPick] = useState("720p");
   const [generateAudio, setGenerateAudio] = useState(true);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [confirmingBigCost, setConfirmingBigCost] = useState(false);
@@ -69,6 +69,15 @@ export function SeedanceStudio({
   const allowedResolutions = pricing.data?.allowedResolutions ?? [];
   const showResolution = allowedResolutions.length > 0;
   const pricingLabel = pricing.data?.label ?? "Vidéo scène (Kling)";
+  const duration = allowedDurations.includes(durationPick)
+    ? durationPick
+    : (pricing.data?.defaultDurationSec ?? 10);
+  const resolution =
+    allowedResolutions.length === 0
+      ? resolutionPick
+      : allowedResolutions.includes(resolutionPick)
+        ? resolutionPick
+        : (pricing.data?.defaultResolution ?? "720p");
 
   const list = trpc.seedance.listScenes.useQuery(
     { influencerId, limit: 8 },
@@ -90,20 +99,6 @@ export function SeedanceStudio({
   );
 
   const utils = trpc.useUtils();
-
-  useEffect(() => {
-    if (!pricing.data) return;
-    if (!pricing.data.allowedDurations.includes(duration)) {
-      setDuration(pricing.data.defaultDurationSec);
-    }
-    if (
-      pricing.data.allowedResolutions.length > 0 &&
-      pricing.data.defaultResolution &&
-      !pricing.data.allowedResolutions.includes(resolution)
-    ) {
-      setResolution(pricing.data.defaultResolution);
-    }
-  }, [duration, pricing.data, resolution]);
 
   const totalCredits = useMemo(() => {
     if (!pricing.data) return 0;
@@ -205,13 +200,13 @@ export function SeedanceStudio({
             <DurationPicker
               value={duration}
               options={allowedDurations}
-              onChange={setDuration}
+              onChange={setDurationPick}
             />
             {showResolution && (
               <ResolutionPicker
                 value={resolution}
                 options={allowedResolutions}
-                onChange={setResolution}
+                onChange={setResolutionPick}
               />
             )}
           </div>
