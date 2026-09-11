@@ -9,6 +9,10 @@ const mockDb = vi.hoisted(() => ({
     findMany: vi.fn(),
     findUnique: vi.fn(),
   },
+  wavespeedSpicyJob: {
+    findMany: vi.fn(),
+    findUnique: vi.fn(),
+  },
 }));
 
 const seedanceMock = vi.hoisted(() => ({
@@ -21,9 +25,15 @@ const remixMock = vi.hoisted(() => ({
   failRemixJob: vi.fn(),
 }));
 
+const wavespeedMock = vi.hoisted(() => ({
+  reconcileWavespeedSpicyJob: vi.fn(),
+  failWavespeedSpicyJob: vi.fn(),
+}));
+
 vi.mock("@/server/db", () => ({ db: mockDb }));
 vi.mock("@/server/services/seedance.service", () => seedanceMock);
 vi.mock("@/server/services/remix.service", () => remixMock);
+vi.mock("@/server/services/wavespeed-spicy.service", () => wavespeedMock);
 
 import {
   failStaleVideoJobs,
@@ -40,6 +50,7 @@ describe("stale-video-job timeout (N = 20 min)", () => {
     vi.clearAllMocks();
     mockDb.seedanceJob.findMany.mockResolvedValue([]);
     mockDb.remixJob.findMany.mockResolvedValue([]);
+    mockDb.wavespeedSpicyJob.findMany.mockResolvedValue([]);
   });
 
   it("documents N as 20 minutes", () => {
@@ -63,7 +74,7 @@ describe("stale-video-job timeout (N = 20 min)", () => {
 
   it("does nothing when no stale jobs exist", async () => {
     const result = await failStaleVideoJobs();
-    expect(result).toEqual({ seedance: 0, remix: 0 });
+    expect(result).toEqual({ seedance: 0, remix: 0, wavespeed: 0 });
     expect(seedanceMock.failSeedanceJob).not.toHaveBeenCalled();
     expect(remixMock.failRemixJob).not.toHaveBeenCalled();
   });
@@ -105,7 +116,7 @@ describe("stale-video-job timeout (N = 20 min)", () => {
       "job-luana",
       STALE_VIDEO_JOB_ERROR
     );
-    expect(result).toEqual({ seedance: 1, remix: 0 });
+    expect(result).toEqual({ seedance: 1, remix: 0, wavespeed: 0 });
   });
 
   it("does not refund if reconcile already completed the Seedance job", async () => {
@@ -118,7 +129,7 @@ describe("stale-video-job timeout (N = 20 min)", () => {
 
     expect(seedanceMock.reconcileSeedanceJob).toHaveBeenCalledWith("job-ready");
     expect(seedanceMock.failSeedanceJob).not.toHaveBeenCalled();
-    expect(result).toEqual({ seedance: 0, remix: 0 });
+    expect(result).toEqual({ seedance: 0, remix: 0, wavespeed: 0 });
   });
 
   it("refunds a PENDING Seedance job with no falRequestId (submit never landed)", async () => {
@@ -149,7 +160,7 @@ describe("stale-video-job timeout (N = 20 min)", () => {
       "remix-1",
       STALE_VIDEO_JOB_ERROR
     );
-    expect(result).toEqual({ seedance: 0, remix: 1 });
+    expect(result).toEqual({ seedance: 0, remix: 1, wavespeed: 0 });
   });
 
   it("does not refund if reconcile already completed the Remix job", async () => {

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, Film, Loader2, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { SeedanceStudio } from "@/components/seedance/seedance-studio";
+import { WavespeedSpicyStudio } from "@/components/wavespeed/wavespeed-spicy-studio";
 
 export default function SeedanceScenePage({
   params,
@@ -70,6 +71,12 @@ export default function SeedanceScenePage({
       </div>
 
       <SeedanceStudio influencerId={id} influencerName={influencer.name} />
+
+      <WavespeedSpicyStudio
+        influencerId={id}
+        influencerName={influencer.name}
+        influencerIsNsfw={influencer.isNsfw}
+      />
     </div>
   );
 }

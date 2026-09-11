@@ -30,6 +30,10 @@ import {
   failRemixJob,
   reconcileRemixJob,
 } from "@/server/services/remix.service";
+import {
+  failWavespeedSpicyJob,
+  reconcileWavespeedSpicyJob,
+} from "@/server/services/wavespeed-spicy.service";
 
 /** 20 min — documented timeout before a Seedance/Remix hold is released. */
 export const STALE_VIDEO_JOB_MS = 20 * 60 * 1000;
@@ -43,6 +47,7 @@ const OPEN_STATUSES = ["PENDING", "IN_PROGRESS"] as const;
 export interface StaleVideoSweepResult {
   seedance: number;
   remix: number;
+  wavespeed: number;
 }
 
 export function isStaleVideoJob(
@@ -64,7 +69,7 @@ export async function failStaleVideoJobs(opts?: {
   const cutoff = new Date(Date.now() - olderThanMs);
   const userFilter = opts?.userId ? { userId: opts.userId } : {};
 
-  const [seedanceRows, remixRows] = await Promise.all([
+  const [seedanceRows, remixRows, wavespeedRows] = await Promise.all([
     db.seedanceJob.findMany({
       where: {
         ...userFilter,
@@ -83,6 +88,15 @@ export async function failStaleVideoJobs(opts?: {
       select: { id: true, falRequestId: true },
       take: 50,
     }),
+    db.wavespeedSpicyJob.findMany({
+      where: {
+        ...userFilter,
+        status: { in: [...OPEN_STATUSES] },
+        createdAt: { lt: cutoff },
+      },
+      select: { id: true, wavespeedPredictionId: true },
+      take: 50,
+    }),
   ]);
 
   let seedance = 0;
@@ -97,14 +111,23 @@ export async function failStaleVideoJobs(opts?: {
     if (failed) remix += 1;
   }
 
-  if (seedance + remix > 0) {
-    const log = seedance + remix >= 3 ? console.error : console.warn;
+  let wavespeed = 0;
+  for (const row of wavespeedRows) {
+    const failed = await settleStaleWavespeedJob(
+      row.id,
+      row.wavespeedPredictionId
+    );
+    if (failed) wavespeed += 1;
+  }
+
+  if (seedance + remix + wavespeed > 0) {
+    const log = seedance + remix + wavespeed >= 3 ? console.error : console.warn;
     log(
-      `[stale-video-job] Swept ${seedance} Seedance + ${remix} Remix zombie(s) → REFUNDED`
+      `[stale-video-job] Swept ${seedance} Seedance + ${remix} Remix + ${wavespeed} WaveSpeed zombie(s) → REFUNDED`
     );
   }
 
-  return { seedance, remix };
+  return { seedance, remix, wavespeed };
 }
 
 /**
@@ -168,6 +191,27 @@ async function settleStaleSeedanceJob(
   return true;
 }
 
+export async function settleOpenWavespeedSpicyJobIfStale<
+  T extends {
+    id: string;
+    status: string;
+    createdAt: Date;
+    wavespeedPredictionId: string | null;
+  },
+>(job: T, opts?: { olderThanMs?: number }): Promise<T> {
+  if (
+    !isOpenVideoJobStatus(job.status) ||
+    !isStaleVideoJob(job.createdAt, opts?.olderThanMs)
+  ) {
+    return job;
+  }
+  await settleStaleWavespeedJob(job.id, job.wavespeedPredictionId);
+  const fresh = await db.wavespeedSpicyJob.findUnique({
+    where: { id: job.id },
+  });
+  return (fresh ?? job) as T;
+}
+
 async function settleStaleRemixJob(
   jobId: string,
   falRequestId: string | null
@@ -183,5 +227,23 @@ async function settleStaleRemixJob(
     return false;
   }
   await failRemixJob(jobId, STALE_VIDEO_JOB_ERROR);
+  return true;
+}
+
+async function settleStaleWavespeedJob(
+  jobId: string,
+  wavespeedPredictionId: string | null
+): Promise<boolean> {
+  if (wavespeedPredictionId) {
+    await reconcileWavespeedSpicyJob(jobId);
+  }
+  const fresh = await db.wavespeedSpicyJob.findUnique({
+    where: { id: jobId },
+    select: { status: true },
+  });
+  if (!fresh || !isOpenVideoJobStatus(fresh.status)) {
+    return false;
+  }
+  await failWavespeedSpicyJob(jobId, STALE_VIDEO_JOB_ERROR);
   return true;
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   assertAuraImagePromptAllowed,
+  assertAuraNsfwVideoPromptAllowed,
   assertAuraTextAllowed,
   AuraContentPolicyError,
   looksLikeProviderRefusal,
@@ -36,6 +37,23 @@ describe("aura-content-policy", () => {
   it("allows explicit tier for adult image prompts", () => {
     expect(() =>
       assertAuraImagePromptAllowed({ customPrompt: "topless boudoir explicit" }, "explicit")
+    ).not.toThrow();
+  });
+
+  it("blocks CSAM / NCII / real-person phrasing on adult video", () => {
+    expect(() =>
+      assertAuraNsfwVideoPromptAllowed("animate this real person without authorization")
+    ).toThrow(AuraContentPolicyError);
+    expect(() =>
+      assertAuraNsfwVideoPromptAllowed("revenge porn of an ex")
+    ).toThrow(AuraContentPolicyError);
+    expect(() =>
+      assertAuraNsfwVideoPromptAllowed("under 18 boudoir")
+    ).toThrow(AuraContentPolicyError);
+    expect(() =>
+      assertAuraNsfwVideoPromptAllowed(
+        "lingerie rouge, pose sensuelle, chambre boudoir"
+      )
     ).not.toThrow();
   });
 
