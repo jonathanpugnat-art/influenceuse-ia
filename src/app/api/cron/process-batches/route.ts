@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
     // Seedance / Remix: webhook never arrived → refund after 20 min.
     const videoSwept = await failStaleVideoJobs().catch((err) => {
       console.error("[cron/process-batches] stale video sweep failed:", err);
-      return { seedance: 0, remix: 0 };
+      return { seedance: 0, remix: 0, wavespeed: 0 };
     });
 
     const result = await processNextBatchSlice();
@@ -52,7 +52,8 @@ export async function GET(req: NextRequest) {
       ok: true,
       ...result,
       staleSwept: swept.failedContents,
-      staleVideoSwept: videoSwept.seedance + videoSwept.remix,
+      staleVideoSwept:
+        videoSwept.seedance + videoSwept.remix + videoSwept.wavespeed,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

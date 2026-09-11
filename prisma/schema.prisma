@@ -201,6 +201,10 @@ model Influencer {
   /// rights to the sample, no celebrity clones). NULL = no talking-head
   /// generation allowed. Written server-side only.
   voiceConsentAt        DateTime?
+  /// Timestamp the user accepted adult-video ToS (synthetic character,
+  /// no CSAM / NCII / real-person without authorization). NULL = WaveSpeed
+  /// spicy generation refused. Written server-side only.
+  nsfwVideoConsentAt    DateTime?
   /// Public URL of the last cloning sample (audio). Kept for the "re-clone"
   /// UX; may be NULL when the user picked a library voice.
   voiceSampleUrl        String?
@@ -443,6 +447,8 @@ enum WebhookEvent {
   REMIX_FAILED
   SCENE_COMPLETED
   SCENE_FAILED
+  NSFW_VIDEO_COMPLETED
+  NSFW_VIDEO_FAILED
 }
 
 /// Viral remix job — user pastes/uploads a TikTok/Reel clip and the
@@ -664,6 +670,58 @@ model TalkingHeadJob {
   @@index([createdAt])
 }
 
+// ──────────────────────────────────────────────
+// NSFW Pro V1 — WaveSpeed Wan 2.2 Spicy I2V
+// ──────────────────────────────────────────────
+//
+// Pro/Agency only. Gated by NSFW_ENGINE=wavespeed_spicy (off by default).
+// Never used by the SFW Free/Creator cascade (Kling scene, Motion Control,
+// remix). Credit hold/refund mirrors SeedanceJob / RemixJob.
+
+enum WavespeedSpicyJobStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+model WavespeedSpicyJob {
+  id                    String                   @id @default(cuid())
+  userId                String
+  influencerId          String
+  /// 5 | 8 — server-clamped to WAVESPEED_SPICY_ALLOWED_DURATIONS.
+  durationSec           Int
+  /// "480p" | "720p"
+  resolution            String                   @default("720p")
+  aspectRatio           String                   @default("9:16")
+  prompt                String                   @db.Text
+  /// Public character still actually sent to WaveSpeed (`image`).
+  imageUrl              String
+  creditsHeld           Int                      @default(0)
+  status                WavespeedSpicyJobStatus  @default(PENDING)
+  /// WaveSpeed prediction id — poll `GET /api/v3/predictions/{id}/result`.
+  wavespeedPredictionId String?                  @unique
+  /// Model id submitted (wavespeed-ai/wan-2.2-spicy/image-to-video).
+  wavespeedModel        String
+  outputVideoUrl        String?
+  error                 String?
+  metadata              Json?
+  /// Adult outputs are always synthetic AI video. Never opt-out.
+  isSynthetic           Boolean                  @default(true)
+  /// When the generate-time ToS checkbox was accepted.
+  consentAcceptedAt     DateTime
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  completedAt           DateTime?
+
+  @@index([userId])
+  @@index([influencerId])
+  @@index([status])
+  @@index([userId, status])
+  @@index([createdAt])
+}
+
 enum WebhookDeliveryStatus {
   PENDING
   SUCCESS
@@ -803,6 +861,9 @@ model MediaAsset {
   /// voice (ElevenLabs TTS) or a Hedra avatar reel. The publish flow will
   /// use this later to attach the mandatory synthetic-voice disclosure.
   isSyntheticSpeech Boolean @default(false)
+  /// WaveSpeed spicy (and future adult engines) — the asset is synthetic
+  /// AI media, never a recording of a real person.
+  isSynthetic       Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -15,6 +15,8 @@ const eventValues = [
   "CONTENT_SCHEDULED",
   "REMIX_COMPLETED",
   "REMIX_FAILED",
+  "NSFW_VIDEO_COMPLETED",
+  "NSFW_VIDEO_FAILED",
 ] as const;
 
 export const webhookRouter = createTRPCRouter({

@@ -202,6 +202,23 @@ export const CREDIT_COSTS = {
    */
   KLING_SCENE_I2V_AUDIO_OFF_PER_SEC: 8,
   KLING_SCENE_I2V_AUDIO_ON_PER_SEC: 10,
+  /**
+   * NSFW Pro V1 — WaveSpeed Wan 2.2 Spicy image-to-video.
+   *
+   * Provider list (wavespeed.ai, 2026-09, model
+   * `wavespeed-ai/wan-2.2-spicy/image-to-video`):
+   *   5s 480p $0.15  → floor 3.75 cr → hold 12 cr (3.2×)
+   *   8s 480p $0.24  → floor 6.00 cr → hold 18 cr (3.0×)
+   *   5s 720p $0.30  → floor 7.50 cr → hold 24 cr (3.2×)
+   *   8s 720p $0.48  → floor 12.0 cr → hold 36 cr (3.0×)
+   *
+   * 1 Aura credit ≈ $0.04. Same ≥3× margin rule as Seedance/Remix.
+   * Do NOT reuse these constants for fal Kling / Seedance SFW.
+   */
+  WAVESPEED_SPICY_480P_5S: 12,
+  WAVESPEED_SPICY_480P_8S: 18,
+  WAVESPEED_SPICY_720P_5S: 24,
+  WAVESPEED_SPICY_720P_8S: 36,
 } as const;
 
 /** Display catalog for credit packs (Stripe price IDs live in stripe.service). */

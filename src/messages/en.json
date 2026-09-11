@@ -822,7 +822,7 @@
     "age": "Age",
     "years": "years",
     "enableNsfw": "Enable adult content",
-    "nsfwHint": "This influencer will be able to generate NSFW content (lingerie, boudoir, etc). Available with Pro or Enterprise plan.",
+    "nsfwHint": "This influencer will be able to generate NSFW content (lingerie, boudoir, etc). Available with Pro or Enterprise plan. Forbidden: minors (CSAM), non-consensual intimate imagery (NCII), real people without authorization.",
     "seePlans": "See plans →",
     "ethnicity": "Ethnicity",
     "hairColor": "Hair color",

@@ -31,6 +31,36 @@ export const AURA_HARD_BLOCKED_TERMS: readonly string[] = [
   "zoophil",
   "incest",
   "inceste",
+  "csam",
+  "child porn",
+  "child pornography",
+  "under 17",
+  "under 18",
+  "moins de 18",
+];
+
+/**
+ * Extra hard blocks for adult video (WaveSpeed spicy). CSAM is already
+ * covered above. These catch NCII and "real person without authorization"
+ * phrasing — the API also refuses client-supplied image URLs and only
+ * uses the locked synthetic character still.
+ */
+export const AURA_NSFW_VIDEO_HARD_BLOCKED_TERMS: readonly string[] = [
+  "ncii",
+  "revenge porn",
+  "revengeporn",
+  "non-consensual intimate",
+  "nonconsensual intimate",
+  "image intime non consentie",
+  "real person",
+  "actual person",
+  "real celebrity",
+  "personne reelle",
+  "personne existante",
+  "celebrite reelle",
+  "without authorization",
+  "sans autorisation",
+  "sans son consentement",
 ];
 
 /** Blocked on suggestive/soft image prompts — not on adult text agents. */
@@ -115,6 +145,17 @@ export function assertAuraTextAllowed(
         "Ce texte contient du vocabulaire explicite. Passe en mode Premium/NSFW pour cette influenceuse."
       );
     }
+  }
+}
+
+/** Adult video prompt — hard illegal + NCII / real-person phrasing. */
+export function assertAuraNsfwVideoPromptAllowed(text: string): void {
+  assertAuraTextAllowed(text, { lane: "adult" });
+  const extra = findTerms(text, AURA_NSFW_VIDEO_HARD_BLOCKED_TERMS);
+  if (extra.length > 0) {
+    throw new AuraContentPolicyError(
+      "Contenu interdit : CSAM, images intimes non consenties (NCII) ou personne réelle sans autorisation."
+    );
   }
 }
 

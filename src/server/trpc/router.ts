@@ -18,6 +18,7 @@ import { basePortraitRouter } from "./routers/base-portrait";
 import { talkingHeadRouter } from "./routers/talking-head";
 import { remixRouter } from "./routers/remix";
 import { seedanceRouter } from "./routers/seedance";
+import { wavespeedSpicyRouter } from "./routers/wavespeed-spicy";
 
 export const appRouter = createTRPCRouter({
   influencer: influencerRouter,
@@ -46,6 +47,8 @@ export const appRouter = createTRPCRouter({
   talkingHead: talkingHeadRouter,
   // Scene-video V1 — Kling O3 I2V by default (Seedance paused via SCENE_ENGINE)
   seedance: seedanceRouter,
+  // NSFW Pro V1 — WaveSpeed Wan 2.2 Spicy (flag NSFW_ENGINE, default off)
+  wavespeedSpicy: wavespeedSpicyRouter,
 });
 
 export type AppRouter = typeof appRouter;
