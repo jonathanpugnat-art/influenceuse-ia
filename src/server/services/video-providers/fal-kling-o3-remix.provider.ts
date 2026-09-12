@@ -72,7 +72,10 @@ export function buildFalKlingO3RemixPayload(input: {
     video_url: video,
     elements,
     aspect_ratio: "9:16",
-    duration: String(input.duration) as "5" | "10" | "15",
+    duration: String(input.duration === 30 ? 15 : input.duration) as
+      | "5"
+      | "10"
+      | "15",
     keep_audio: input.keepAudio,
   };
 

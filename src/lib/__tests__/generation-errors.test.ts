@@ -4,6 +4,7 @@ import {
   FAL_REFERENCE_POLICY_USER_MESSAGE,
   MISSING_FACE_REFERENCE_MESSAGE,
   PROVIDER_UNAVAILABLE_USER_MESSAGE,
+  REMIX_CONTENT_POLICY_USER_MESSAGE,
   formatGenerationErrorForUser,
   isContentSafetyFilterError,
   isFaceLockError,
@@ -108,6 +109,17 @@ describe("formatGenerationErrorForUser", () => {
         "Submit failed: FAL submit failed (422): content policy likeness rejected"
       )
     ).toBe(FAL_REFERENCE_POLICY_USER_MESSAGE);
+  });
+
+  it("surfaces the Remix content-policy toast verbatim (#15)", () => {
+    expect(
+      formatGenerationErrorForUser(REMIX_CONTENT_POLICY_USER_MESSAGE)
+    ).toBe(REMIX_CONTENT_POLICY_USER_MESSAGE);
+    expect(
+      formatGenerationErrorForUser(
+        `Submit failed: ${REMIX_CONTENT_POLICY_USER_MESSAGE}`
+      )
+    ).toBe(REMIX_CONTENT_POLICY_USER_MESSAGE);
   });
 });
 

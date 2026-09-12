@@ -2,14 +2,18 @@ import { describe, expect, it } from "vitest";
 import {
   REMIX_MAX_DURATION_SEC,
   REMIX_MAX_SOURCE_BYTES,
+  REMIX_MOTION_CONTROL_PRO_MODEL,
+  REMIX_MOTION_CONTROL_STANDARD_MODEL,
   REMIX_TIERS,
+  allowedRemixDurations,
   buildRemixElements,
   buildRemixPrompt,
   clampRemixDuration,
   estimateRemixCreditsForTier,
   resolveRemixModelId,
-  resolveRemixOembedProvider,
+  resolveRemixMotionControlModelId,
   validateRemixSource,
+  resolveRemixOembedProvider,
 } from "@/lib/remix-config";
 
 describe("remix-config credits", () => {
@@ -17,6 +21,7 @@ describe("remix-config credits", () => {
     expect(estimateRemixCreditsForTier("standard", 5)).toBe(50);
     expect(estimateRemixCreditsForTier("standard", 10)).toBe(100);
     expect(estimateRemixCreditsForTier("standard", 15)).toBe(150);
+    expect(estimateRemixCreditsForTier("standard", 30)).toBe(300);
   });
 
   it("computes pro tier at 14 credits/s", () => {
@@ -41,9 +46,15 @@ describe("remix-config duration clamp", () => {
     expect(clampRemixDuration(15, 30)).toBe(15);
   });
 
-  it("caps to REMIX_MAX_DURATION_SEC regardless of source", () => {
-    expect(clampRemixDuration(20, 30)).toBe(REMIX_MAX_DURATION_SEC);
+  it("caps unknown requested values to the nearest allowed duration at or below", () => {
+    expect(clampRemixDuration(20, 30)).toBe(15);
     expect(clampRemixDuration(30, 40)).toBe(REMIX_MAX_DURATION_SEC);
+  });
+
+  it("caps image orientation to 10s even if the source is longer", () => {
+    expect(clampRemixDuration(15, 30, "image")).toBe(10);
+    expect(clampRemixDuration(10, 30, "image")).toBe(10);
+    expect(allowedRemixDurations("image")).toEqual([5, 10]);
   });
 
   it("clamps down to the largest allowed value that fits the source", () => {
@@ -145,6 +156,32 @@ describe("remix-config source validation", () => {
     expect(issue?.code).toBe("too_long");
   });
 
+  it("rejects a 25s clip in image (camera) orientation", () => {
+    const issue = validateRemixSource(
+      {
+        mimeType: "video/mp4",
+        sizeBytes: 1000,
+        durationSec: 25,
+        url: "https://cdn/x",
+      },
+      "image"
+    );
+    expect(issue?.code).toBe("too_long");
+  });
+
+  it("accepts a 25s clip in video (fitness) orientation", () => {
+    const issue = validateRemixSource(
+      {
+        mimeType: "video/mp4",
+        sizeBytes: 1000,
+        durationSec: 25,
+        url: "https://cdn/x",
+      },
+      "video"
+    );
+    expect(issue).toBeNull();
+  });
+
   it("accepts a valid 8s MP4", () => {
     const issue = validateRemixSource({
       mimeType: "video/mp4",
@@ -167,12 +204,24 @@ describe("remix-config source validation", () => {
 });
 
 describe("remix-config env + oembed", () => {
-  it("resolves default model ids for standard and pro tiers", () => {
+  it("resolves default O3 rollback model ids for standard and pro tiers", () => {
     expect(resolveRemixModelId("standard", {})).toContain(
       "kling-video/o3/standard/video-to-video/reference"
     );
     expect(resolveRemixModelId("pro", {})).toContain(
       "kling-video/o3/pro/video-to-video/reference"
+    );
+  });
+
+  it("resolves Motion Control V3 Standard / Pro endpoints", () => {
+    expect(resolveRemixMotionControlModelId("standard", {})).toBe(
+      REMIX_MOTION_CONTROL_STANDARD_MODEL
+    );
+    expect(resolveRemixMotionControlModelId("pro", {})).toBe(
+      REMIX_MOTION_CONTROL_PRO_MODEL
+    );
+    expect(REMIX_MOTION_CONTROL_STANDARD_MODEL).toBe(
+      "fal-ai/kling-video/v3/standard/motion-control"
     );
   });
 

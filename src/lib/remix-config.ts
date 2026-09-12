@@ -1,28 +1,42 @@
 /**
- * Viral remix V1 — Kling O3 Omni video-to-video + elements config.
+ * Viral remix V2 — Kling Motion Control (primary) + O1 V2V edit fallback.
  *
- * The user pastes/uploads a TikTok/Reel clip and the locked character
- * (existing influencer identity) replays the motion. We use Kling's
- * V2V + reference-elements endpoint so camera/motion is preserved and
- * identity is locked via `elements[]` stills (no PuLID).
+ * The user uploads a TikTok/Reel clip and the locked character replays
+ * the motion. Primary engine is Fal kling-video/v3 standard|pro motion-control
+ * (image_url + video_url). Kling O3 Omni V2V stays as an env rollback
+ * (`REMIX_ENGINE=kling_o3_v2v`). Identity is locked via the character
+ * still (+ optional face `elements[]` when orientation=video). No PuLID.
  *
- * Standard is the iteration tier ($0.126/s), Pro is paid export ($0.168/s).
- * Costs and credit rates are calibrated against the ≥3× provider-cost
- * economics target (1 Aura credit ≈ $0.04).
+ * Assumed Fal list prices (2026-09 docs):
+ *   Motion Control V3 Standard: $0.126/s → 10 credits/s → ~3.17×
+ *   Motion Control V3 Pro:      $0.168/s → 14 credits/s → ~3.33×
+ *   O1 V2V edit fallback:       $0.168/s (rare; billed at the held Std/Pro rate)
+ * 1 Aura credit ≈ $0.04. ≥3× margin on the primary path.
  */
 
 export const REMIX_TIER_VALUES = ["standard", "pro"] as const;
 export type RemixTier = (typeof REMIX_TIER_VALUES)[number];
 
-export const REMIX_ALLOWED_DURATIONS = [5, 10, 15] as const;
+export const REMIX_ORIENTATION_VALUES = ["video", "image"] as const;
+export type RemixOrientation = (typeof REMIX_ORIENTATION_VALUES)[number];
+
+/** Motion-control `video` orientation + UI picker: 5 | 10 | 15 | 30. */
+export const REMIX_ALLOWED_DURATIONS = [5, 10, 15, 30] as const;
 export type RemixDuration = (typeof REMIX_ALLOWED_DURATIONS)[number];
 
-/** Kling accepts durations 5|10|15. V1 caps at 15s per PRD. */
-export const REMIX_MAX_DURATION_SEC = 15;
+/** Camera / portrait (`character_orientation=image`) — Fal max 10s. */
+export const REMIX_IMAGE_ALLOWED_DURATIONS = [5, 10] as const;
+export type RemixImageDuration = (typeof REMIX_IMAGE_ALLOWED_DURATIONS)[number];
+
+/** Full-body / fitness (`character_orientation=video`) — Fal max 30s. */
+export const REMIX_VIDEO_ORIENTATION_MAX_SEC = 30;
+export const REMIX_IMAGE_ORIENTATION_MAX_SEC = 10;
+/** Hard cap = video orientation (longest supported primary engine). */
+export const REMIX_MAX_DURATION_SEC = REMIX_VIDEO_ORIENTATION_MAX_SEC;
 /** Kling minimum source clip length. */
 export const REMIX_MIN_SOURCE_DURATION_SEC = 3;
-/** Kling maximum source clip length — hard upstream constraint. */
-export const REMIX_MAX_SOURCE_DURATION_SEC = 15;
+/** Default source cap (video orientation). Image orientation uses 10s. */
+export const REMIX_MAX_SOURCE_DURATION_SEC = REMIX_VIDEO_ORIENTATION_MAX_SEC;
 /** Kling max upload size (mp4/mov). */
 export const REMIX_MAX_SOURCE_BYTES = 200 * 1024 * 1024;
 /** Kling accepted uploads. */
@@ -32,18 +46,29 @@ export const REMIX_MAX_TOTAL_REFERENCES = 4;
 
 /**
  * Live per-second provider cost (USD) and Aura credit charge.
- *   Standard: $0.126/s → 10 credits/s → 1 credit ≈ $0.04 → ~3.17× margin
- *   Pro:      $0.168/s → 14 credits/s → same 1 credit ≈ $0.04 → ~3.33× margin
- * If a codebase-owned video credit helper appears later, replace these two
- * constants; the rest of the file only depends on them.
+ *   Standard MC V3: $0.126/s → 10 credits/s → 1 credit ≈ $0.04 → ~3.17×
+ *   Pro MC V3:      $0.168/s → 14 credits/s → same 1 credit ≈ $0.04 → ~3.33×
  */
 export const REMIX_ONE_CREDIT_USD = 0.04;
 
+export const REMIX_MOTION_CONTROL_STANDARD_MODEL =
+  "fal-ai/kling-video/v3/standard/motion-control";
+export const REMIX_MOTION_CONTROL_PRO_MODEL =
+  "fal-ai/kling-video/v3/pro/motion-control";
+export const REMIX_O1_V2V_EDIT_MODEL =
+  "fal-ai/kling-video/o1/video-to-video/edit";
+export const REMIX_O3_STANDARD_MODEL =
+  "fal-ai/kling-video/o3/standard/video-to-video/reference";
+export const REMIX_O3_PRO_MODEL =
+  "fal-ai/kling-video/o3/pro/video-to-video/reference";
+
 export interface RemixTierConfig {
   label: string;
-  /** Default FAL model id when env override is not set. */
+  /** Default FAL model id when env override is not set (O3 rollback). */
   defaultModelId: string;
-  /** Provider list price in USD per second of output. */
+  /** Primary motion-control model for this tier. */
+  motionControlModelId: string;
+  /** Provider list price in USD per second of output (primary engine). */
   costPerSecUsd: number;
   /** Aura credits charged per second of output. Ceils per-remix. */
   creditsPerSec: number;
@@ -52,19 +77,21 @@ export interface RemixTierConfig {
 export const REMIX_TIERS: Record<RemixTier, RemixTierConfig> = {
   standard: {
     label: "Standard",
-    defaultModelId:
-      "fal-ai/kling-video/o3/standard/video-to-video/reference",
+    defaultModelId: REMIX_O3_STANDARD_MODEL,
+    motionControlModelId: REMIX_MOTION_CONTROL_STANDARD_MODEL,
     costPerSecUsd: 0.126,
     creditsPerSec: 10,
   },
   pro: {
     label: "Pro",
-    defaultModelId: "fal-ai/kling-video/o3/pro/video-to-video/reference",
+    defaultModelId: REMIX_O3_PRO_MODEL,
+    motionControlModelId: REMIX_MOTION_CONTROL_PRO_MODEL,
     costPerSecUsd: 0.168,
     creditsPerSec: 14,
   },
 };
 
+/** O3 Omni V2V — kept for `REMIX_ENGINE=kling_o3_v2v` rollback. */
 export function resolveRemixModelId(
   tier: RemixTier,
   env: Record<string, string | undefined> = process.env
@@ -76,6 +103,39 @@ export function resolveRemixModelId(
   return env[overrideKey]?.trim() || REMIX_TIERS[tier].defaultModelId;
 }
 
+export function resolveRemixMotionControlModelId(
+  tier: RemixTier,
+  env: Record<string, string | undefined> = process.env
+): string {
+  const overrideKey =
+    tier === "standard"
+      ? "FAL_KLING_MOTION_CONTROL_STANDARD_MODEL"
+      : "FAL_KLING_MOTION_CONTROL_PRO_MODEL";
+  return env[overrideKey]?.trim() || REMIX_TIERS[tier].motionControlModelId;
+}
+
+export function resolveRemixO1EditModelId(
+  env: Record<string, string | undefined> = process.env
+): string {
+  return env.FAL_KLING_O1_V2V_EDIT_MODEL?.trim() || REMIX_O1_V2V_EDIT_MODEL;
+}
+
+export function remixMaxDurationSec(
+  orientation: RemixOrientation = "video"
+): RemixDuration {
+  return orientation === "image"
+    ? REMIX_IMAGE_ORIENTATION_MAX_SEC
+    : REMIX_VIDEO_ORIENTATION_MAX_SEC;
+}
+
+export function allowedRemixDurations(
+  orientation: RemixOrientation = "video"
+): readonly RemixDuration[] {
+  return orientation === "image"
+    ? REMIX_IMAGE_ALLOWED_DURATIONS
+    : REMIX_ALLOWED_DURATIONS;
+}
+
 /** Total credits held on queue. Integer, ceiled. */
 export function estimateRemixCreditsForTier(
   tier: RemixTier,
@@ -85,33 +145,33 @@ export function estimateRemixCreditsForTier(
 }
 
 /**
- * Server-side duration clamp. The client picks 5/10/15 but Kling can only
- * output up to `sourceDurationSec`, and the PRD caps V1 at 15s regardless
- * of the source. When `sourceDurationSec` is unknown we trust the client
- * pick as long as it's ≤ 15s.
+ * Server-side duration clamp. The client picks 5/10/15/(30) but the
+ * billed length cannot exceed the source clip or the orientation cap
+ * (10s image / 30s video). When `sourceDurationSec` is unknown we trust
+ * the client pick as long as it's within the orientation max.
  */
 export function clampRemixDuration(
   requested: number,
-  sourceDurationSec?: number | null
+  sourceDurationSec?: number | null,
+  orientation: RemixOrientation = "video"
 ): RemixDuration {
+  const allowed = allowedRemixDurations(orientation);
+  const max = remixMaxDurationSec(orientation);
   const source = Number.isFinite(sourceDurationSec)
     ? Math.max(0, Math.floor(sourceDurationSec as number))
-    : REMIX_MAX_DURATION_SEC;
-  const ceiling = Math.min(REMIX_MAX_DURATION_SEC, source);
-  const eligible = REMIX_ALLOWED_DURATIONS.filter((d) => d <= ceiling);
-  const preferred = REMIX_ALLOWED_DURATIONS.includes(
-    requested as RemixDuration
-  )
+    : max;
+  const ceiling = Math.min(max, source);
+  const eligible = allowed.filter((d) => d <= ceiling);
+  const preferred: RemixDuration = allowed.includes(requested as RemixDuration)
     ? (requested as RemixDuration)
-    : REMIX_MAX_DURATION_SEC;
+    : allowed.filter((d) => d <= requested).pop() ?? max;
 
   if (eligible.length === 0) {
-    // Source is < 5s. Kling still requires 5|10|15; we let the server surface
-    // a validation error so the user re-uploads a longer clip.
+    // Source is < 5s. We let the server surface a validation error so the
+    // user re-uploads a longer clip.
     return 5;
   }
   if (eligible.includes(preferred)) return preferred;
-  // Pick the largest allowed value that still fits the source.
   return eligible[eligible.length - 1];
 }
 
@@ -179,12 +239,15 @@ export interface RemixSourceIssue {
  * re-decode server-side (Vercel has no ffmpeg) — the URL served by our R2
  * matches what we uploaded, so the same constraints apply.
  */
-export function validateRemixSource(source: {
-  mimeType?: string | null;
-  sizeBytes?: number | null;
-  durationSec?: number | null;
-  url?: string | null;
-}): RemixSourceIssue | null {
+export function validateRemixSource(
+  source: {
+    mimeType?: string | null;
+    sizeBytes?: number | null;
+    durationSec?: number | null;
+    url?: string | null;
+  },
+  orientation: RemixOrientation = "video"
+): RemixSourceIssue | null {
   if (!source.url || !source.url.trim().startsWith("http")) {
     return {
       code: "invalid_url",
@@ -219,11 +282,12 @@ export function validateRemixSource(source: {
         message: `Clip trop court (< ${REMIX_MIN_SOURCE_DURATION_SEC}s). Choisis un clip plus long.`,
       };
     }
-    if (source.durationSec > REMIX_MAX_SOURCE_DURATION_SEC + 1) {
+    const maxSec = remixMaxDurationSec(orientation);
+    if (source.durationSec > maxSec + 1) {
       // Allow 1s of slack for browser rounding; anything beyond is rejected.
       return {
         code: "too_long",
-        message: `Clip trop long (> ${REMIX_MAX_SOURCE_DURATION_SEC}s). Raccourcis-le en amont.`,
+        message: `Clip trop long (> ${maxSec}s). Raccourcis-le en amont.`,
       };
     }
   }
