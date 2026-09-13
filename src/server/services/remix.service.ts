@@ -7,6 +7,7 @@ import { parseIdentityPack } from "@/lib/identity-pack";
 import {
   clampRemixDuration,
   estimateRemixCreditsForTier,
+  isViggleRemixModelId,
   type RemixDuration,
   type RemixOrientation,
   type RemixTier,
@@ -15,6 +16,7 @@ import {
   buildMotionControlPrompt,
   classifyRemixProviderError,
   getRemixEngine,
+  isRemixEngine,
   logRemixProviderError,
   planRemixAttempts,
   REMIX_CONTENT_POLICY_USER_MESSAGE,
@@ -37,8 +39,14 @@ import {
   checkFalRemixQueue,
   submitFalKlingMotionControlRemix,
   submitFalKlingO1V2vEdit,
+  type FalRemixCheckResult,
   type FalRemixSubmitResult,
 } from "@/server/services/video-providers/fal-kling-motion-control-remix.provider";
+import { submitFalWanReplaceRemix } from "@/server/services/video-providers/fal-wan-replace-remix.provider";
+import {
+  checkViggleRemix,
+  submitViggleRemix,
+} from "@/server/services/video-providers/viggle-remix.provider";
 import { uploadFromUrl } from "@/server/services/storage.service";
 import { emitEvent } from "@/server/services/webhook.service";
 import {
@@ -81,6 +89,10 @@ export interface RemixJobMeta {
   orientation: RemixOrientation;
   attemptIndex: number;
   attempts: RemixAttemptRecord[];
+}
+
+function remixMetaJson(meta: RemixJobMeta): object {
+  return meta;
 }
 
 export interface CreateRemixResult {
@@ -184,9 +196,9 @@ async function resolveInfluencerIdentity(
  *   4. Require a signed webhook URL (fail-closed if
  *      REMIX_WEBHOOK_SECRET is missing — never submit to Fal without
  *      a callback).
- *   5. Submit to FAL queue (motion-control V3 by default), log host +
- *      falRequestId (no secrets). content_policy / 422 retries the
- *      inverse orientation then O1 V2V edit before refunding.
+ *   5. Submit the cascade (MC v2.6 → v3 std → v3 pro → Viggle → Wan),
+ *      log host + falRequestId (no secrets). content_policy / 422 tries
+ *      the next engine before refunding.
  *   6. Persist RemixJob so the webhook can find it by request_id.
  *
  * The caller receives the job id + the credits held so the UI can show
@@ -282,7 +294,7 @@ export async function createRemixJob(
       status: "PENDING",
       falRequestId: null,
       falModel: attempts[0].modelId,
-      metadata: initialMeta,
+      metadata: remixMetaJson(initialMeta),
       oembedPreview:
         input.oembedPreview && typeof input.oembedPreview === "object"
           ? (input.oembedPreview as object)
@@ -362,7 +374,7 @@ export async function createRemixJob(
         falRequestId: submitted.result.requestId,
         falModel: submitted.result.modelId,
         prompt: submitted.result.prompt,
-        metadata: submitted.meta,
+        metadata: remixMetaJson(submitted.meta),
       },
     });
 
@@ -405,6 +417,10 @@ function previewRemixAttemptPrompt(input: {
         characterName: input.characterName,
         extra: input.extraPromptTail,
       });
+    case "viggle":
+      return "Viggle video remix (character + motion)";
+    case "wan_replace":
+      return "Replace the person in the video with the character image.";
     case "o1_v2v_edit":
       return REMIX_O1_EDIT_PROMPT;
     case "kling_o3_v2v":
@@ -447,6 +463,19 @@ async function submitOneRemixAttempt(input: {
         keepAudio: input.keepAudio,
         characterName: input.characterName,
         extraPromptTail: input.extraPromptTail,
+        includeFaceElement: input.attempt.includeFaceElement,
+        webhookUrl: input.webhookUrl,
+      });
+    case "viggle":
+      return submitViggleRemix({
+        videoUrl: input.videoUrl,
+        frontalImageUrl: input.frontalImageUrl,
+      });
+    case "wan_replace":
+      return submitFalWanReplaceRemix({
+        modelId: input.attempt.modelId,
+        videoUrl: input.videoUrl,
+        frontalImageUrl: input.frontalImageUrl,
         webhookUrl: input.webhookUrl,
       });
     case "o1_v2v_edit":
@@ -585,9 +614,7 @@ export function parseRemixJobMeta(raw: unknown): RemixJobMeta | null {
   if (!raw || typeof raw !== "object") return null;
   const rec = raw as Record<string, unknown>;
   if (rec.v !== 2) return null;
-  if (rec.engine !== "motion_control_v3_std" && rec.engine !== "kling_o3_v2v") {
-    return null;
-  }
+  if (!isRemixEngine(rec.engine)) return null;
   if (rec.orientation !== "video" && rec.orientation !== "image") return null;
   return {
     v: 2,
@@ -714,7 +741,7 @@ export async function handleRemixProviderFailure(
       falRequestId: submitted.result.requestId,
       falModel: submitted.result.modelId,
       prompt: submitted.result.prompt,
-      metadata: submitted.meta,
+      metadata: remixMetaJson(submitted.meta),
       error: null,
     },
   });
@@ -786,7 +813,7 @@ export async function finalizeRemixJob(
           opts.rawPayload && typeof opts.rawPayload === "object"
             ? opts.rawPayload
             : undefined,
-      },
+      } as object,
     },
   });
 
@@ -838,9 +865,19 @@ export async function failRemixJob(
   });
 }
 
+async function checkRemixProviderQueue(
+  modelId: string,
+  requestId: string
+): Promise<FalRemixCheckResult> {
+  if (isViggleRemixModelId(modelId)) {
+    return checkViggleRemix(requestId);
+  }
+  return checkFalRemixQueue(modelId, requestId);
+}
+
 /**
  * Recovery: if the webhook was missed we can be nudged by a status query
- * from the client and re-poll FAL to move the job forward.
+ * from the client and re-poll FAL / Viggle to move the job forward.
  */
 export async function reconcileRemixJob(jobId: string): Promise<void> {
   const job = await db.remixJob.findUnique({ where: { id: jobId } });
@@ -850,7 +887,7 @@ export async function reconcileRemixJob(jobId: string): Promise<void> {
   if (job.falRequestId.startsWith("fallback-pending:")) return;
 
   try {
-    const check = await checkFalRemixQueue(job.falModel, job.falRequestId);
+    const check = await checkRemixProviderQueue(job.falModel, job.falRequestId);
     switch (check.state) {
       case "COMPLETED": {
         await finalizeRemixJob(job.id, {

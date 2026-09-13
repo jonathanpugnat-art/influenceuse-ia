@@ -4,6 +4,9 @@ import {
   REMIX_MAX_SOURCE_BYTES,
   REMIX_MOTION_CONTROL_PRO_MODEL,
   REMIX_MOTION_CONTROL_STANDARD_MODEL,
+  REMIX_MOTION_CONTROL_V26_STANDARD_MODEL,
+  REMIX_VIGGLE_MODEL_ID,
+  REMIX_WAN_REPLACE_MODEL,
   REMIX_TIERS,
   allowedRemixDurations,
   buildRemixElements,
@@ -223,6 +226,16 @@ describe("remix-config env + oembed", () => {
     expect(REMIX_MOTION_CONTROL_STANDARD_MODEL).toBe(
       "fal-ai/kling-video/v3/standard/motion-control"
     );
+  });
+
+  it("exposes the cascade endpoint ids (v2.6 + Wan + Viggle)", () => {
+    expect(REMIX_MOTION_CONTROL_V26_STANDARD_MODEL).toBe(
+      "fal-ai/kling-video/v2.6/standard/motion-control"
+    );
+    expect(REMIX_WAN_REPLACE_MODEL).toBe(
+      "fal-ai/wan/v2.2-14b/animate/replace"
+    );
+    expect(REMIX_VIGGLE_MODEL_ID).toBe("viggle.ai/v1/renders");
   });
 
   it("respects env override for standard tier", () => {

@@ -492,6 +492,7 @@ describe("Remix webhook URL + fail-closed submit", () => {
     process.env.NEXT_PUBLIC_APP_URL = "https://www.aurainfluenceai.com";
     delete process.env.REMIX_WEBHOOK_SECRET;
     delete process.env.REMIX_ENGINE;
+    delete process.env.VIGGLE_API_KEY;
     creditsMock.checkCredits.mockResolvedValue(true);
     creditsMock.deductCredits.mockResolvedValue(undefined);
     creditsMock.refundCredits.mockResolvedValue(undefined);
@@ -576,6 +577,10 @@ describe("Remix webhook URL + fail-closed submit", () => {
     expect(submitted.webhookUrl).toContain("job=job-r-1");
     expect(submitted.webhookUrl).toContain("secret=remix-secret");
     expect(submitted.orientation).toBe("video");
+    expect(submitted.modelId).toBe(
+      "fal-ai/kling-video/v2.6/standard/motion-control"
+    );
+    expect(submitted.includeFaceElement).toBe(false);
     expect(creditsMock.refundCredits).not.toHaveBeenCalled();
     expect(falRemixMock.submitFalKlingO3Remix).not.toHaveBeenCalled();
   });

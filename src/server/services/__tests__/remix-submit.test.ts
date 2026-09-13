@@ -29,6 +29,15 @@ const falO3Mock = vi.hoisted(() => ({
   submitFalKlingO3Remix: vi.fn(),
 }));
 
+const viggleMock = vi.hoisted(() => ({
+  submitViggleRemix: vi.fn(),
+  checkViggleRemix: vi.fn(),
+}));
+
+const wanMock = vi.hoisted(() => ({
+  submitFalWanReplaceRemix: vi.fn(),
+}));
+
 vi.mock("@/server/db", () => ({ db: mockDb }));
 vi.mock("@/server/services/credits.service", () => creditsMock);
 vi.mock("@/server/services/webhook.service", () => ({ emitEvent: vi.fn() }));
@@ -58,6 +67,11 @@ vi.mock(
     return { ...actual, ...falO3Mock };
   }
 );
+vi.mock("@/server/services/video-providers/viggle-remix.provider", () => viggleMock);
+vi.mock(
+  "@/server/services/video-providers/fal-wan-replace-remix.provider",
+  () => wanMock
+);
 
 import {
   createRemixJob,
@@ -80,10 +94,10 @@ const pendingRemix = {
   keepAudio: true,
   tier: "standard",
   falRequestId: "fal-mc-1",
-  falModel: "fal-ai/kling-video/v3/standard/motion-control",
+  falModel: "fal-ai/kling-video/v2.6/standard/motion-control",
   metadata: {
     v: 2,
-    engine: "motion_control_v3_std",
+    engine: "motion_control_cascade",
     orientation: "video",
     attemptIndex: 0,
     attempts: [],
@@ -94,12 +108,31 @@ function policyError() {
   return new FalQueueSubmitError(422, "content_policy: fitness body blocked");
 }
 
-describe("submitRemixAttemptsUntilAccepted", () => {
+const cascadeBase = {
+  jobId: "job-r-1",
+  startIndex: 0,
+  priorRecords: [],
+  webhookUrl:
+    "https://www.aurainfluenceai.com/api/webhooks/fal-remix?job=job-r-1&secret=x",
+  videoUrl: "https://cdn.example.com/clip.mp4",
+  frontalImageUrl: "https://cdn.example.com/luana.jpg",
+  referenceImageUrls: [] as string[],
+  duration: 10 as const,
+  keepAudio: true,
+  characterName: "Luana",
+  extraPromptTail: null,
+  tier: "standard" as const,
+  engine: "motion_control_cascade" as const,
+  orientation: "video" as const,
+};
+
+describe("submitRemixAttemptsUntilAccepted cascade", () => {
   const env = process.env;
 
   beforeEach(() => {
     vi.clearAllMocks();
     process.env = { ...env };
+    delete process.env.VIGGLE_API_KEY;
     creditsMock.checkCredits.mockResolvedValue(true);
     creditsMock.deductCredits.mockResolvedValue(undefined);
     creditsMock.refundCredits.mockResolvedValue(undefined);
@@ -109,82 +142,98 @@ describe("submitRemixAttemptsUntilAccepted", () => {
     process.env = env;
   });
 
-  const baseInput = {
-    jobId: "job-r-1",
-    startIndex: 0,
-    priorRecords: [],
-    webhookUrl: "https://www.aurainfluenceai.com/api/webhooks/fal-remix?job=job-r-1&secret=x",
-    videoUrl: "https://cdn.example.com/clip.mp4",
-    frontalImageUrl: "https://cdn.example.com/luana.jpg",
-    referenceImageUrls: [] as string[],
-    duration: 10 as const,
-    keepAudio: true,
-    characterName: "Luana",
-    extraPromptTail: null,
-    tier: "standard" as const,
-    engine: "motion_control_v3_std" as const,
-    orientation: "video" as const,
-  };
-
-  it("retries inverse orientation after content_policy then accepts", async () => {
+  it("tries v2.6 then accepts v3 standard after content_policy", async () => {
     falMcMock.submitFalKlingMotionControlRemix
       .mockRejectedValueOnce(policyError())
       .mockResolvedValueOnce({
-        requestId: "fal-mc-image",
+        requestId: "fal-mc-v3",
         modelId: "fal-ai/kling-video/v3/standard/motion-control",
         prompt: "Transfer the motion from the reference video.",
-        payload: { character_orientation: "image" },
+        payload: {},
       });
 
     const attempts = planRemixAttempts({
-      engine: "motion_control_v3_std",
+      engine: "motion_control_cascade",
       orientation: "video",
       clipDurationSec: 10,
       tier: "standard",
       env: {},
     });
     const result = await submitRemixAttemptsUntilAccepted({
-      ...baseInput,
+      ...cascadeBase,
       attempts,
     });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.result.requestId).toBe("fal-mc-image");
+    expect(result.result.requestId).toBe("fal-mc-v3");
     expect(falMcMock.submitFalKlingMotionControlRemix).toHaveBeenCalledTimes(2);
     expect(
-      falMcMock.submitFalKlingMotionControlRemix.mock.calls[0][0].orientation
-    ).toBe("video");
+      falMcMock.submitFalKlingMotionControlRemix.mock.calls[0][0].modelId
+    ).toBe("fal-ai/kling-video/v2.6/standard/motion-control");
     expect(
-      falMcMock.submitFalKlingMotionControlRemix.mock.calls[1][0].orientation
-    ).toBe("image");
-    expect(falMcMock.submitFalKlingO1V2vEdit).not.toHaveBeenCalled();
+      falMcMock.submitFalKlingMotionControlRemix.mock.calls[0][0]
+        .includeFaceElement
+    ).toBe(false);
+    expect(
+      falMcMock.submitFalKlingMotionControlRemix.mock.calls[1][0].modelId
+    ).toBe("fal-ai/kling-video/v3/standard/motion-control");
+    expect(wanMock.submitFalWanReplaceRemix).not.toHaveBeenCalled();
   });
 
-  it("falls through to O1 then refunds with the FR toast when every engine is blocked", async () => {
+  it("walks v2.6 → v3 → pro → Wan then refunds with the FR toast", async () => {
     falMcMock.submitFalKlingMotionControlRemix.mockRejectedValue(policyError());
-    falMcMock.submitFalKlingO1V2vEdit.mockRejectedValue(policyError());
+    wanMock.submitFalWanReplaceRemix.mockRejectedValue(policyError());
 
     const attempts = planRemixAttempts({
-      engine: "motion_control_v3_std",
+      engine: "motion_control_cascade",
       orientation: "video",
       clipDurationSec: 10,
       tier: "standard",
       env: {},
     });
     const result = await submitRemixAttemptsUntilAccepted({
-      ...baseInput,
+      ...cascadeBase,
       attempts,
     });
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.userError).toBe(REMIX_CONTENT_POLICY_USER_MESSAGE);
-    expect(falMcMock.submitFalKlingMotionControlRemix).toHaveBeenCalledTimes(2);
-    expect(falMcMock.submitFalKlingO1V2vEdit).toHaveBeenCalledTimes(1);
-    expect(result.meta.attempts.every((a) => a.errorClass === "content_policy")).toBe(
-      true
-    );
+    expect(falMcMock.submitFalKlingMotionControlRemix).toHaveBeenCalledTimes(3);
+    expect(wanMock.submitFalWanReplaceRemix).toHaveBeenCalledTimes(1);
+    expect(viggleMock.submitViggleRemix).not.toHaveBeenCalled();
+    expect(
+      result.meta.attempts.every((a) => a.errorClass === "content_policy")
+    ).toBe(true);
+  });
+
+  it("calls Viggle after Kling MC when VIGGLE_API_KEY is set", async () => {
+    falMcMock.submitFalKlingMotionControlRemix.mockRejectedValue(policyError());
+    viggleMock.submitViggleRemix.mockResolvedValue({
+      requestId: "render_123",
+      modelId: "viggle.ai/v1/renders",
+      prompt: "Viggle video remix (character + motion)",
+      payload: {},
+    });
+
+    const attempts = planRemixAttempts({
+      engine: "motion_control_cascade",
+      orientation: "video",
+      clipDurationSec: 10,
+      tier: "standard",
+      env: { VIGGLE_API_KEY: "vg-test" },
+    });
+    const result = await submitRemixAttemptsUntilAccepted({
+      ...cascadeBase,
+      attempts,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.result.requestId).toBe("render_123");
+    expect(viggleMock.submitViggleRemix).toHaveBeenCalledTimes(1);
+    expect(wanMock.submitFalWanReplaceRemix).not.toHaveBeenCalled();
   });
 });
 
@@ -197,6 +246,7 @@ describe("createRemixJob + handleRemixProviderFailure refund", () => {
     process.env.NEXT_PUBLIC_APP_URL = "https://www.aurainfluenceai.com";
     process.env.REMIX_WEBHOOK_SECRET = "remix-secret";
     delete process.env.REMIX_ENGINE;
+    delete process.env.VIGGLE_API_KEY;
     creditsMock.checkCredits.mockResolvedValue(true);
     creditsMock.deductCredits.mockResolvedValue(undefined);
     creditsMock.refundCredits.mockResolvedValue(undefined);
@@ -217,9 +267,9 @@ describe("createRemixJob + handleRemixProviderFailure refund", () => {
     process.env = env;
   });
 
-  it("refunds after content_policy exhausts fallbacks on submit", async () => {
+  it("refunds after content_policy exhausts the cascade on submit", async () => {
     falMcMock.submitFalKlingMotionControlRemix.mockRejectedValue(policyError());
-    falMcMock.submitFalKlingO1V2vEdit.mockRejectedValue(policyError());
+    wanMock.submitFalWanReplaceRemix.mockRejectedValue(policyError());
 
     await expect(
       createRemixJob({
@@ -238,20 +288,23 @@ describe("createRemixJob + handleRemixProviderFailure refund", () => {
     } satisfies Partial<TRPCError>);
 
     expect(creditsMock.refundCredits).toHaveBeenCalledWith("u1", 100);
+    expect(falMcMock.submitFalKlingMotionControlRemix).toHaveBeenCalledTimes(3);
+    expect(wanMock.submitFalWanReplaceRemix).toHaveBeenCalledTimes(1);
     expect(falO3Mock.submitFalKlingO3Remix).not.toHaveBeenCalled();
   });
 
-  it("refunds on webhook content_policy when no fallback remains", async () => {
+  it("refunds on webhook content_policy when no cascade step remains", async () => {
     mockDb.remixJob.findUnique.mockResolvedValue({
       ...pendingRemix,
       status: "IN_PROGRESS",
-      sourceDurationSec: 25,
-      durationSec: 15,
+      sourceDurationSec: 10,
+      durationSec: 10,
+      falModel: "fal-ai/wan/v2.2-14b/animate/replace",
       metadata: {
         v: 2,
-        engine: "motion_control_v3_std",
+        engine: "motion_control_cascade",
         orientation: "video",
-        attemptIndex: 0,
+        attemptIndex: 3,
         attempts: [],
       },
     });

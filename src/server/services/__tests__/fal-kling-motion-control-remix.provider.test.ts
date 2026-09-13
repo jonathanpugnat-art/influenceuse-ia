@@ -29,6 +29,17 @@ describe("buildFalKlingMotionControlRemixPayload", () => {
     expect(elements[0].reference_image_urls).toEqual(base.referenceImageUrls);
   });
 
+  it("omits face elements on v2.6 even when orientation is video", () => {
+    const { payload } = buildFalKlingMotionControlRemixPayload({
+      ...base,
+      includeFaceElement: false,
+    });
+    expect(payload.image_url).toBe(base.frontalImageUrl);
+    expect(payload.video_url).toBe(base.videoUrl);
+    expect(payload.character_orientation).toBe("video");
+    expect(payload.elements).toBeUndefined();
+  });
+
   it("omits face elements when orientation is image (camera)", () => {
     const { payload } = buildFalKlingMotionControlRemixPayload({
       ...base,

@@ -29,6 +29,8 @@ export interface FalMotionControlRemixInput {
   keepAudio: boolean;
   characterName?: string | null;
   extraPromptTail?: string | null;
+  /** V3 face bind when orientation=video. v2.6 schema has no `elements`. */
+  includeFaceElement?: boolean;
 }
 
 export interface FalRemixSubmitResult {
@@ -65,8 +67,10 @@ export function buildFalKlingMotionControlRemixPayload(
 
   if (prompt) payload.prompt = prompt;
 
-  // Face bind is only supported when orientation=video (Fal schema).
-  if (input.orientation === "video") {
+  // Face bind is V3-only and only when orientation=video (Fal schema).
+  const includeFace =
+    input.includeFaceElement ?? input.orientation === "video";
+  if (includeFace && input.orientation === "video") {
     const [element] = buildRemixElements({
       frontalImageUrl: image,
       referenceImageUrls: input.referenceImageUrls,
@@ -92,6 +96,7 @@ export async function submitFalKlingMotionControlRemix(input: {
   keepAudio: boolean;
   characterName?: string | null;
   extraPromptTail?: string | null;
+  includeFaceElement?: boolean;
   webhookUrl?: string;
 }): Promise<FalRemixSubmitResult> {
   const { payload, prompt } = buildFalKlingMotionControlRemixPayload(input);

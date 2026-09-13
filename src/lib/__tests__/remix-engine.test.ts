@@ -9,14 +9,17 @@ import {
 import { getSceneEngine } from "@/lib/scene-engine";
 
 describe("remix-engine routing", () => {
-  it("defaults REMIX_ENGINE to motion_control_v3_std", () => {
-    expect(getRemixEngine({})).toBe("motion_control_v3_std");
+  it("defaults REMIX_ENGINE to motion_control_cascade", () => {
+    expect(getRemixEngine({})).toBe("motion_control_cascade");
     expect(getRemixEngine({ REMIX_ENGINE: "unknown" })).toBe(
-      "motion_control_v3_std"
+      "motion_control_cascade"
     );
   });
 
-  it("allows kling_o3_v2v rollback", () => {
+  it("keeps legacy V3-only and O3 rollback switches", () => {
+    expect(getRemixEngine({ REMIX_ENGINE: "motion_control_v3_std" })).toBe(
+      "motion_control_v3_std"
+    );
     expect(getRemixEngine({ REMIX_ENGINE: "kling_o3_v2v" })).toBe(
       "kling_o3_v2v"
     );
@@ -30,8 +33,80 @@ describe("remix-engine routing", () => {
   });
 });
 
-describe("planRemixAttempts", () => {
-  it("plans video → image → O1 for a 10s fitness clip", () => {
+describe("planRemixAttempts cascade", () => {
+  it("orders P0a v2.6 → v3 std → v3 pro then P0c Wan when Viggle is unset", () => {
+    const attempts = planRemixAttempts({
+      engine: "motion_control_cascade",
+      orientation: "video",
+      clipDurationSec: 10,
+      tier: "standard",
+      env: {},
+    });
+    expect(attempts.map((a) => [a.kind, a.engine, a.modelId])).toEqual([
+      [
+        "motion_control",
+        "motion_control_v26_std",
+        "fal-ai/kling-video/v2.6/standard/motion-control",
+      ],
+      [
+        "motion_control",
+        "motion_control_v3_std",
+        "fal-ai/kling-video/v3/standard/motion-control",
+      ],
+      [
+        "motion_control",
+        "motion_control_v3_pro",
+        "fal-ai/kling-video/v3/pro/motion-control",
+      ],
+      ["wan_replace", "wan_replace", "fal-ai/wan/v2.2-14b/animate/replace"],
+    ]);
+    expect(attempts[0]).toMatchObject({
+      kind: "motion_control",
+      includeFaceElement: false,
+      orientation: "video",
+    });
+    expect(attempts[1]).toMatchObject({
+      includeFaceElement: true,
+      orientation: "video",
+    });
+  });
+
+  it("inserts P0b Viggle before Wan when VIGGLE_API_KEY is set", () => {
+    const attempts = planRemixAttempts({
+      engine: "motion_control_cascade",
+      orientation: "video",
+      clipDurationSec: 10,
+      tier: "standard",
+      env: { VIGGLE_API_KEY: "vg-test" },
+    });
+    expect(attempts.map((a) => a.kind)).toEqual([
+      "motion_control",
+      "motion_control",
+      "motion_control",
+      "viggle",
+      "wan_replace",
+    ]);
+    expect(attempts[3]).toMatchObject({
+      kind: "viggle",
+      modelId: "viggle.ai/v1/renders",
+    });
+  });
+
+  it("does not bind a face element on v3 when orientation is image", () => {
+    const attempts = planRemixAttempts({
+      engine: "motion_control_cascade",
+      orientation: "image",
+      clipDurationSec: 8,
+      tier: "standard",
+      env: {},
+    });
+    const mc = attempts.filter((a) => a.kind === "motion_control");
+    expect(mc.every((a) => a.includeFaceElement === false)).toBe(true);
+  });
+});
+
+describe("planRemixAttempts legacy", () => {
+  it("plans video → image → O1 for legacy motion_control_v3_std", () => {
     const attempts = planRemixAttempts({
       engine: "motion_control_v3_std",
       orientation: "video",
@@ -46,44 +121,6 @@ describe("planRemixAttempts", () => {
     ]);
     expect(attempts[0].modelId).toBe(
       "fal-ai/kling-video/v3/standard/motion-control"
-    );
-    expect(attempts[2].modelId).toBe(
-      "fal-ai/kling-video/o1/video-to-video/edit"
-    );
-  });
-
-  it("skips inverse image + O1 when the clip is longer than 10s", () => {
-    const attempts = planRemixAttempts({
-      engine: "motion_control_v3_std",
-      orientation: "video",
-      clipDurationSec: 25,
-      tier: "standard",
-      env: {},
-    });
-    expect(attempts).toHaveLength(1);
-    expect(attempts[0]).toMatchObject({
-      kind: "motion_control",
-      orientation: "video",
-    });
-  });
-
-  it("plans image → video → O1 for a short camera clip", () => {
-    const attempts = planRemixAttempts({
-      engine: "motion_control_v3_std",
-      orientation: "image",
-      clipDurationSec: 8,
-      tier: "pro",
-      env: {},
-    });
-    expect(attempts.map((a) => a.kind)).toEqual([
-      "motion_control",
-      "motion_control",
-      "o1_v2v_edit",
-    ]);
-    expect(attempts[0]).toMatchObject({ orientation: "image" });
-    expect(attempts[1]).toMatchObject({ orientation: "video" });
-    expect(attempts[0].modelId).toBe(
-      "fal-ai/kling-video/v3/pro/motion-control"
     );
   });
 

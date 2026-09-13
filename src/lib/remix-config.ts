@@ -1,17 +1,21 @@
 /**
- * Viral remix V2 — Kling Motion Control (primary) + O1 V2V edit fallback.
+ * Viral remix V2 — Motion Control cascade + Viggle + Wan replace.
  *
  * The user uploads a TikTok/Reel clip and the locked character replays
- * the motion. Primary engine is Fal kling-video/v3 standard|pro motion-control
- * (image_url + video_url). Kling O3 Omni V2V stays as an env rollback
- * (`REMIX_ENGINE=kling_o3_v2v`). Identity is locked via the character
- * still (+ optional face `elements[]` when orientation=video). No PuLID.
+ * the motion. Default `REMIX_ENGINE=motion_control_cascade`:
+ *   P0a fal-ai/kling-video/v2.6/standard/motion-control
+ *       then v3/standard then v3/pro (image_url + video_url)
+ *   P0b Viggle POST /v1/renders when VIGGLE_API_KEY is set (~$0.01/s)
+ *   P0c fal-ai/wan/v2.2-14b/animate/replace (same FAL_KEY / queue / webhook)
+ * Kling O3 Omni V2V stays as `REMIX_ENGINE=kling_o3_v2v`. No PuLID.
  *
- * Assumed Fal list prices (2026-09 docs):
- *   Motion Control V3 Standard: $0.126/s → 10 credits/s → ~3.17×
- *   Motion Control V3 Pro:      $0.168/s → 14 credits/s → ~3.33×
- *   O1 V2V edit fallback:       $0.168/s (rare; billed at the held Std/Pro rate)
- * 1 Aura credit ≈ $0.04. ≥3× margin on the primary path.
+ * Assumed provider list prices (2026-09 docs):
+ *   Motion Control V2.6 Standard: $0.07/s
+ *   Motion Control V3 Standard:   $0.126/s → 10 credits/s → ~3.17×
+ *   Motion Control V3 Pro:        $0.168/s → 14 credits/s → ~3.33×
+ *   Viggle remix:                 $0.01/s (when keyed)
+ *   Wan replace 480p:             ~$0.04/s billed-frame (rare fallback)
+ * 1 Aura credit ≈ $0.04. ≥3× margin on the primary MC path.
  */
 
 export const REMIX_TIER_VALUES = ["standard", "pro"] as const;
@@ -51,12 +55,17 @@ export const REMIX_MAX_TOTAL_REFERENCES = 4;
  */
 export const REMIX_ONE_CREDIT_USD = 0.04;
 
+export const REMIX_MOTION_CONTROL_V26_STANDARD_MODEL =
+  "fal-ai/kling-video/v2.6/standard/motion-control";
 export const REMIX_MOTION_CONTROL_STANDARD_MODEL =
   "fal-ai/kling-video/v3/standard/motion-control";
 export const REMIX_MOTION_CONTROL_PRO_MODEL =
   "fal-ai/kling-video/v3/pro/motion-control";
 export const REMIX_O1_V2V_EDIT_MODEL =
   "fal-ai/kling-video/o1/video-to-video/edit";
+export const REMIX_WAN_REPLACE_MODEL =
+  "fal-ai/wan/v2.2-14b/animate/replace";
+export const REMIX_VIGGLE_MODEL_ID = "viggle.ai/v1/renders";
 export const REMIX_O3_STANDARD_MODEL =
   "fal-ai/kling-video/o3/standard/video-to-video/reference";
 export const REMIX_O3_PRO_MODEL =
@@ -118,6 +127,16 @@ export function resolveRemixO1EditModelId(
   env: Record<string, string | undefined> = process.env
 ): string {
   return env.FAL_KLING_O1_V2V_EDIT_MODEL?.trim() || REMIX_O1_V2V_EDIT_MODEL;
+}
+
+export function resolveRemixWanReplaceModelId(
+  env: Record<string, string | undefined> = process.env
+): string {
+  return env.FAL_WAN_REPLACE_MODEL?.trim() || REMIX_WAN_REPLACE_MODEL;
+}
+
+export function isViggleRemixModelId(modelId: string | null | undefined): boolean {
+  return (modelId ?? "").trim() === REMIX_VIGGLE_MODEL_ID;
 }
 
 export function remixMaxDurationSec(
