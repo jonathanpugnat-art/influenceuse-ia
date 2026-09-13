@@ -100,6 +100,7 @@ import {
 } from "@/server/services/fal-video-webhook";
 import { FalQueueSubmitError } from "@/server/services/image-providers/fal-queue.client";
 import { FAL_REFERENCE_POLICY_USER_MESSAGE } from "@/lib/generation-errors";
+import { resetRemixContentPolicyRateLimit } from "@/lib/remix-engine";
 
 const pendingSeedance = {
   id: "job-s-1",
@@ -488,6 +489,7 @@ describe("Remix webhook URL + fail-closed submit", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetRemixContentPolicyRateLimit();
     process.env = { ...env };
     process.env.NEXT_PUBLIC_APP_URL = "https://www.aurainfluenceai.com";
     delete process.env.REMIX_WEBHOOK_SECRET;

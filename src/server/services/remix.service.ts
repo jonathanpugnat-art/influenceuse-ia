@@ -15,10 +15,12 @@ import {
 import {
   buildMotionControlPrompt,
   classifyRemixProviderError,
+  consumeRemixContentPolicyAdvance,
   getRemixEngine,
   isRemixEngine,
   logRemixProviderError,
   planRemixAttempts,
+  REMIX_CASCADE_MAX_ATTEMPTS,
   REMIX_CONTENT_POLICY_USER_MESSAGE,
   REMIX_O1_EDIT_PROMPT,
   type RemixAttempt,
@@ -196,7 +198,7 @@ async function resolveInfluencerIdentity(
  *   4. Require a signed webhook URL (fail-closed if
  *      REMIX_WEBHOOK_SECRET is missing — never submit to Fal without
  *      a callback).
- *   5. Submit the cascade (MC v2.6 → v3 std → v3 pro → Viggle → Wan),
+ *   5. Submit the cascade (≤ `REMIX_CASCADE_MAX_ATTEMPTS` engines),
  *      log host + falRequestId (no secrets). content_policy / 422 tries
  *      the next engine before refunding.
  *   6. Persist RemixJob so the webhook can find it by request_id.
@@ -335,6 +337,7 @@ export async function createRemixJob(
 
     const submitted = await submitRemixAttemptsUntilAccepted({
       jobId: job.id,
+      userId: input.userId,
       attempts,
       startIndex: 0,
       priorRecords: [],
@@ -508,6 +511,7 @@ async function submitOneRemixAttempt(input: {
 
 export async function submitRemixAttemptsUntilAccepted(input: {
   jobId: string;
+  userId: string;
   attempts: RemixAttempt[];
   startIndex: number;
   priorRecords: RemixAttemptRecord[];
@@ -581,6 +585,20 @@ export async function submitRemixAttemptsUntilAccepted(input: {
         error: detail.slice(0, 280),
       });
       if (errorClass === "content_policy") {
+        const hasNext = i + 1 < input.attempts.length;
+        if (hasNext && !consumeRemixContentPolicyAdvance(input.userId)) {
+          return {
+            ok: false,
+            userError: REMIX_CONTENT_POLICY_USER_MESSAGE,
+            meta: {
+              v: 2,
+              engine: input.engine,
+              orientation: input.orientation,
+              attemptIndex: i,
+              attempts: records,
+            },
+          };
+        }
         continue;
       }
       return {
@@ -679,7 +697,11 @@ export async function handleRemixProviderFailure(
     tier: job.tier as RemixTier,
   });
   const startIndex = (meta?.attemptIndex ?? 0) + 1;
-  if (startIndex >= attempts.length) {
+  const maxAttempts =
+    engine === "motion_control_cascade"
+      ? Math.min(attempts.length, REMIX_CASCADE_MAX_ATTEMPTS)
+      : attempts.length;
+  if (startIndex >= maxAttempts) {
     await failRemixJob(jobId, REMIX_CONTENT_POLICY_USER_MESSAGE);
     return "refunded";
   }
@@ -701,8 +723,14 @@ export async function handleRemixProviderFailure(
   });
   if (locked.count !== 1) return "ignored";
 
+  if (!consumeRemixContentPolicyAdvance(job.userId)) {
+    await failRemixJob(jobId, REMIX_CONTENT_POLICY_USER_MESSAGE);
+    return "refunded";
+  }
+
   const submitted = await submitRemixAttemptsUntilAccepted({
     jobId: job.id,
+    userId: job.userId,
     attempts,
     startIndex,
     priorRecords: [
@@ -777,15 +805,40 @@ export function verifyRemixWebhookSecret(candidate: string | null): boolean {
  */
 export async function finalizeRemixJob(
   jobId: string,
-  opts: { videoUrl: string; rawPayload?: unknown }
+  opts: { videoUrl: string; rawPayload?: unknown; requestId?: string | null }
 ): Promise<void> {
   const job = await db.remixJob.findUnique({ where: { id: jobId } });
   if (!job) {
     console.warn(`[remix] finalizeRemixJob: job ${jobId} not found`);
     return;
   }
-  if (job.status === "COMPLETED" && job.outputVideoUrl) {
-    console.log(`[remix] finalizeRemixJob: ${jobId} already COMPLETED`);
+
+  const expectedFalRequestId =
+    opts.requestId != null && opts.requestId !== ""
+      ? opts.requestId
+      : job.falRequestId;
+
+  if (job.status === "COMPLETED" || job.status === "REFUNDED") {
+    console.warn("[remix] finalizeRemixJob ignored terminal job", {
+      jobId,
+      status: job.status,
+      falRequestId: job.falRequestId,
+      requestId: opts.requestId ?? null,
+    });
+    return;
+  }
+
+  if (
+    opts.requestId &&
+    job.falRequestId &&
+    opts.requestId !== job.falRequestId
+  ) {
+    console.warn("[remix] finalizeRemixJob ignored stale requestId", {
+      jobId,
+      status: job.status,
+      falRequestId: job.falRequestId,
+      requestId: opts.requestId,
+    });
     return;
   }
 
@@ -801,8 +854,12 @@ export async function finalizeRemixJob(
   }
 
   const existingMeta = parseRemixJobMeta(job.metadata);
-  await db.remixJob.update({
-    where: { id: jobId },
+  const claimed = await db.remixJob.updateMany({
+    where: {
+      id: jobId,
+      status: { in: ["PENDING", "IN_PROGRESS"] },
+      falRequestId: expectedFalRequestId,
+    },
     data: {
       status: "COMPLETED",
       outputVideoUrl: stored,
@@ -816,6 +873,15 @@ export async function finalizeRemixJob(
       } as object,
     },
   });
+  if (claimed.count !== 1) {
+    console.warn("[remix] finalizeRemixJob stale/already terminal", {
+      jobId,
+      status: job.status,
+      falRequestId: job.falRequestId,
+      requestId: expectedFalRequestId,
+    });
+    return;
+  }
 
   await emitEvent(job.userId, "REMIX_COMPLETED", {
     jobId: job.id,
@@ -893,6 +959,7 @@ export async function reconcileRemixJob(jobId: string): Promise<void> {
         await finalizeRemixJob(job.id, {
           videoUrl: check.videoUrl,
           rawPayload: check.raw,
+          requestId: job.falRequestId,
         });
         return;
       }

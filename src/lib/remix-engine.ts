@@ -4,7 +4,8 @@
  * SCENE_ENGINE stays `kling_o3_i2v` — do not re-enable Seedance for
  * photoreal faces from this module.
  *
- * Default product path is `motion_control_cascade`:
+ * Default product path is `motion_control_cascade` (max
+ * `REMIX_CASCADE_MAX_ATTEMPTS` submits per hold):
  *   P0a Kling Motion Control v2.6 std → v3 std → v3 pro
  *   P0b Viggle POST /v1/renders when `VIGGLE_API_KEY` is set ($0.01/s)
  *   P0c Fal Wan 2.2 animate/replace (same FAL_KEY + queue + webhook)
@@ -37,6 +38,40 @@ export const REMIX_ENGINES = [
 export type RemixEngine = (typeof REMIX_ENGINES)[number];
 
 export const DEFAULT_REMIX_ENGINE: RemixEngine = "motion_control_cascade";
+
+/** 1 primary + 2 fallbacks max per credit hold on the cascade engine. */
+export const REMIX_CASCADE_MAX_ATTEMPTS = 3;
+
+/** In-process cap: content_policy advances per user / 10 min. */
+export const REMIX_CONTENT_POLICY_RATE_LIMIT = 6;
+export const REMIX_CONTENT_POLICY_RATE_WINDOW_MS = 10 * 60 * 1000;
+
+const contentPolicyAdvancesByUser = new Map<string, number[]>();
+
+export function resetRemixContentPolicyRateLimit(): void {
+  contentPolicyAdvancesByUser.clear();
+}
+
+/**
+ * Record one content_policy advance. Returns false when the user is already
+ * at the window cap — caller must stop the cascade (no extra provider submit).
+ */
+export function consumeRemixContentPolicyAdvance(
+  userId: string,
+  now = Date.now()
+): boolean {
+  const windowStart = now - REMIX_CONTENT_POLICY_RATE_WINDOW_MS;
+  const recent = (contentPolicyAdvancesByUser.get(userId) ?? []).filter(
+    (ts) => ts > windowStart
+  );
+  if (recent.length >= REMIX_CONTENT_POLICY_RATE_LIMIT) {
+    contentPolicyAdvancesByUser.set(userId, recent);
+    return false;
+  }
+  recent.push(now);
+  contentPolicyAdvancesByUser.set(userId, recent);
+  return true;
+}
 
 export const REMIX_ATTEMPT_KINDS = [
   "motion_control",
@@ -171,8 +206,9 @@ function resolveMotionControlV26ModelId(
 
 /**
  * Ordered submit attempts. Cascade (default): MC v2.6 → v3 std → v3 pro,
- * then Viggle when keyed, then Wan replace. Legacy `motion_control_v3_std`
- * keeps orientation inverse + O1. O3 rollback is a single attempt.
+ * then Viggle when keyed, then Wan replace — sliced to
+ * `REMIX_CASCADE_MAX_ATTEMPTS`. Legacy `motion_control_v3_std` keeps
+ * orientation inverse + O1 (already ≤3). O3 rollback is a single attempt.
  */
 export function planRemixAttempts(input: {
   engine: RemixEngine;
@@ -258,7 +294,7 @@ export function planRemixAttempts(input: {
         engine: "wan_replace",
         modelId: resolveRemixWanReplaceModelId(env),
       });
-      return attempts;
+      return attempts.slice(0, REMIX_CASCADE_MAX_ATTEMPTS);
     }
     default: {
       const _never: never = input.engine;

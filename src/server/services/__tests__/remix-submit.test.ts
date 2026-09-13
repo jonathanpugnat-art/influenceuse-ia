@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TRPCError } from "@trpc/server";
 import { FalQueueSubmitError } from "@/server/services/image-providers/fal-queue.client";
-import { REMIX_CONTENT_POLICY_USER_MESSAGE } from "@/lib/remix-engine";
+import {
+  consumeRemixContentPolicyAdvance,
+  REMIX_CONTENT_POLICY_RATE_LIMIT,
+  REMIX_CONTENT_POLICY_USER_MESSAGE,
+  resetRemixContentPolicyRateLimit,
+} from "@/lib/remix-engine";
 
 const mockDb = vi.hoisted(() => ({
   influencer: { findFirst: vi.fn() },
@@ -73,8 +78,11 @@ vi.mock(
   () => wanMock
 );
 
+import { uploadFromUrl } from "@/server/services/storage.service";
+import { emitEvent } from "@/server/services/webhook.service";
 import {
   createRemixJob,
+  finalizeRemixJob,
   handleRemixProviderFailure,
   submitRemixAttemptsUntilAccepted,
 } from "@/server/services/remix.service";
@@ -110,6 +118,7 @@ function policyError() {
 
 const cascadeBase = {
   jobId: "job-r-1",
+  userId: "u1",
   startIndex: 0,
   priorRecords: [],
   webhookUrl:
@@ -131,6 +140,7 @@ describe("submitRemixAttemptsUntilAccepted cascade", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetRemixContentPolicyRateLimit();
     process.env = { ...env };
     delete process.env.VIGGLE_API_KEY;
     creditsMock.checkCredits.mockResolvedValue(true);
@@ -181,9 +191,39 @@ describe("submitRemixAttemptsUntilAccepted cascade", () => {
     expect(wanMock.submitFalWanReplaceRemix).not.toHaveBeenCalled();
   });
 
-  it("walks v2.6 → v3 → pro → Wan then refunds with the FR toast", async () => {
+  it("after 3 content_policy refunds with the FR toast and never submits a 4th", async () => {
     falMcMock.submitFalKlingMotionControlRemix.mockRejectedValue(policyError());
     wanMock.submitFalWanReplaceRemix.mockRejectedValue(policyError());
+    viggleMock.submitViggleRemix.mockRejectedValue(policyError());
+
+    const attempts = planRemixAttempts({
+      engine: "motion_control_cascade",
+      orientation: "video",
+      clipDurationSec: 10,
+      tier: "standard",
+      env: { VIGGLE_API_KEY: "vg-test" },
+    });
+    const result = await submitRemixAttemptsUntilAccepted({
+      ...cascadeBase,
+      attempts,
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.userError).toBe(REMIX_CONTENT_POLICY_USER_MESSAGE);
+    expect(falMcMock.submitFalKlingMotionControlRemix).toHaveBeenCalledTimes(3);
+    expect(wanMock.submitFalWanReplaceRemix).not.toHaveBeenCalled();
+    expect(viggleMock.submitViggleRemix).not.toHaveBeenCalled();
+    expect(
+      result.meta.attempts.every((a) => a.errorClass === "content_policy")
+    ).toBe(true);
+  });
+
+  it("stops the cascade after the per-user content_policy rate limit", async () => {
+    for (let i = 0; i < REMIX_CONTENT_POLICY_RATE_LIMIT; i++) {
+      expect(consumeRemixContentPolicyAdvance("u1")).toBe(true);
+    }
+    falMcMock.submitFalKlingMotionControlRemix.mockRejectedValue(policyError());
 
     const attempts = planRemixAttempts({
       engine: "motion_control_cascade",
@@ -200,39 +240,7 @@ describe("submitRemixAttemptsUntilAccepted cascade", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.userError).toBe(REMIX_CONTENT_POLICY_USER_MESSAGE);
-    expect(falMcMock.submitFalKlingMotionControlRemix).toHaveBeenCalledTimes(3);
-    expect(wanMock.submitFalWanReplaceRemix).toHaveBeenCalledTimes(1);
-    expect(viggleMock.submitViggleRemix).not.toHaveBeenCalled();
-    expect(
-      result.meta.attempts.every((a) => a.errorClass === "content_policy")
-    ).toBe(true);
-  });
-
-  it("calls Viggle after Kling MC when VIGGLE_API_KEY is set", async () => {
-    falMcMock.submitFalKlingMotionControlRemix.mockRejectedValue(policyError());
-    viggleMock.submitViggleRemix.mockResolvedValue({
-      requestId: "render_123",
-      modelId: "viggle.ai/v1/renders",
-      prompt: "Viggle video remix (character + motion)",
-      payload: {},
-    });
-
-    const attempts = planRemixAttempts({
-      engine: "motion_control_cascade",
-      orientation: "video",
-      clipDurationSec: 10,
-      tier: "standard",
-      env: { VIGGLE_API_KEY: "vg-test" },
-    });
-    const result = await submitRemixAttemptsUntilAccepted({
-      ...cascadeBase,
-      attempts,
-    });
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.result.requestId).toBe("render_123");
-    expect(viggleMock.submitViggleRemix).toHaveBeenCalledTimes(1);
+    expect(falMcMock.submitFalKlingMotionControlRemix).toHaveBeenCalledTimes(1);
     expect(wanMock.submitFalWanReplaceRemix).not.toHaveBeenCalled();
   });
 });
@@ -242,6 +250,7 @@ describe("createRemixJob + handleRemixProviderFailure refund", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetRemixContentPolicyRateLimit();
     process.env = { ...env };
     process.env.NEXT_PUBLIC_APP_URL = "https://www.aurainfluenceai.com";
     process.env.REMIX_WEBHOOK_SECRET = "remix-secret";
@@ -289,7 +298,7 @@ describe("createRemixJob + handleRemixProviderFailure refund", () => {
 
     expect(creditsMock.refundCredits).toHaveBeenCalledWith("u1", 100);
     expect(falMcMock.submitFalKlingMotionControlRemix).toHaveBeenCalledTimes(3);
-    expect(wanMock.submitFalWanReplaceRemix).toHaveBeenCalledTimes(1);
+    expect(wanMock.submitFalWanReplaceRemix).not.toHaveBeenCalled();
     expect(falO3Mock.submitFalKlingO3Remix).not.toHaveBeenCalled();
   });
 
@@ -299,12 +308,12 @@ describe("createRemixJob + handleRemixProviderFailure refund", () => {
       status: "IN_PROGRESS",
       sourceDurationSec: 10,
       durationSec: 10,
-      falModel: "fal-ai/wan/v2.2-14b/animate/replace",
+      falModel: "fal-ai/kling-video/v3/pro/motion-control",
       metadata: {
         v: 2,
         engine: "motion_control_cascade",
         orientation: "video",
-        attemptIndex: 3,
+        attemptIndex: 2,
         attempts: [],
       },
     });
@@ -326,5 +335,100 @@ describe("createRemixJob + handleRemixProviderFailure refund", () => {
         }),
       })
     );
+  });
+});
+
+describe("finalizeRemixJob atomic falRequestId", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetRemixContentPolicyRateLimit();
+    vi.mocked(uploadFromUrl).mockResolvedValue(
+      "https://cdn.example.com/remix-out.mp4"
+    );
+    mockDb.remixJob.updateMany.mockResolvedValue({ count: 1 });
+  });
+
+  it("ignores a mismatched falRequestId without completing", async () => {
+    mockDb.remixJob.findUnique.mockResolvedValue({
+      ...pendingRemix,
+      status: "IN_PROGRESS",
+      falRequestId: "fal-current",
+    });
+
+    await finalizeRemixJob("job-r-1", {
+      videoUrl: "https://fal.example/stale.mp4",
+      requestId: "fal-stale",
+    });
+
+    expect(uploadFromUrl).not.toHaveBeenCalled();
+    expect(mockDb.remixJob.updateMany).not.toHaveBeenCalled();
+    expect(emitEvent).not.toHaveBeenCalled();
+  });
+
+  it("ignores REFUNDED and never overwrites it", async () => {
+    mockDb.remixJob.findUnique.mockResolvedValue({
+      ...pendingRemix,
+      status: "REFUNDED",
+      falRequestId: "fal-mc-1",
+    });
+
+    await finalizeRemixJob("job-r-1", {
+      videoUrl: "https://fal.example/late.mp4",
+      requestId: "fal-mc-1",
+    });
+
+    expect(uploadFromUrl).not.toHaveBeenCalled();
+    expect(mockDb.remixJob.updateMany).not.toHaveBeenCalled();
+    expect(emitEvent).not.toHaveBeenCalled();
+    expect(creditsMock.refundCredits).not.toHaveBeenCalled();
+  });
+
+  it("completes PENDING|IN_PROGRESS when falRequestId matches", async () => {
+    mockDb.remixJob.findUnique.mockResolvedValue({
+      ...pendingRemix,
+      status: "IN_PROGRESS",
+      falRequestId: "fal-mc-1",
+    });
+
+    await finalizeRemixJob("job-r-1", {
+      videoUrl: "https://fal.example/ok.mp4",
+      requestId: "fal-mc-1",
+    });
+
+    expect(uploadFromUrl).toHaveBeenCalled();
+    expect(mockDb.remixJob.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: "job-r-1",
+          status: { in: ["PENDING", "IN_PROGRESS"] },
+          falRequestId: "fal-mc-1",
+        },
+        data: expect.objectContaining({
+          status: "COMPLETED",
+          outputVideoUrl: "https://cdn.example.com/remix-out.mp4",
+        }),
+      })
+    );
+    expect(emitEvent).toHaveBeenCalledWith(
+      "u1",
+      "REMIX_COMPLETED",
+      expect.objectContaining({ jobId: "job-r-1" })
+    );
+  });
+
+  it("no-ops when updateMany claims zero rows (already terminal)", async () => {
+    mockDb.remixJob.findUnique.mockResolvedValue({
+      ...pendingRemix,
+      status: "IN_PROGRESS",
+      falRequestId: "fal-mc-1",
+    });
+    mockDb.remixJob.updateMany.mockResolvedValue({ count: 0 });
+
+    await finalizeRemixJob("job-r-1", {
+      videoUrl: "https://fal.example/ok.mp4",
+      requestId: "fal-mc-1",
+    });
+
+    expect(emitEvent).not.toHaveBeenCalled();
   });
 });

@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
     await finalizeRemixJob(job.id, {
       videoUrl: parsed.videoUrl,
       rawPayload: body,
+      requestId: parsed.requestId,
     });
     return NextResponse.json({ received: true, status: "COMPLETED" });
   }
@@ -111,14 +112,14 @@ function parseFalPayload(body: unknown): ParsedFalPayload {
 
   const videoFromRoot = extractFalVideoUrl(b);
   if (videoFromRoot) {
-    return { status: "COMPLETED", videoUrl: videoFromRoot };
+    return { status: "COMPLETED", videoUrl: videoFromRoot, requestId };
   }
   // Nested payload — some FAL webhooks wrap the model output in `payload`.
   const nested = b.payload;
   if (nested && typeof nested === "object") {
     const videoFromNested = extractFalVideoUrl(nested);
     if (videoFromNested) {
-      return { status: "COMPLETED", videoUrl: videoFromNested };
+      return { status: "COMPLETED", videoUrl: videoFromNested, requestId };
     }
   }
 

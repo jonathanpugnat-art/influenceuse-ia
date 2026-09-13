@@ -1,10 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   classifyRemixProviderError,
+  consumeRemixContentPolicyAdvance,
   getRemixEngine,
   planRemixAttempts,
+  REMIX_CASCADE_MAX_ATTEMPTS,
+  REMIX_CONTENT_POLICY_RATE_LIMIT,
+  REMIX_CONTENT_POLICY_RATE_WINDOW_MS,
   REMIX_CONTENT_POLICY_USER_MESSAGE,
   REMIX_O1_EDIT_PROMPT,
+  resetRemixContentPolicyRateLimit,
 } from "@/lib/remix-engine";
 import { getSceneEngine } from "@/lib/scene-engine";
 
@@ -34,7 +39,7 @@ describe("remix-engine routing", () => {
 });
 
 describe("planRemixAttempts cascade", () => {
-  it("orders P0a v2.6 → v3 std → v3 pro then P0c Wan when Viggle is unset", () => {
+  it("caps cascade at 3: v2.6 → v3 std → v3 pro (Wan truncated) without Viggle", () => {
     const attempts = planRemixAttempts({
       engine: "motion_control_cascade",
       orientation: "video",
@@ -42,6 +47,7 @@ describe("planRemixAttempts cascade", () => {
       tier: "standard",
       env: {},
     });
+    expect(attempts.length).toBeLessThanOrEqual(REMIX_CASCADE_MAX_ATTEMPTS);
     expect(attempts.map((a) => [a.kind, a.engine, a.modelId])).toEqual([
       [
         "motion_control",
@@ -58,8 +64,8 @@ describe("planRemixAttempts cascade", () => {
         "motion_control_v3_pro",
         "fal-ai/kling-video/v3/pro/motion-control",
       ],
-      ["wan_replace", "wan_replace", "fal-ai/wan/v2.2-14b/animate/replace"],
     ]);
+    expect(attempts.some((a) => a.kind === "wan_replace")).toBe(false);
     expect(attempts[0]).toMatchObject({
       kind: "motion_control",
       includeFaceElement: false,
@@ -71,7 +77,7 @@ describe("planRemixAttempts cascade", () => {
     });
   });
 
-  it("inserts P0b Viggle before Wan when VIGGLE_API_KEY is set", () => {
+  it("caps cascade at 3 when Viggle is keyed (Wan truncated)", () => {
     const attempts = planRemixAttempts({
       engine: "motion_control_cascade",
       orientation: "video",
@@ -79,17 +85,13 @@ describe("planRemixAttempts cascade", () => {
       tier: "standard",
       env: { VIGGLE_API_KEY: "vg-test" },
     });
+    expect(attempts.length).toBeLessThanOrEqual(REMIX_CASCADE_MAX_ATTEMPTS);
+    expect(attempts.some((a) => a.kind === "wan_replace")).toBe(false);
     expect(attempts.map((a) => a.kind)).toEqual([
       "motion_control",
       "motion_control",
       "motion_control",
-      "viggle",
-      "wan_replace",
     ]);
-    expect(attempts[3]).toMatchObject({
-      kind: "viggle",
-      modelId: "viggle.ai/v1/renders",
-    });
   });
 
   it("does not bind a face element on v3 when orientation is image", () => {
@@ -169,5 +171,26 @@ describe("remix copy", () => {
     expect(REMIX_O1_EDIT_PROMPT).toBe(
       "Replace the character with @Element1 keeping same motion"
     );
+  });
+});
+
+describe("content_policy rate limit", () => {
+  beforeEach(() => {
+    resetRemixContentPolicyRateLimit();
+  });
+
+  it("allows 6 advances then blocks until the 10 min window elapses", () => {
+    const t0 = 1_700_000_000_000;
+    for (let i = 0; i < REMIX_CONTENT_POLICY_RATE_LIMIT; i++) {
+      expect(consumeRemixContentPolicyAdvance("u1", t0 + i)).toBe(true);
+    }
+    expect(consumeRemixContentPolicyAdvance("u1", t0 + 10)).toBe(false);
+    expect(
+      consumeRemixContentPolicyAdvance(
+        "u1",
+        t0 + REMIX_CONTENT_POLICY_RATE_WINDOW_MS + 1
+      )
+    ).toBe(true);
+    expect(consumeRemixContentPolicyAdvance("u2", t0 + 10)).toBe(true);
   });
 });
