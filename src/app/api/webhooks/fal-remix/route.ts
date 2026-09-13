@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/server/db";
 import {
-  failRemixJob,
   finalizeRemixJob,
+  handleRemixProviderFailure,
   reconcileRemixJob,
   verifyRemixWebhookSecret,
 } from "@/server/services/remix.service";
@@ -57,16 +57,21 @@ export async function POST(req: NextRequest) {
     await finalizeRemixJob(job.id, {
       videoUrl: parsed.videoUrl,
       rawPayload: body,
+      requestId: parsed.requestId,
     });
     return NextResponse.json({ received: true, status: "COMPLETED" });
   }
 
   if (parsed.status === "FAILED") {
-    await failRemixJob(
+    const outcome = await handleRemixProviderFailure(
       job.id,
-      parsed.error ?? "FAL reported a failed remix render."
+      parsed.error ?? "FAL reported a failed remix render.",
+      parsed.requestId
     );
-    return NextResponse.json({ received: true, status: "FAILED" });
+    return NextResponse.json({
+      received: true,
+      status: outcome === "fallback" ? "FALLBACK" : "FAILED",
+    });
   }
 
   // Ambiguous payload (status-only ping, unknown shape) — re-query FAL.
@@ -78,16 +83,24 @@ interface ParsedFalPayload {
   status: "COMPLETED" | "FAILED" | "UNKNOWN";
   videoUrl?: string | null;
   error?: string;
+  requestId?: string | null;
 }
 
 function parseFalPayload(body: unknown): ParsedFalPayload {
   if (!body || typeof body !== "object") return { status: "UNKNOWN" };
   const b = body as Record<string, unknown>;
+  const requestId =
+    typeof b.request_id === "string"
+      ? b.request_id
+      : typeof b.requestId === "string"
+        ? b.requestId
+        : null;
 
   const status = typeof b.status === "string" ? b.status.toUpperCase() : null;
   if (status === "ERROR" || status === "FAILED") {
     return {
       status: "FAILED",
+      requestId,
       error:
         typeof b.error === "string"
           ? b.error
@@ -99,14 +112,14 @@ function parseFalPayload(body: unknown): ParsedFalPayload {
 
   const videoFromRoot = extractFalVideoUrl(b);
   if (videoFromRoot) {
-    return { status: "COMPLETED", videoUrl: videoFromRoot };
+    return { status: "COMPLETED", videoUrl: videoFromRoot, requestId };
   }
   // Nested payload — some FAL webhooks wrap the model output in `payload`.
   const nested = b.payload;
   if (nested && typeof nested === "object") {
     const videoFromNested = extractFalVideoUrl(nested);
     if (videoFromNested) {
-      return { status: "COMPLETED", videoUrl: videoFromNested };
+      return { status: "COMPLETED", videoUrl: videoFromNested, requestId };
     }
   }
 

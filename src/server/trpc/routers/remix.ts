@@ -13,15 +13,18 @@ import {
   settleOpenRemixJobIfStale,
 } from "@/server/services/stale-video-job.service";
 import {
+  allowedRemixDurations,
   clampRemixDuration,
   estimateRemixCreditsForTier,
   REMIX_ALLOWED_DURATIONS,
+  REMIX_ORIENTATION_VALUES,
   REMIX_TIER_VALUES,
   REMIX_TIERS,
   resolveRemixOembedProvider,
   validateRemixSource,
   type RemixDuration,
 } from "@/lib/remix-config";
+import { getRemixEngine } from "@/lib/remix-engine";
 import { PLANS } from "@/lib/constants";
 import type { Plan } from "@/generated/prisma/client";
 
@@ -29,11 +32,17 @@ import type { Plan } from "@/generated/prisma/client";
 // Zod schemas
 // ──────────────────────────────────────────────
 
-const durationSchema = z.union([z.literal(5), z.literal(10), z.literal(15)]);
+const durationSchema = z.union([
+  z.literal(5),
+  z.literal(10),
+  z.literal(15),
+  z.literal(30),
+]);
 
 const createRemixInputSchema = z.object({
   influencerId: z.string().min(1),
   tier: z.enum(REMIX_TIER_VALUES).default("standard"),
+  characterOrientation: z.enum(REMIX_ORIENTATION_VALUES).default("video"),
   sourceVideoUrl: z.string().url(),
   /**
    * Duration reported by the browser via the `<video>` element. Optional
@@ -73,12 +82,17 @@ export const remixRouter = createTRPCRouter({
    */
   pricing: protectedProcedure.query(() => {
     return {
+      engine: getRemixEngine(),
       tiers: REMIX_TIER_VALUES.map((tier) => ({
         id: tier,
         label: REMIX_TIERS[tier].label,
         creditsPerSec: REMIX_TIERS[tier].creditsPerSec,
       })),
       allowedDurations: [...REMIX_ALLOWED_DURATIONS] as number[],
+      orientationLimits: {
+        video: allowedRemixDurations("video"),
+        image: allowedRemixDurations("image"),
+      },
     };
   }),
 
@@ -88,12 +102,14 @@ export const remixRouter = createTRPCRouter({
         tier: z.enum(REMIX_TIER_VALUES),
         duration: durationSchema,
         sourceDurationSec: z.number().positive().nullable().optional(),
+        characterOrientation: z.enum(REMIX_ORIENTATION_VALUES).optional(),
       })
     )
     .query(({ input }) => {
       const duration = clampRemixDuration(
         input.duration,
-        input.sourceDurationSec ?? null
+        input.sourceDurationSec ?? null,
+        input.characterOrientation ?? "video"
       );
       return {
         duration,
@@ -170,12 +186,15 @@ export const remixRouter = createTRPCRouter({
         });
       }
 
-      const sourceIssue = validateRemixSource({
-        mimeType: input.sourceMimeType ?? null,
-        sizeBytes: input.sourceSizeBytes ?? null,
-        durationSec: input.sourceDurationSec ?? null,
-        url: input.sourceVideoUrl,
-      });
+      const sourceIssue = validateRemixSource(
+        {
+          mimeType: input.sourceMimeType ?? null,
+          sizeBytes: input.sourceSizeBytes ?? null,
+          durationSec: input.sourceDurationSec ?? null,
+          url: input.sourceVideoUrl,
+        },
+        input.characterOrientation
+      );
       if (sourceIssue) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -187,6 +206,7 @@ export const remixRouter = createTRPCRouter({
         userId: user.id,
         influencerId: input.influencerId,
         tier: input.tier,
+        characterOrientation: input.characterOrientation,
         sourceVideoUrl: input.sourceVideoUrl,
         sourceDurationSec: input.sourceDurationSec ?? null,
         requestedDuration: input.duration,

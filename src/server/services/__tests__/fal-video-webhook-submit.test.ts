@@ -33,6 +33,12 @@ const falRemixMock = vi.hoisted(() => ({
   checkFalKlingO3Remix: vi.fn(),
 }));
 
+const falMcRemixMock = vi.hoisted(() => ({
+  submitFalKlingMotionControlRemix: vi.fn(),
+  submitFalKlingO1V2vEdit: vi.fn(),
+  checkFalRemixQueue: vi.fn(),
+}));
+
 const falKlingSceneMock = vi.hoisted(() => ({
   submitFalKlingO3I2v: vi.fn(),
   checkFalKlingO3I2v: vi.fn(),
@@ -61,6 +67,16 @@ vi.mock("@/server/services/video-providers/fal-kling-o3-remix.provider", async (
     >();
   return { ...actual, ...falRemixMock };
 });
+vi.mock(
+  "@/server/services/video-providers/fal-kling-motion-control-remix.provider",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("@/server/services/video-providers/fal-kling-motion-control-remix.provider")
+      >();
+    return { ...actual, ...falMcRemixMock };
+  }
+);
 vi.mock("@/server/services/video-providers/fal-kling-o3-i2v.provider", async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -84,6 +100,7 @@ import {
 } from "@/server/services/fal-video-webhook";
 import { FalQueueSubmitError } from "@/server/services/image-providers/fal-queue.client";
 import { FAL_REFERENCE_POLICY_USER_MESSAGE } from "@/lib/generation-errors";
+import { resetRemixContentPolicyRateLimit } from "@/lib/remix-engine";
 
 const pendingSeedance = {
   id: "job-s-1",
@@ -472,9 +489,12 @@ describe("Remix webhook URL + fail-closed submit", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetRemixContentPolicyRateLimit();
     process.env = { ...env };
     process.env.NEXT_PUBLIC_APP_URL = "https://www.aurainfluenceai.com";
     delete process.env.REMIX_WEBHOOK_SECRET;
+    delete process.env.REMIX_ENGINE;
+    delete process.env.VIGGLE_API_KEY;
     creditsMock.checkCredits.mockResolvedValue(true);
     creditsMock.deductCredits.mockResolvedValue(undefined);
     creditsMock.refundCredits.mockResolvedValue(undefined);
@@ -513,6 +533,7 @@ describe("Remix webhook URL + fail-closed submit", () => {
       })
     ).rejects.toBeInstanceOf(TRPCError);
 
+    expect(falMcRemixMock.submitFalKlingMotionControlRemix).not.toHaveBeenCalled();
     expect(falRemixMock.submitFalKlingO3Remix).not.toHaveBeenCalled();
     expect(mockDb.remixJob.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -529,10 +550,48 @@ describe("Remix webhook URL + fail-closed submit", () => {
     expect(creditsMock.refundCredits).toHaveBeenCalledWith("u1", 100);
   });
 
-  it("submits to Fal with the signed webhook URL when the secret is set", async () => {
+  it("submits motion-control V3 with the signed webhook URL when the secret is set", async () => {
     process.env.REMIX_WEBHOOK_SECRET = "remix-secret";
-    falRemixMock.submitFalKlingO3Remix.mockResolvedValue({
+    delete process.env.REMIX_ENGINE;
+    falMcRemixMock.submitFalKlingMotionControlRemix.mockResolvedValue({
       requestId: "fal-remix-1",
+      modelId: "fal-ai/kling-video/v3/standard/motion-control",
+      prompt: "Transfer the motion from the reference video.",
+      payload: {},
+    });
+
+    const result = await createRemixJob({
+      userId: "u1",
+      influencerId: "inf-1",
+      tier: "standard",
+      sourceVideoUrl: "https://cdn.example.com/clip.mp4",
+      sourceDurationSec: 10,
+      requestedDuration: 10,
+      keepAudio: true,
+    });
+
+    expect(result.status).toBe("IN_PROGRESS");
+    expect(falMcRemixMock.submitFalKlingMotionControlRemix).toHaveBeenCalledTimes(
+      1
+    );
+    const submitted =
+      falMcRemixMock.submitFalKlingMotionControlRemix.mock.calls[0][0];
+    expect(submitted.webhookUrl).toContain("job=job-r-1");
+    expect(submitted.webhookUrl).toContain("secret=remix-secret");
+    expect(submitted.orientation).toBe("video");
+    expect(submitted.modelId).toBe(
+      "fal-ai/kling-video/v2.6/standard/motion-control"
+    );
+    expect(submitted.includeFaceElement).toBe(false);
+    expect(creditsMock.refundCredits).not.toHaveBeenCalled();
+    expect(falRemixMock.submitFalKlingO3Remix).not.toHaveBeenCalled();
+  });
+
+  it("submits Kling O3 V2V when REMIX_ENGINE=kling_o3_v2v", async () => {
+    process.env.REMIX_WEBHOOK_SECRET = "remix-secret";
+    process.env.REMIX_ENGINE = "kling_o3_v2v";
+    falRemixMock.submitFalKlingO3Remix.mockResolvedValue({
+      requestId: "fal-remix-o3",
       modelId: "fal-ai/kling-video/o3/standard/video-to-video/reference",
     });
 
@@ -548,9 +607,6 @@ describe("Remix webhook URL + fail-closed submit", () => {
 
     expect(result.status).toBe("IN_PROGRESS");
     expect(falRemixMock.submitFalKlingO3Remix).toHaveBeenCalledTimes(1);
-    const submitted = falRemixMock.submitFalKlingO3Remix.mock.calls[0][0];
-    expect(submitted.webhookUrl).toContain("job=job-r-1");
-    expect(submitted.webhookUrl).toContain("secret=remix-secret");
-    expect(creditsMock.refundCredits).not.toHaveBeenCalled();
+    expect(falMcRemixMock.submitFalKlingMotionControlRemix).not.toHaveBeenCalled();
   });
 });

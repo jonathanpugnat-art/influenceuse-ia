@@ -29,10 +29,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  REMIX_ALLOWED_DURATIONS,
+  allowedRemixDurations,
+  remixMaxDurationSec,
   REMIX_ALLOWED_MIME_TYPES,
   REMIX_MAX_SOURCE_BYTES,
-  REMIX_MAX_SOURCE_DURATION_SEC,
   REMIX_TIER_VALUES,
   REMIX_TIERS,
   clampRemixDuration,
@@ -40,6 +40,7 @@ import {
   resolveRemixOembedProvider,
   validateRemixSource,
   type RemixDuration,
+  type RemixOrientation,
   type RemixTier,
 } from "@/lib/remix-config";
 import { formatGenerationErrorForUser } from "@/lib/generation-errors";
@@ -70,6 +71,7 @@ export default function RemixCreatorPage() {
 
   const [influencerId, setInfluencerId] = useState<string>("");
   const [tier, setTier] = useState<RemixTier>("standard");
+  const [orientation, setOrientation] = useState<RemixOrientation>("video");
   const [requestedDuration, setRequestedDuration] = useState<RemixDuration>(10);
   const [keepAudio, setKeepAudio] = useState(true);
   const [linkUrl, setLinkUrl] = useState("");
@@ -87,9 +89,26 @@ export default function RemixCreatorPage() {
     }
   }, [influencers, influencerId]);
 
+  const allowedDurations = useMemo(
+    () => allowedRemixDurations(orientation),
+    [orientation]
+  );
+  const maxSourceSec = remixMaxDurationSec(orientation);
+
+  useEffect(() => {
+    if (!allowedDurations.includes(requestedDuration)) {
+      setRequestedDuration(allowedDurations[allowedDurations.length - 1]);
+    }
+  }, [allowedDurations, requestedDuration]);
+
   const effectiveDuration = useMemo(
-    () => clampRemixDuration(requestedDuration, source?.durationSec ?? null),
-    [requestedDuration, source?.durationSec]
+    () =>
+      clampRemixDuration(
+        requestedDuration,
+        source?.durationSec ?? null,
+        orientation
+      ),
+    [requestedDuration, source?.durationSec, orientation]
   );
   const totalCredits = useMemo(
     () => estimateRemixCreditsForTier(tier, effectiveDuration),
@@ -98,13 +117,16 @@ export default function RemixCreatorPage() {
 
   const sourceIssue = useMemo(() => {
     if (!source) return null;
-    return validateRemixSource({
-      mimeType: source.mimeType,
-      sizeBytes: source.sizeBytes,
-      durationSec: source.durationSec,
-      url: source.url,
-    });
-  }, [source]);
+    return validateRemixSource(
+      {
+        mimeType: source.mimeType,
+        sizeBytes: source.sizeBytes,
+        durationSec: source.durationSec,
+        url: source.url,
+      },
+      orientation
+    );
+  }, [source, orientation]);
 
   const linkProvider = useMemo(
     () => (linkUrl.trim() ? resolveRemixOembedProvider(linkUrl.trim()) : null),
@@ -150,12 +172,15 @@ export default function RemixCreatorPage() {
   });
 
   const handleFileSelected = useCallback(async (file: File) => {
-    const issue = validateRemixSource({
-      mimeType: file.type,
-      sizeBytes: file.size,
-      durationSec: null,
-      url: "https://placeholder",
-    });
+    const issue = validateRemixSource(
+      {
+        mimeType: file.type,
+        sizeBytes: file.size,
+        durationSec: null,
+        url: "https://placeholder",
+      },
+      orientation
+    );
     if (issue) {
       toast.error(issue.message);
       return;
@@ -163,12 +188,15 @@ export default function RemixCreatorPage() {
 
     // Probe duration client-side via <video> element.
     const durationSec = await probeVideoDuration(file);
-    const durationIssue = validateRemixSource({
-      mimeType: file.type,
-      sizeBytes: file.size,
-      durationSec,
-      url: "https://placeholder",
-    });
+    const durationIssue = validateRemixSource(
+      {
+        mimeType: file.type,
+        sizeBytes: file.size,
+        durationSec,
+        url: "https://placeholder",
+      },
+      orientation
+    );
     if (durationIssue) {
       toast.error(durationIssue.message);
       return;
@@ -207,7 +235,7 @@ export default function RemixCreatorPage() {
     } finally {
       setUploading(false);
     }
-  }, []);
+  }, [orientation]);
 
   const submit = useCallback(() => {
     if (!influencerId) {
@@ -225,6 +253,7 @@ export default function RemixCreatorPage() {
     createRemix.mutate({
       influencerId,
       tier,
+      characterOrientation: orientation,
       sourceVideoUrl: source.url,
       sourceDurationSec: source.durationSec,
       sourceMimeType: source.mimeType,
@@ -239,6 +268,7 @@ export default function RemixCreatorPage() {
     influencerId,
     keepAudio,
     oembedPreview,
+    orientation,
     source,
     sourceIssue,
     tier,
@@ -254,16 +284,16 @@ export default function RemixCreatorPage() {
       <header className="flex flex-col gap-2">
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-fuchsia-400">
           <Sparkles className="h-4 w-4" />
-          Remix viral V1
+          Remix viral V2
         </div>
         <h1 className="text-2xl font-bold text-foreground">
           Refais un TikTok ou un Reel avec ton personnage
         </h1>
         <p className="max-w-2xl text-sm text-muted-foreground">
           Uploade un clip TikTok / Reel : ton personnage verrouillé rejoue le
-          mouvement, en 9:16, 5 à 15 s. Kling O3 conserve la caméra et le
-          timing de la source ; l&apos;identité vient de tes portraits déjà
-          générés.
+          mouvement. Motion Control V3 suit le clip (corps entier jusqu&apos;à
+          30 s, caméra jusqu&apos;à 10 s). L&apos;identité vient de tes
+          portraits déjà générés.
         </p>
       </header>
 
@@ -287,15 +317,19 @@ export default function RemixCreatorPage() {
           <DropZone
             source={source}
             uploading={uploading}
+            maxDurationSec={maxSourceSec}
             onFile={handleFileSelected}
             onClear={() => setSource(null)}
           />
+
+          <OrientationPicker value={orientation} onChange={setOrientation} />
 
           <div className="grid gap-4 sm:grid-cols-2">
             <TierPicker value={tier} onChange={setTier} />
             <DurationPicker
               value={requestedDuration}
               onChange={setRequestedDuration}
+              allowed={allowedDurations}
               effective={effectiveDuration}
               sourceDurationSec={source?.durationSec ?? null}
             />
@@ -472,6 +506,7 @@ function LinkPreviewField(props: {
 function DropZone(props: {
   source: UploadedSource | null;
   uploading: boolean;
+  maxDurationSec: number;
   onFile: (file: File) => void | Promise<void>;
   onClear: () => void;
 }) {
@@ -552,7 +587,7 @@ function DropZone(props: {
                 Glisse ton MP4 / MOV ici ou clique pour choisir
               </div>
               <div className="text-xs text-muted-foreground">
-                3 à {REMIX_MAX_SOURCE_DURATION_SEC}s · max{" "}
+                3 à {props.maxDurationSec}s · max{" "}
                 {Math.floor(REMIX_MAX_SOURCE_BYTES / 1024 / 1024)} Mo
               </div>
             </>
@@ -600,17 +635,70 @@ function TierPicker(props: {
   );
 }
 
+function OrientationPicker(props: {
+  value: RemixOrientation;
+  onChange: (v: RemixOrientation) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <Label className="text-sm font-medium">Type de clip</Label>
+      <div className="grid grid-cols-2 gap-2">
+        {(
+          [
+            {
+              id: "video" as const,
+              title: "Corps entier / fitness",
+              hint: "Suit le clip · jusqu'à 30 s",
+            },
+            {
+              id: "image" as const,
+              title: "Caméra / portrait",
+              hint: "Suit le cadre · jusqu'à 10 s",
+            },
+          ] as const
+        ).map((opt) => {
+          const active = props.value === opt.id;
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => props.onChange(opt.id)}
+              className={cn(
+                "flex flex-col items-start gap-1 rounded-lg border px-3 py-2 text-left transition-colors",
+                active
+                  ? "border-fuchsia-400 bg-fuchsia-500/10"
+                  : "border-border bg-background/40 hover:border-fuchsia-400/40"
+              )}
+            >
+              <span className="text-sm font-medium text-foreground">
+                {opt.title}
+              </span>
+              <span className="text-xs text-muted-foreground">{opt.hint}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function DurationPicker(props: {
   value: RemixDuration;
   onChange: (v: RemixDuration) => void;
+  allowed: readonly RemixDuration[];
   effective: RemixDuration;
   sourceDurationSec: number | null;
 }) {
   return (
     <div className="flex flex-col gap-2">
       <Label className="text-sm font-medium">Durée</Label>
-      <div className="grid grid-cols-3 gap-2">
-        {REMIX_ALLOWED_DURATIONS.map((d) => {
+      <div
+        className={cn(
+          "grid gap-2",
+          props.allowed.length > 3 ? "grid-cols-4" : "grid-cols-2"
+        )}
+      >
+        {props.allowed.map((d) => {
           const disabled =
             props.sourceDurationSec !== null && d > props.sourceDurationSec + 1;
           const active = props.value === d;

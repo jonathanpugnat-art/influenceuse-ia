@@ -3,6 +3,8 @@
  * for the photo/reel preview UI.
  */
 
+import { REMIX_CONTENT_POLICY_USER_MESSAGE } from "@/lib/remix-engine";
+
 export type GenerationErrorContext = {
   contentMode?: "SFW" | "NSFW";
 };
@@ -47,6 +49,8 @@ export const PROVIDER_UNAVAILABLE_USER_MESSAGE =
  */
 export const FAL_REFERENCE_POLICY_USER_MESSAGE =
   "Fal a refusé cette génération (politique contenu). Essaie une autre scène ou un autre portrait.";
+
+export { REMIX_CONTENT_POLICY_USER_MESSAGE };
 
 /** @deprecated Use SOCIAL_SAFETY_USER_MESSAGE */
 export const NSFW_USER_MESSAGE = SOCIAL_SAFETY_USER_MESSAGE;
@@ -155,6 +159,10 @@ export function formatGenerationErrorForUser(
   }
   if (looksLikeProviderQuotaError(msg)) {
     return PROVIDER_UNAVAILABLE_USER_MESSAGE;
+  }
+
+  if (msg.includes(REMIX_CONTENT_POLICY_USER_MESSAGE)) {
+    return REMIX_CONTENT_POLICY_USER_MESSAGE;
   }
 
   if (looksLikeFalReferencePolicyError(msg)) {

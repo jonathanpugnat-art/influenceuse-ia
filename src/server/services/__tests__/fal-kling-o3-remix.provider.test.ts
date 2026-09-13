@@ -44,6 +44,11 @@ describe("buildFalKlingO3RemixPayload", () => {
     expect(payload.duration).toBe("5");
   });
 
+  it("clamps 30s to Kling O3 max 15s on rollback", () => {
+    const { payload } = buildFalKlingO3RemixPayload({ ...base, duration: 30 });
+    expect(payload.duration).toBe("15");
+  });
+
   it("keeps aspect_ratio locked to 9:16 (V1 PRD)", () => {
     const { payload } = buildFalKlingO3RemixPayload({ ...base, duration: 15 });
     expect(payload.aspect_ratio).toBe("9:16");
