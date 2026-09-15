@@ -5,10 +5,11 @@
  * photoreal faces from this module.
  *
  * Default product path is `motion_control_cascade` (max
- * `REMIX_CASCADE_MAX_ATTEMPTS` submits per hold):
- *   P0a Kling Motion Control v2.6 std → v3 std → v3 pro
- *   P0b Viggle POST /v1/renders when `VIGGLE_API_KEY` is set ($0.01/s)
- *   P0c Fal Wan 2.2 animate/replace (same FAL_KEY + queue + webhook)
+ * `REMIX_CASCADE_MAX_ATTEMPTS` submits per hold). Top 3 always includes
+ * one non-Kling escape hatch — v3 pro stays out (same filter family):
+ *   1. Kling Motion Control v2.6 std (primary)
+ *   2. Viggle POST /v1/renders when `VIGGLE_API_KEY` is set; else MC v3 std
+ *   3. Fal Wan 2.2 animate/replace (same FAL_KEY + queue + webhook)
  *
  * TODO(nsfw-adult-provider): Pro NSFW / hard adult generation is out of
  * scope for Remix V2. Kling Motion Control, Viggle and Seedance will keep
@@ -18,7 +19,6 @@
 
 import {
   REMIX_IMAGE_ORIENTATION_MAX_SEC,
-  REMIX_MOTION_CONTROL_PRO_MODEL,
   REMIX_MOTION_CONTROL_STANDARD_MODEL,
   REMIX_MOTION_CONTROL_V26_STANDARD_MODEL,
   REMIX_VIGGLE_MODEL_ID,
@@ -205,10 +205,11 @@ function resolveMotionControlV26ModelId(
 }
 
 /**
- * Ordered submit attempts. Cascade (default): MC v2.6 → v3 std → v3 pro,
- * then Viggle when keyed, then Wan replace — sliced to
- * `REMIX_CASCADE_MAX_ATTEMPTS`. Legacy `motion_control_v3_std` keeps
- * orientation inverse + O1 (already ≤3). O3 rollback is a single attempt.
+ * Ordered submit attempts. Cascade (default), sliced to
+ * `REMIX_CASCADE_MAX_ATTEMPTS`: MC v2.6 → (Viggle if keyed, else v3 std)
+ * → Wan. v3 pro is never in the top 3. Legacy `motion_control_v3_std`
+ * keeps orientation inverse + O1 (already ≤3). O3 rollback is a single
+ * attempt.
  */
 export function planRemixAttempts(input: {
   engine: RemixEngine;
@@ -265,22 +266,6 @@ export function planRemixAttempts(input: {
           modelId: resolveMotionControlV26ModelId(env),
           includeFaceElement: false,
         }),
-        motionControlAttempt({
-          variant: "v3_std",
-          orientation: input.orientation,
-          modelId:
-            env.FAL_KLING_MOTION_CONTROL_STANDARD_MODEL?.trim() ||
-            REMIX_MOTION_CONTROL_STANDARD_MODEL,
-          includeFaceElement: face,
-        }),
-        motionControlAttempt({
-          variant: "v3_pro",
-          orientation: input.orientation,
-          modelId:
-            env.FAL_KLING_MOTION_CONTROL_PRO_MODEL?.trim() ||
-            REMIX_MOTION_CONTROL_PRO_MODEL,
-          includeFaceElement: face,
-        }),
       ];
       if (isViggleRemixConfigured(env)) {
         attempts.push({
@@ -288,6 +273,17 @@ export function planRemixAttempts(input: {
           engine: "viggle",
           modelId: REMIX_VIGGLE_MODEL_ID,
         });
+      } else {
+        attempts.push(
+          motionControlAttempt({
+            variant: "v3_std",
+            orientation: input.orientation,
+            modelId:
+              env.FAL_KLING_MOTION_CONTROL_STANDARD_MODEL?.trim() ||
+              REMIX_MOTION_CONTROL_STANDARD_MODEL,
+            includeFaceElement: face,
+          })
+        );
       }
       attempts.push({
         kind: "wan_replace",

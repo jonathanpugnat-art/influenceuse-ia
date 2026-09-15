@@ -191,7 +191,7 @@ describe("submitRemixAttemptsUntilAccepted cascade", () => {
     expect(wanMock.submitFalWanReplaceRemix).not.toHaveBeenCalled();
   });
 
-  it("after 3 content_policy refunds with the FR toast and never submits a 4th", async () => {
+  it("after 3 content_policy with Viggle: v2.6 → Viggle → Wan, never a 4th", async () => {
     falMcMock.submitFalKlingMotionControlRemix.mockRejectedValue(policyError());
     wanMock.submitFalWanReplaceRemix.mockRejectedValue(policyError());
     viggleMock.submitViggleRemix.mockRejectedValue(policyError());
@@ -211,12 +211,44 @@ describe("submitRemixAttemptsUntilAccepted cascade", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.userError).toBe(REMIX_CONTENT_POLICY_USER_MESSAGE);
-    expect(falMcMock.submitFalKlingMotionControlRemix).toHaveBeenCalledTimes(3);
-    expect(wanMock.submitFalWanReplaceRemix).not.toHaveBeenCalled();
-    expect(viggleMock.submitViggleRemix).not.toHaveBeenCalled();
+    expect(falMcMock.submitFalKlingMotionControlRemix).toHaveBeenCalledTimes(1);
+    expect(viggleMock.submitViggleRemix).toHaveBeenCalledTimes(1);
+    expect(wanMock.submitFalWanReplaceRemix).toHaveBeenCalledTimes(1);
+    expect(
+      falMcMock.submitFalKlingMotionControlRemix.mock.calls[0][0].modelId
+    ).not.toContain("/v3/pro/");
     expect(
       result.meta.attempts.every((a) => a.errorClass === "content_policy")
     ).toBe(true);
+  });
+
+  it("after v2.6 content_policy with Viggle accepts Viggle and skips Wan", async () => {
+    falMcMock.submitFalKlingMotionControlRemix.mockRejectedValue(policyError());
+    viggleMock.submitViggleRemix.mockResolvedValue({
+      requestId: "render_123",
+      modelId: "viggle.ai/v1/renders",
+      prompt: "Viggle video remix (character + motion)",
+      payload: {},
+    });
+
+    const attempts = planRemixAttempts({
+      engine: "motion_control_cascade",
+      orientation: "video",
+      clipDurationSec: 10,
+      tier: "standard",
+      env: { VIGGLE_API_KEY: "vg-test" },
+    });
+    const result = await submitRemixAttemptsUntilAccepted({
+      ...cascadeBase,
+      attempts,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.result.requestId).toBe("render_123");
+    expect(falMcMock.submitFalKlingMotionControlRemix).toHaveBeenCalledTimes(1);
+    expect(viggleMock.submitViggleRemix).toHaveBeenCalledTimes(1);
+    expect(wanMock.submitFalWanReplaceRemix).not.toHaveBeenCalled();
   });
 
   it("stops the cascade after the per-user content_policy rate limit", async () => {
@@ -297,8 +329,9 @@ describe("createRemixJob + handleRemixProviderFailure refund", () => {
     } satisfies Partial<TRPCError>);
 
     expect(creditsMock.refundCredits).toHaveBeenCalledWith("u1", 100);
-    expect(falMcMock.submitFalKlingMotionControlRemix).toHaveBeenCalledTimes(3);
-    expect(wanMock.submitFalWanReplaceRemix).not.toHaveBeenCalled();
+    expect(falMcMock.submitFalKlingMotionControlRemix).toHaveBeenCalledTimes(2);
+    expect(wanMock.submitFalWanReplaceRemix).toHaveBeenCalledTimes(1);
+    expect(viggleMock.submitViggleRemix).not.toHaveBeenCalled();
     expect(falO3Mock.submitFalKlingO3Remix).not.toHaveBeenCalled();
   });
 
@@ -308,7 +341,7 @@ describe("createRemixJob + handleRemixProviderFailure refund", () => {
       status: "IN_PROGRESS",
       sourceDurationSec: 10,
       durationSec: 10,
-      falModel: "fal-ai/kling-video/v3/pro/motion-control",
+      falModel: "fal-ai/wan/v2.2-14b/animate/replace",
       metadata: {
         v: 2,
         engine: "motion_control_cascade",

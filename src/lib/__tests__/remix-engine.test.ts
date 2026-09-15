@@ -39,7 +39,7 @@ describe("remix-engine routing", () => {
 });
 
 describe("planRemixAttempts cascade", () => {
-  it("caps cascade at 3: v2.6 → v3 std → v3 pro (Wan truncated) without Viggle", () => {
+  it("without Viggle: v2.6 → v3 std → Wan (cap 3, no v3 pro)", () => {
     const attempts = planRemixAttempts({
       engine: "motion_control_cascade",
       orientation: "video",
@@ -59,13 +59,11 @@ describe("planRemixAttempts cascade", () => {
         "motion_control_v3_std",
         "fal-ai/kling-video/v3/standard/motion-control",
       ],
-      [
-        "motion_control",
-        "motion_control_v3_pro",
-        "fal-ai/kling-video/v3/pro/motion-control",
-      ],
+      ["wan_replace", "wan_replace", "fal-ai/wan/v2.2-14b/animate/replace"],
     ]);
-    expect(attempts.some((a) => a.kind === "wan_replace")).toBe(false);
+    expect(attempts.some((a) => a.engine === "motion_control_v3_pro")).toBe(
+      false
+    );
     expect(attempts[0]).toMatchObject({
       kind: "motion_control",
       includeFaceElement: false,
@@ -77,7 +75,7 @@ describe("planRemixAttempts cascade", () => {
     });
   });
 
-  it("caps cascade at 3 when Viggle is keyed (Wan truncated)", () => {
+  it("with Viggle: v2.6 → Viggle → Wan (cap 3, no v3 std/pro)", () => {
     const attempts = planRemixAttempts({
       engine: "motion_control_cascade",
       orientation: "video",
@@ -86,11 +84,14 @@ describe("planRemixAttempts cascade", () => {
       env: { VIGGLE_API_KEY: "vg-test" },
     });
     expect(attempts.length).toBeLessThanOrEqual(REMIX_CASCADE_MAX_ATTEMPTS);
-    expect(attempts.some((a) => a.kind === "wan_replace")).toBe(false);
-    expect(attempts.map((a) => a.kind)).toEqual([
-      "motion_control",
-      "motion_control",
-      "motion_control",
+    expect(attempts.map((a) => [a.kind, a.engine, a.modelId])).toEqual([
+      [
+        "motion_control",
+        "motion_control_v26_std",
+        "fal-ai/kling-video/v2.6/standard/motion-control",
+      ],
+      ["viggle", "viggle", "viggle.ai/v1/renders"],
+      ["wan_replace", "wan_replace", "fal-ai/wan/v2.2-14b/animate/replace"],
     ]);
   });
 
