@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   classifyRemixProviderError,
   consumeRemixContentPolicyAdvance,
+  deriveRemixEngineLabel,
   getRemixEngine,
   planRemixAttempts,
   REMIX_CASCADE_MAX_ATTEMPTS,
@@ -10,6 +11,7 @@ import {
   REMIX_CONTENT_POLICY_USER_MESSAGE,
   REMIX_O1_EDIT_PROMPT,
   resetRemixContentPolicyRateLimit,
+  shortRemixFalRequestId,
 } from "@/lib/remix-engine";
 import { getSceneEngine } from "@/lib/scene-engine";
 
@@ -172,6 +174,93 @@ describe("remix copy", () => {
     expect(REMIX_O1_EDIT_PROMPT).toBe(
       "Replace the character with @Element1 keeping same motion"
     );
+  });
+});
+
+describe("deriveRemixEngineLabel", () => {
+  it("labels the last accepted attempt honestly (kind wins)", () => {
+    expect(
+      deriveRemixEngineLabel(
+        {
+          attempts: [
+            { kind: "motion_control", modelId: "fal-ai/kling-video/v2.6/standard/motion-control" },
+            { kind: "viggle", modelId: "viggle.ai/v1/renders" },
+          ],
+        },
+        "viggle.ai/v1/renders"
+      )
+    ).toBe("Viggle");
+
+    expect(
+      deriveRemixEngineLabel(
+        {
+          attempts: [
+            { kind: "motion_control", modelId: "fal-ai/kling-video/v2.6/standard/motion-control" },
+            { kind: "wan_replace", modelId: "fal-ai/wan/v2.2-14b/animate/replace" },
+          ],
+        },
+        "fal-ai/wan/v2.2-14b/animate/replace"
+      )
+    ).toBe("Wan replace");
+  });
+
+  it("labels every Kling Motion Control variant the same", () => {
+    for (const modelId of [
+      "fal-ai/kling-video/v2.6/standard/motion-control",
+      "fal-ai/kling-video/v3/standard/motion-control",
+      "fal-ai/kling-video/v3/pro/motion-control",
+    ]) {
+      expect(
+        deriveRemixEngineLabel(
+          { attempts: [{ kind: "motion_control", modelId }] },
+          modelId
+        )
+      ).toBe("Kling Motion Control");
+    }
+  });
+
+  it("falls back to falModel when metadata is absent (older jobs)", () => {
+    expect(deriveRemixEngineLabel(null, "viggle.ai/v1/renders")).toBe("Viggle");
+    expect(
+      deriveRemixEngineLabel(null, "fal-ai/wan/v2.2-14b/animate/replace")
+    ).toBe("Wan replace");
+    expect(
+      deriveRemixEngineLabel(
+        null,
+        "fal-ai/kling-video/v3/pro/motion-control"
+      )
+    ).toBe("Kling Motion Control");
+  });
+
+  it("never claims Motion Control when the model is viggle or wan", () => {
+    expect(
+      deriveRemixEngineLabel(
+        { attempts: [] },
+        "viggle.ai/v1/renders"
+      )
+    ).not.toBe("Kling Motion Control");
+    expect(
+      deriveRemixEngineLabel(
+        { attempts: [] },
+        "fal-ai/wan/v2.2-14b/animate/replace"
+      )
+    ).not.toBe("Kling Motion Control");
+  });
+
+  it("returns a safe generic label when everything is unknown", () => {
+    expect(deriveRemixEngineLabel(null, null)).toBe("Moteur remix");
+    expect(deriveRemixEngineLabel({ attempts: [] }, "")).toBe("Moteur remix");
+  });
+});
+
+describe("shortRemixFalRequestId", () => {
+  it("truncates long provider ids and drops fallback locks", () => {
+    expect(shortRemixFalRequestId("abcdef0123456789")).toBe("abcdef01…");
+    expect(shortRemixFalRequestId("short")).toBe("short");
+    expect(shortRemixFalRequestId(null)).toBeNull();
+    expect(
+      shortRemixFalRequestId("fallback-pending:remix_123:2")
+    ).toBeNull();
   });
 });
 
