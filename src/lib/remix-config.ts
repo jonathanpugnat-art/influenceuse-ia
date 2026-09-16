@@ -3,10 +3,10 @@
  *
  * The user uploads a TikTok/Reel clip and the locked character replays
  * the motion. Default `REMIX_ENGINE=motion_control_cascade`:
- *   P0a fal-ai/kling-video/v2.6/standard/motion-control
- *       then v3/standard then v3/pro (image_url + video_url)
- *   P0b Viggle POST /v1/renders when VIGGLE_API_KEY is set (~$0.01/s)
- *   P0c fal-ai/wan/v2.2-14b/animate/replace (same FAL_KEY / queue / webhook)
+ *   1. fal-ai/kling-video/v2.6/standard/motion-control (primary)
+ *   2. Viggle POST /v1/renders when VIGGLE_API_KEY is set (~$0.01/s);
+ *      else v3/standard motion-control (not v3/pro — same filter family)
+ *   3. fal-ai/wan/v2.2-14b/animate/replace (same FAL_KEY / queue / webhook)
  * Kling O3 Omni V2V stays as `REMIX_ENGINE=kling_o3_v2v`. No PuLID.
  *
  * Assumed provider list prices (2026-09 docs):
