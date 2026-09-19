@@ -18,6 +18,7 @@ import { useInfluencers } from "@/hooks/use-influencers";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useInvalidateCurrentPlan } from "@/hooks/use-current-plan";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -158,6 +159,7 @@ export default function RemixCreatorPage() {
   }, [oembedQuery.data, oembedQuery.isFetching]);
 
   const utils = trpc.useUtils();
+  const invalidatePlan = useInvalidateCurrentPlan();
   const createRemix = trpc.remix.createRemix.useMutation({
     onSuccess: (result) => {
       toast.success(
@@ -165,6 +167,11 @@ export default function RemixCreatorPage() {
       );
       setActiveJobId(result.jobId);
       utils.remix.listRemixes.invalidate();
+      // The server side already held `result.cost` credits; the sidebar
+      // was still showing the pre-hold balance until the next natural
+      // refetch (QA saw 4618.3 after a 100-credit hold). Refetch the same
+      // billing.getCurrentPlan query the sidebar reads from.
+      invalidatePlan();
     },
     onError: (err) => {
       toast.error(err.message || "Impossible de lancer le remix.");
@@ -291,9 +298,10 @@ export default function RemixCreatorPage() {
         </h1>
         <p className="max-w-2xl text-sm text-muted-foreground">
           Uploade un clip TikTok / Reel : ton personnage verrouillé rejoue le
-          mouvement. Motion Control V3 suit le clip (corps entier jusqu&apos;à
-          30 s, caméra jusqu&apos;à 10 s). L&apos;identité vient de tes
-          portraits déjà générés.
+          mouvement. On cascade Kling Motion Control, Viggle puis Wan replace
+          selon la disponibilité (corps entier jusqu&apos;à 30 s, caméra
+          jusqu&apos;à 10 s). L&apos;identité vient de tes portraits déjà
+          générés.
         </p>
       </header>
 
@@ -372,7 +380,7 @@ export default function RemixCreatorPage() {
             {createRemix.isPending ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Envoi à Kling…
+                Envoi du remix…
               </>
             ) : (
               <>
@@ -767,7 +775,33 @@ function RecentJobs(props: {
     }
   );
 
-  const jobs = list.data ?? [];
+  const invalidatePlan = useInvalidateCurrentPlan();
+  const listData = list.data;
+  const jobs = listData ?? [];
+
+  // Watch the active job: when the reconcile poll flips it to a terminal
+  // status the credit hold has been finalised (COMPLETED) or refunded
+  // (REFUNDED / FAILED). Force a refetch of the same billing query the
+  // sidebar reads from — otherwise QA sees the pre-hold balance stick.
+  const activeStatus = useMemo(() => {
+    if (!props.activeJobId || !listData) return null;
+    return listData.find((j) => j.id === props.activeJobId)?.status ?? null;
+  }, [listData, props.activeJobId]);
+  const lastInvalidatedStatus = useRef<string | null>(null);
+  useEffect(() => {
+    if (!activeStatus) {
+      lastInvalidatedStatus.current = null;
+      return;
+    }
+    const isTerminal =
+      activeStatus === "COMPLETED" ||
+      activeStatus === "REFUNDED" ||
+      activeStatus === "FAILED";
+    if (isTerminal && lastInvalidatedStatus.current !== activeStatus) {
+      lastInvalidatedStatus.current = activeStatus;
+      invalidatePlan();
+    }
+  }, [activeStatus, invalidatePlan]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -807,6 +841,8 @@ function JobRow(props: {
     creditsCharged: number;
     outputVideoUrl: string | null;
     error: string | null;
+    engineLabel: string;
+    falRequestIdShort: string | null;
   };
 }) {
   const { job } = props;
@@ -833,13 +869,27 @@ function JobRow(props: {
         </div>
       )}
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge className={cn("border-0 text-[10px]", statusMeta.color)}>
             {statusMeta.label}
+          </Badge>
+          <Badge
+            variant="secondary"
+            className="border border-border/60 bg-background/60 text-[10px] font-medium text-foreground"
+          >
+            {job.engineLabel}
           </Badge>
           <span className="text-xs text-muted-foreground">
             {job.durationSec}s · {job.creditsCharged} crédits
           </span>
+          {job.falRequestIdShort && (
+            <span
+              className="font-mono text-[10px] text-muted-foreground/70"
+              title="Identifiant de requête fournisseur (debug)"
+            >
+              {job.falRequestIdShort}
+            </span>
+          )}
         </div>
         {job.error && (
           <div className="mt-1 truncate text-xs text-red-400">

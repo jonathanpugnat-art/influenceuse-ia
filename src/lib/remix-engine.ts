@@ -337,6 +337,73 @@ export function buildMotionControlPrompt(opts: {
   return parts.join(" ");
 }
 
+/**
+ * Honest, French-facing final-engine label for a remix job.
+ *
+ * The cascade may accept on v2.6, Viggle, or Wan. Displaying "Motion
+ * Control V3" everywhere (the old copy in the sidebar and the create
+ * button) misled users — QA saw a Viggle-accepted job labelled as
+ * Kling. We derive the label from the last recorded attempt in
+ * `RemixJobMeta.attempts` (kind is source-of-truth) and fall back to
+ * pattern-matching `falModel` when metadata is missing (older jobs
+ * pre-cascade v2, jobs still in PENDING before the first submit).
+ *
+ * Returned strings are stable — used both in list cards and the detail
+ * card. Never claims "Motion Control V3" when the accepted provider is
+ * viggle or wan.
+ */
+export function deriveRemixEngineLabel(
+  meta:
+    | {
+        attempts?: Array<{
+          kind?: string | null;
+          engine?: string | null;
+          modelId?: string | null;
+        } | null> | null;
+      }
+    | null
+    | undefined,
+  falModel: string | null | undefined
+): string {
+  const attempts = meta?.attempts ?? [];
+  const last = attempts.length > 0 ? attempts[attempts.length - 1] : null;
+  const kind = last?.kind ?? null;
+  const modelId = (last?.modelId ?? falModel ?? "").toLowerCase();
+
+  if (kind === "viggle" || modelId.includes("viggle")) {
+    return "Viggle";
+  }
+  if (kind === "wan_replace" || modelId.includes("/wan/")) {
+    return "Wan replace";
+  }
+  if (kind === "motion_control" || modelId.includes("motion-control")) {
+    return "Kling Motion Control";
+  }
+  if (kind === "kling_o3_v2v" || modelId.includes("/o3/")) {
+    return "Kling O3 V2V";
+  }
+  if (kind === "o1_v2v_edit" || modelId.includes("/o1/")) {
+    return "Kling O1 V2V";
+  }
+  return "Moteur remix";
+}
+
+/**
+ * Truncate the raw provider request id to something short enough for a
+ * debug badge next to a job card. It is not a secret (it only maps to
+ * the provider queue lookup, which requires our own API key), but
+ * showing 40+ chars in the UI is noise.
+ */
+export function shortRemixFalRequestId(
+  requestId: string | null | undefined
+): string | null {
+  if (!requestId) return null;
+  const trimmed = requestId.trim();
+  if (!trimmed || trimmed.startsWith("fallback-pending:")) return null;
+  if (trimmed.length <= 10) return trimmed;
+  return `${trimmed.slice(0, 8)}…`;
+}
+
 export function logRemixProviderError(opts: {
   jobId: string;
   engine: string;

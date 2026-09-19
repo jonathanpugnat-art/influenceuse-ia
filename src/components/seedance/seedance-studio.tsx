@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertTriangle,
@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { formatGenerationErrorForUser } from "@/lib/generation-errors";
 import { trpc } from "@/lib/trpc";
+import { useInvalidateCurrentPlan } from "@/hooks/use-current-plan";
 
 interface SeedanceStudioProps {
   influencerId: string;
@@ -99,6 +100,7 @@ export function SeedanceStudio({
   );
 
   const utils = trpc.useUtils();
+  const invalidatePlan = useInvalidateCurrentPlan();
 
   const totalCredits = useMemo(() => {
     if (!pricing.data) return 0;
@@ -120,6 +122,11 @@ export function SeedanceStudio({
       setConfirmingBigCost(false);
       utils.seedance.listScenes.invalidate({ influencerId });
       utils.billing?.getUsage?.invalidate?.();
+      // Same stale-sidebar bug as remix: the sidebar reads
+      // billing.getCurrentPlan, and getUsage alone does not refresh it.
+      // Refetch the balance the sidebar actually renders as soon as the
+      // hold has been placed.
+      invalidatePlan();
       toast.success(
         `Scène lancée — ${res.cost} crédits retenus (remboursés en cas d'échec).`
       );
@@ -130,12 +137,24 @@ export function SeedanceStudio({
     },
   });
 
+  const lastTerminalStatus = useRef<string | null>(null);
   useEffect(() => {
     const s = activeQuery.data?.status;
+    if (!s) {
+      lastTerminalStatus.current = null;
+      return;
+    }
     if (s === "COMPLETED" || s === "REFUNDED" || s === "FAILED") {
       utils.seedance.listScenes.invalidate({ influencerId });
+      if (lastTerminalStatus.current !== s) {
+        lastTerminalStatus.current = s;
+        // Refund on FAILED / REFUNDED restores credits; COMPLETED locks
+        // the hold as consumed. Both flip the sidebar balance — refetch
+        // the same billing.getCurrentPlan query.
+        invalidatePlan();
+      }
     }
-  }, [activeQuery.data?.status, influencerId, utils]);
+  }, [activeQuery.data?.status, influencerId, utils, invalidatePlan]);
 
   const trimmed = scenePrompt.trim();
   const canSubmit =

@@ -5,8 +5,13 @@ import { db } from "@/server/db";
 import { getDbUser } from "@/server/helpers/get-db-user";
 import {
   createRemixJob,
+  parseRemixJobMeta,
   reconcileRemixJob,
 } from "@/server/services/remix.service";
+import {
+  deriveRemixEngineLabel,
+  shortRemixFalRequestId,
+} from "@/lib/remix-engine";
 import {
   failStaleVideoJobs,
   isOpenVideoJobStatus,
@@ -274,9 +279,18 @@ function serializeRemixJob(job: {
   outputVideoUrl: string | null;
   error: string | null;
   oembedPreview: unknown;
+  falRequestId: string | null;
+  falModel: string;
+  metadata: unknown;
   createdAt: Date;
   completedAt: Date | null;
 }) {
+  const meta = parseRemixJobMeta(job.metadata);
+  const engineLabel = deriveRemixEngineLabel(meta, job.falModel);
+  const lastAttempt =
+    meta && meta.attempts.length > 0
+      ? meta.attempts[meta.attempts.length - 1]
+      : null;
   return {
     id: job.id,
     influencerId: job.influencerId,
@@ -290,6 +304,13 @@ function serializeRemixJob(job: {
     outputVideoUrl: job.outputVideoUrl,
     error: job.error,
     oembedPreview: job.oembedPreview,
+    // Honest final-engine label + raw model id so the UI can stop
+    // pretending everything was Motion Control V3.
+    engineLabel,
+    falModel: job.falModel,
+    attemptKind: lastAttempt?.kind ?? null,
+    // Truncated debug id. Not a secret: only useful with our own API key.
+    falRequestIdShort: shortRemixFalRequestId(job.falRequestId),
     createdAt: job.createdAt,
     completedAt: job.completedAt,
   };
