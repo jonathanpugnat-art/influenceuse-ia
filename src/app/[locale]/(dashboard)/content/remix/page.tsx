@@ -46,6 +46,8 @@ import {
   type RemixTier,
 } from "@/lib/remix-config";
 import { formatGenerationErrorForUser } from "@/lib/generation-errors";
+import { identityHintState } from "@/lib/remix-identity-hint";
+import { CREDIT_COSTS } from "@/lib/constants";
 
 interface UploadedSource {
   url: string;
@@ -454,67 +456,193 @@ function InfluencerPicker(props: {
 }
 
 function IdentityHealthHint(props: { influencerId: string }) {
+  const utils = trpc.useUtils();
   const query = trpc.remix.identityPreview.useQuery(
     { influencerId: props.influencerId },
     {
       enabled: Boolean(props.influencerId),
       staleTime: 30_000,
+      // Poll only while the pack is actively being built. Once we see
+      // `ready` or `failed`, the hint stops hitting the server every
+      // few seconds. QA had to hard-reload before this to see the
+      // banner flip green.
+      refetchInterval: (q) => {
+        const status = q.state.data?.identityPackStatus;
+        return status === "generating" ? 5_000 : false;
+      },
     }
   );
+
+  const invalidatePreview = useCallback(() => {
+    void utils.remix.identityPreview.invalidate({
+      influencerId: props.influencerId,
+    });
+  }, [props.influencerId, utils]);
+
+  const generateMutation = trpc.influencer.generateIdentityPack.useMutation({
+    onSuccess: () => {
+      toast.success(
+        "Pack d'identité prêt — le remix ancre maintenant le visage sur les 4 angles."
+      );
+      invalidatePreview();
+    },
+    onError: (err) => {
+      toast.error(formatGenerationErrorForUser(err.message));
+    },
+  });
+
+  const regenerateMutation = trpc.influencer.regenerateIdentityPack.useMutation(
+    {
+      onSuccess: () => {
+        toast.info(
+          "Relance du pack d'identité — on retente les angles en arrière-plan."
+        );
+        invalidatePreview();
+      },
+      onError: (err) => {
+        toast.error(formatGenerationErrorForUser(err.message));
+      },
+    }
+  );
+
   const data = query.data;
   if (!data) return null;
 
-  if (!data.hasFrontal) {
-    return (
-      <div className="flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-100">
-        <ShieldAlert className="mt-0.5 h-4 w-4 flex-shrink-0" />
-        <span>
-          Ce personnage n&apos;a pas encore de portrait de référence. Termine
-          l&apos;assistant de création avant de lancer un remix — sinon le
-          rendu perdra le visage.
-        </span>
-      </div>
-    );
-  }
+  const state = identityHintState(data);
+  const isGenerating =
+    state.kind === "generating" ||
+    generateMutation.isPending ||
+    regenerateMutation.isPending;
 
-  if (data.identityPackStatus === "generating") {
-    return (
-      <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-        <Loader2 className="mt-0.5 h-4 w-4 flex-shrink-0 animate-spin" />
-        <span>
-          Ton pack d&apos;identité (3/4, profil, corps entier) est encore en
-          cours de génération. Attends qu&apos;il soit prêt pour un rendu net
-          — sans références supplémentaires le moteur risque de recadrer ou
-          déformer le visage.
-        </span>
-      </div>
-    );
-  }
+  switch (state.kind) {
+    case "no_frontal":
+      return (
+        <div className="flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-100">
+          <ShieldAlert className="mt-0.5 h-4 w-4 flex-shrink-0" />
+          <span>
+            Ce personnage n&apos;a pas encore de portrait de référence.
+            Termine l&apos;assistant de création avant de lancer un remix —
+            sinon le rendu perdra le visage.
+          </span>
+        </div>
+      );
 
-  if (!data.hasReferences) {
-    return (
-      <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-        <Info className="mt-0.5 h-4 w-4 flex-shrink-0" />
-        <span>
-          Aucune photo secondaire (profil, 3/4, corps entier) n&apos;est
-          disponible pour ce personnage. Le remix reste possible mais la
-          fidélité corps entier sera moins bonne — génère le pack
-          d&apos;identité pour ancrer le visage.
-        </span>
-      </div>
-    );
-  }
+    case "generating":
+      return (
+        <div className="flex flex-col gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+          <div className="flex items-start gap-2">
+            <Loader2 className="mt-0.5 h-4 w-4 flex-shrink-0 animate-spin" />
+            <span>
+              Ton pack d&apos;identité (profil, 3/4, corps entier) est en
+              cours de génération. Attends qu&apos;il soit prêt pour un
+              rendu net — le bandeau passera au vert automatiquement.
+            </span>
+          </div>
+          <button
+            type="button"
+            disabled
+            className="inline-flex w-fit items-center gap-1.5 rounded-md border border-amber-400/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-100/80 opacity-70"
+          >
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Génération du pack en cours…
+          </button>
+        </div>
+      );
 
-  return (
-    <div className="flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-[11px] text-emerald-200/90">
-      <Sparkles className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-      <span>
-        Portrait + {data.referenceCount} photo{data.referenceCount > 1 ? "s" : ""}{" "}
-        de référence détectées — le moteur ancre le visage avec ces stills
-        (fidélité meilleure, pas de garantie biométrique).
-      </span>
-    </div>
-  );
+    case "failed":
+      return (
+        <div className="flex flex-col gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-100">
+          <div className="flex items-start gap-2">
+            <ShieldAlert className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            <span>
+              La génération du pack d&apos;identité (profil, 3/4, corps
+              entier) a échoué. Relance-la — les crédits ne sont pas
+              redéduits pour ce retry.
+            </span>
+          </div>
+          <button
+            type="button"
+            disabled={isGenerating}
+            onClick={() =>
+              regenerateMutation.mutate({ influencerId: props.influencerId })
+            }
+            className={cn(
+              "inline-flex w-fit items-center gap-1.5 rounded-md border border-red-400/40 bg-red-500/20 px-2.5 py-1 text-[11px] font-medium text-red-50 transition-colors hover:bg-red-500/30",
+              "disabled:cursor-not-allowed disabled:opacity-60"
+            )}
+          >
+            {regenerateMutation.isPending ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Relance en cours…
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-3 w-3" />
+                Réessayer la génération
+              </>
+            )}
+          </button>
+        </div>
+      );
+
+    case "missing":
+      return (
+        <div className="flex flex-col gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+          <div className="flex items-start gap-2">
+            <Info className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            <span>
+              Aucune photo secondaire (profil, 3/4, corps entier) n&apos;est
+              disponible pour ce personnage. Le remix reste possible mais la
+              fidélité corps entier sera moins bonne — génère le pack
+              d&apos;identité pour ancrer le visage.
+            </span>
+          </div>
+          <button
+            type="button"
+            disabled={isGenerating}
+            onClick={() =>
+              generateMutation.mutate({ influencerId: props.influencerId })
+            }
+            className={cn(
+              "inline-flex w-fit items-center gap-1.5 rounded-md border border-amber-400/50 bg-amber-500/25 px-2.5 py-1 text-[11px] font-medium text-amber-50 transition-colors hover:bg-amber-500/35",
+              "disabled:cursor-not-allowed disabled:opacity-60"
+            )}
+          >
+            {generateMutation.isPending ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Génération du pack…
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-3 w-3" />
+                Générer le pack d&apos;identité — {CREDIT_COSTS.IDENTITY_PACK}{" "}
+                crédits
+              </>
+            )}
+          </button>
+        </div>
+      );
+
+    case "ok":
+      return (
+        <div className="flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-[11px] text-emerald-200/90">
+          <Sparkles className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+          <span>
+            Portrait + {state.referenceCount} photo
+            {state.referenceCount > 1 ? "s" : ""} de référence détectées — le
+            moteur ancre le visage avec ces stills (fidélité meilleure, pas
+            de garantie biométrique).
+          </span>
+        </div>
+      );
+
+    default: {
+      const _exhaustive: never = state;
+      return _exhaustive;
+    }
+  }
 }
 
 function LinkPreviewField(props: {
