@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Info,
   Link as LinkIcon,
+  ShieldAlert,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -314,6 +315,8 @@ export default function RemixCreatorPage() {
             onChange={setInfluencerId}
           />
 
+          <IdentityHealthHint influencerId={influencerId} />
+
           <LinkPreviewField
             linkUrl={linkUrl}
             onLinkUrlChange={setLinkUrl}
@@ -446,6 +449,70 @@ function InfluencerPicker(props: {
           </SelectContent>
         </Select>
       )}
+    </div>
+  );
+}
+
+function IdentityHealthHint(props: { influencerId: string }) {
+  const query = trpc.remix.identityPreview.useQuery(
+    { influencerId: props.influencerId },
+    {
+      enabled: Boolean(props.influencerId),
+      staleTime: 30_000,
+    }
+  );
+  const data = query.data;
+  if (!data) return null;
+
+  if (!data.hasFrontal) {
+    return (
+      <div className="flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-100">
+        <ShieldAlert className="mt-0.5 h-4 w-4 flex-shrink-0" />
+        <span>
+          Ce personnage n&apos;a pas encore de portrait de référence. Termine
+          l&apos;assistant de création avant de lancer un remix — sinon le
+          rendu perdra le visage.
+        </span>
+      </div>
+    );
+  }
+
+  if (data.identityPackStatus === "generating") {
+    return (
+      <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+        <Loader2 className="mt-0.5 h-4 w-4 flex-shrink-0 animate-spin" />
+        <span>
+          Ton pack d&apos;identité (3/4, profil, corps entier) est encore en
+          cours de génération. Attends qu&apos;il soit prêt pour un rendu net
+          — sans références supplémentaires le moteur risque de recadrer ou
+          déformer le visage.
+        </span>
+      </div>
+    );
+  }
+
+  if (!data.hasReferences) {
+    return (
+      <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+        <Info className="mt-0.5 h-4 w-4 flex-shrink-0" />
+        <span>
+          Aucune photo secondaire (profil, 3/4, corps entier) n&apos;est
+          disponible pour ce personnage. Le remix reste possible mais la
+          fidélité corps entier sera moins bonne — génère le pack
+          d&apos;identité pour ancrer le visage.
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-[11px] text-emerald-200/90">
+      <Sparkles className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+      <span>
+        Portrait + {data.referenceCount} photo{data.referenceCount > 1 ? "s" : ""}{" "}
+        de référence détectées — le moteur ancre le visage avec ces stills
+        (fidélité meilleure, pas de garantie biométrique).
+      </span>
     </div>
   );
 }

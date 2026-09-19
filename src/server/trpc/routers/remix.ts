@@ -6,6 +6,7 @@ import { getDbUser } from "@/server/helpers/get-db-user";
 import {
   createRemixJob,
   parseRemixJobMeta,
+  previewInfluencerRemixIdentity,
   reconcileRemixJob,
 } from "@/server/services/remix.service";
 import {
@@ -100,6 +101,24 @@ export const remixRouter = createTRPCRouter({
       },
     };
   }),
+
+  /**
+   * Read-only preview of the identity assets that will be sent to the
+   * cascade for a given influencer. Powers the "identity pack
+   * incomplete" hint on the remix page — surfaced BEFORE the user
+   * clicks Generate so we do not hold credits on a character that lacks
+   * a full portrait + reference stills. The hint never blocks the CTA
+   * (a lone frontal is still enough to submit).
+   */
+  identityPreview: protectedProcedure
+    .input(z.object({ influencerId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const user = await getDbUser(ctx.userId);
+      return previewInfluencerRemixIdentity({
+        influencerId: input.influencerId,
+        userId: user.id,
+      });
+    }),
 
   estimate: protectedProcedure
     .input(

@@ -112,17 +112,96 @@ interface ResolvedRemixIdentity {
   frontalImageUrl: string;
   referenceImageUrls: string[];
   characterName: string;
+  identityPackReady: boolean;
+}
+
+/**
+ * Order the identity-pack shots that follow the frontal image inside a
+ * Kling `elements[].reference_image_urls` array. `elements` weights the
+ * first refs higher, so we put:
+ *   - `full_body` first when the source clip is a fitness / body clip
+ *     (`character_orientation=video`) — the model needs a whole-body
+ *     anchor to stop cropping the head off (fixed the canary regression).
+ *   - `three_quarter` first when the source clip is a portrait / camera
+ *     clip (`character_orientation=image`) — the model needs a shoulder
+ *     framing reference more than a full-body one.
+ * We always keep the remaining shots as trailing refs (order matters
+ * but presence matters more) and never include `portrait_front` because
+ * it is already the top-level frontal.
+ */
+export function orientationRefPriority(
+  orientation: RemixOrientation
+): readonly string[] {
+  return orientation === "video"
+    ? ["full_body", "three_quarter", "profile"]
+    : ["three_quarter", "profile", "full_body"];
+}
+
+/**
+ * Read-only preview of what `resolveInfluencerIdentity` will pass to
+ * the provider. Powers the UI hint that warns a user before they hold
+ * credits when the character has no wizard portrait or the identity
+ * pack is still generating — those are the two biggest predictors of
+ * face morph / face-out-of-frame output.
+ */
+export interface RemixIdentityPreview {
+  hasFrontal: boolean;
+  hasReferences: boolean;
+  referenceCount: number;
+  identityPackStatus: "ready" | "generating" | "failed" | "missing";
+}
+
+export async function previewInfluencerRemixIdentity(input: {
+  influencerId: string;
+  userId: string;
+}): Promise<RemixIdentityPreview> {
+  const influencer = await db.influencer.findFirst({
+    where: { id: input.influencerId, userId: input.userId },
+    select: {
+      baseImageUrl: true,
+      avatarUrl: true,
+      identityPack: true,
+    },
+  });
+  if (!influencer) {
+    return {
+      hasFrontal: false,
+      hasReferences: false,
+      referenceCount: 0,
+      identityPackStatus: "missing",
+    };
+  }
+  const pack = parseIdentityPack(influencer.identityPack);
+  const packFrontal = pack?.shots.find((s) => s.id === "portrait_front")?.url;
+  const hasFrontal = Boolean(
+    (packFrontal && packFrontal.startsWith("http")) ||
+      (influencer.baseImageUrl && influencer.baseImageUrl.startsWith("http")) ||
+      (influencer.avatarUrl && influencer.avatarUrl.startsWith("http"))
+  );
+  const refShots =
+    pack?.status === "ready"
+      ? pack.shots.filter(
+          (s) => s.id !== "portrait_front" && s.url.startsWith("http")
+        )
+      : [];
+  return {
+    hasFrontal,
+    hasReferences: refShots.length > 0,
+    referenceCount: Math.min(refShots.length, 3),
+    identityPackStatus: pack?.status ?? "missing",
+  };
 }
 
 /**
  * Assemble the identity pack used as Kling `elements[]`. Frontal is
  * mandatory (wizard base portrait); refs are the identity-pack angle
- * stills (3/4, full-body, profile) when they're ready. If none of these
+ * stills (full-body, 3/4, profile) when they're ready. If none of these
  * exist we throw — a locked character with no picture cannot be remixed.
  */
 async function resolveInfluencerIdentity(
   influencerId: string,
-  userId: string
+  userId: string,
+  orientation: RemixOrientation
 ): Promise<ResolvedRemixIdentity> {
   const influencer = await db.influencer.findFirst({
     where: { id: influencerId, userId },
@@ -164,16 +243,26 @@ async function resolveInfluencerIdentity(
     });
   }
 
-  const refsRaw =
-    pack && pack.status === "ready"
-      ? pack.shots
-          .filter((s) => s.id !== "portrait_front")
-          .map((s) => s.url)
-      : [];
+  let refShots: Array<{ id: string; url: string }> = [];
+  if (pack && pack.status === "ready") {
+    const priority = orientationRefPriority(orientation);
+    const byId = new Map(pack.shots.map((s) => [s.id, s]));
+    const ordered: Array<{ id: string; url: string }> = [];
+    for (const id of priority) {
+      const shot = byId.get(id);
+      if (shot) ordered.push(shot);
+    }
+    for (const shot of pack.shots) {
+      if (shot.id === "portrait_front") continue;
+      if (ordered.some((s) => s.id === shot.id)) continue;
+      ordered.push(shot);
+    }
+    refShots = ordered;
+  }
   const refs: string[] = [];
-  for (const raw of refsRaw) {
+  for (const shot of refShots) {
     if (refs.length >= 3) break;
-    const resolved = await resolvePublicMediaUrl(raw);
+    const resolved = await resolvePublicMediaUrl(shot.url);
     if (resolved && resolved !== frontal && !refs.includes(resolved)) {
       refs.push(resolved);
     }
@@ -183,6 +272,7 @@ async function resolveInfluencerIdentity(
     frontalImageUrl: frontal,
     referenceImageUrls: refs,
     characterName: influencer.name,
+    identityPackReady: pack?.status === "ready",
   };
 }
 
@@ -212,12 +302,13 @@ async function resolveInfluencerIdentity(
 export async function createRemixJob(
   input: CreateRemixInput
 ): Promise<CreateRemixResult> {
+  const orientation: RemixOrientation = input.characterOrientation ?? "video";
   const identity = await resolveInfluencerIdentity(
     input.influencerId,
-    input.userId
+    input.userId,
+    orientation
   );
 
-  const orientation: RemixOrientation = input.characterOrientation ?? "video";
   const engine = getRemixEngine();
   const duration = clampRemixDuration(
     input.requestedDuration,
@@ -249,6 +340,7 @@ export async function createRemixJob(
     orientation,
     clipDurationSec,
     tier: input.tier,
+    hasIdentityRefs: identity.referenceImageUrls.length > 0,
   });
   if (attempts.length === 0) {
     throw new TRPCError({
@@ -695,6 +787,11 @@ export async function handleRemixProviderFailure(
     orientation,
     clipDurationSec,
     tier: job.tier as RemixTier,
+    // On the retry path we re-derive the plan from the persisted job.
+    // The reference URLs live on the row; if we picked any at submit
+    // time we still have them, so identity-first ordering stays stable
+    // across content_policy retries.
+    hasIdentityRefs: job.referenceImageUrls.length > 0,
   });
   const startIndex = (meta?.attemptIndex ?? 0) + 1;
   const maxAttempts =

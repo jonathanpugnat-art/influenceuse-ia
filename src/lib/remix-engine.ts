@@ -206,16 +206,37 @@ function resolveMotionControlV26ModelId(
 
 /**
  * Ordered submit attempts. Cascade (default), sliced to
- * `REMIX_CASCADE_MAX_ATTEMPTS`: MC v2.6 → (Viggle if keyed, else v3 std)
- * → Wan. v3 pro is never in the top 3. Legacy `motion_control_v3_std`
- * keeps orientation inverse + O1 (already ≤3). O3 rollback is a single
- * attempt.
+ * `REMIX_CASCADE_MAX_ATTEMPTS`.
+ *
+ * Cost-first cascade (no identity refs, or orientation=image where Fal
+ * refuses `elements[]`):
+ *   MC v2.6 → (Viggle if keyed, else v3 std) → Wan
+ *
+ * Identity-first cascade (orientation=video AND the character has ≥1
+ * identity-pack reference still): flip v2.6 and v3 std so the face-bind
+ * engine runs first. v2.6 has no `elements[]` schema and thus no face
+ * anchor — routing it as primary is why marketing scored a fitness clip
+ * 4/10 (face out of frame, outfit morph). v3 std with `elements[]`
+ * carries the frontal + full-body refs and keeps the head in frame.
+ *   MC v3 std (face-bind + multi-ref) → (Viggle if keyed, else MC v2.6)
+ *   → Wan
+ *
+ * v3 pro is never in the top 3 (same content filter family + cost hit).
+ * Legacy `motion_control_v3_std` keeps orientation inverse + O1
+ * (already ≤3). O3 rollback is a single attempt.
  */
 export function planRemixAttempts(input: {
   engine: RemixEngine;
   orientation: RemixOrientation;
   clipDurationSec: number;
   tier: RemixTier;
+  /**
+   * True when the influencer has at least one identity-pack reference
+   * still available in addition to the mandatory frontal portrait. When
+   * unset we assume `false` (cost-first ordering, keeps historical
+   * behaviour + tests untouched for old callers).
+   */
+  hasIdentityRefs?: boolean;
   env?: Record<string, string | undefined>;
 }): RemixAttempt[] {
   const env = input.env ?? process.env;
@@ -259,14 +280,30 @@ export function planRemixAttempts(input: {
     }
     case "motion_control_cascade": {
       const face = input.orientation === "video";
-      const attempts: RemixAttempt[] = [
-        motionControlAttempt({
-          variant: "v26_std",
-          orientation: input.orientation,
-          modelId: resolveMotionControlV26ModelId(env),
-          includeFaceElement: false,
-        }),
-      ];
+      // Identity-first only makes sense for the video (fitness) orientation
+      // where Fal accepts `elements[]` on the v3 endpoint. In image (camera)
+      // mode v3 rejects `elements`, so v2.6 stays primary for cost.
+      const identityFirst = Boolean(input.hasIdentityRefs) && face;
+
+      const v26Attempt = motionControlAttempt({
+        variant: "v26_std",
+        orientation: input.orientation,
+        modelId: resolveMotionControlV26ModelId(env),
+        includeFaceElement: false,
+      });
+      const v3StdAttempt = motionControlAttempt({
+        variant: "v3_std",
+        orientation: input.orientation,
+        modelId:
+          env.FAL_KLING_MOTION_CONTROL_STANDARD_MODEL?.trim() ||
+          REMIX_MOTION_CONTROL_STANDARD_MODEL,
+        includeFaceElement: face,
+      });
+
+      const attempts: RemixAttempt[] = identityFirst
+        ? [v3StdAttempt]
+        : [v26Attempt];
+
       if (isViggleRemixConfigured(env)) {
         attempts.push({
           kind: "viggle",
@@ -274,16 +311,7 @@ export function planRemixAttempts(input: {
           modelId: REMIX_VIGGLE_MODEL_ID,
         });
       } else {
-        attempts.push(
-          motionControlAttempt({
-            variant: "v3_std",
-            orientation: input.orientation,
-            modelId:
-              env.FAL_KLING_MOTION_CONTROL_STANDARD_MODEL?.trim() ||
-              REMIX_MOTION_CONTROL_STANDARD_MODEL,
-            includeFaceElement: face,
-          })
-        );
+        attempts.push(identityFirst ? v26Attempt : v3StdAttempt);
       }
       attempts.push({
         kind: "wan_replace",
@@ -318,6 +346,19 @@ export function classifyRemixProviderError(err: unknown): RemixErrorClass {
   return "other";
 }
 
+/**
+ * Prompt for Kling Motion Control (v2.6 std, v3 std, v3 pro).
+ *
+ * The template is optimised for marketing-usable output on the failing
+ * canary (bycataleya×Luana 10s fitness): output was scored 4/10 because
+ * MC v2.6 without face-bind cropped the head 90% of the clip and
+ * morphed the outfit around 00:06. We now spell out the framing +
+ * identity + outfit + hair contract on every submit so the same clip
+ * has a chance to land ≥7/10 without changing provider.
+ *
+ * We keep it short and English — Kling's prompt encoder is trained on
+ * English and long prompts hurt fidelity; every line is load-bearing.
+ */
 export function buildMotionControlPrompt(opts: {
   orientation: RemixOrientation;
   characterName?: string | null;
@@ -328,8 +369,21 @@ export function buildMotionControlPrompt(opts: {
     const name = opts.characterName?.trim();
     parts.push(
       name
-        ? `The character is @Element1 (${name}). Keep facial identity consistent.`
-        : "The character is @Element1. Keep facial identity consistent."
+        ? `The character is @Element1 (${name}).`
+        : "The character is @Element1."
+    );
+    parts.push(
+      "Keep the exact same face, hair, skin tone, and body proportions as @Element1 across every frame."
+    );
+    parts.push(
+      "Keep the entire head and face visible and centered in frame at all times — do not crop above the eyes."
+    );
+    parts.push(
+      "Preserve the outfit, colors, and accessories from @Element1 from start to finish. Do not morph, swap, or change the clothing."
+    );
+  } else {
+    parts.push(
+      "Keep the exact same face, hair, and skin tone as the reference character across every frame. No morphing, no distortion."
     );
   }
   parts.push("Transfer the motion from the reference video.");
