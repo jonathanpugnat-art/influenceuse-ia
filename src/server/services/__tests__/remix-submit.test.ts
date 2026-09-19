@@ -84,6 +84,8 @@ import {
   createRemixJob,
   finalizeRemixJob,
   handleRemixProviderFailure,
+  orientationRefPriority,
+  previewInfluencerRemixIdentity,
   submitRemixAttemptsUntilAccepted,
 } from "@/server/services/remix.service";
 import { planRemixAttempts } from "@/lib/remix-engine";
@@ -463,5 +465,233 @@ describe("finalizeRemixJob atomic falRequestId", () => {
     });
 
     expect(emitEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe("createRemixJob identity-first cascade wiring", () => {
+  const env = process.env;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetRemixContentPolicyRateLimit();
+    process.env = { ...env };
+    process.env.NEXT_PUBLIC_APP_URL = "https://www.aurainfluenceai.com";
+    process.env.REMIX_WEBHOOK_SECRET = "remix-secret";
+    delete process.env.REMIX_ENGINE;
+    delete process.env.VIGGLE_API_KEY;
+    creditsMock.checkCredits.mockResolvedValue(true);
+    creditsMock.deductCredits.mockResolvedValue(undefined);
+    creditsMock.refundCredits.mockResolvedValue(undefined);
+    mockDb.remixJob.create.mockResolvedValue(pendingRemix);
+    mockDb.remixJob.findUnique.mockResolvedValue(pendingRemix);
+    mockDb.remixJob.updateMany.mockResolvedValue({ count: 1 });
+    mockDb.remixJob.update.mockResolvedValue(pendingRemix);
+  });
+
+  afterEach(() => {
+    process.env = env;
+  });
+
+  it("routes video + full identity pack to MC V3 std (face-bind + ordered refs) as the primary submit", async () => {
+    mockDb.influencer.findFirst.mockResolvedValue({
+      id: "inf-1",
+      name: "Luana",
+      baseImageUrl: "https://cdn.example.com/luana-base.jpg",
+      avatarUrl: null,
+      identityPack: {
+        status: "ready",
+        shots: [
+          { id: "portrait_front", url: "https://cdn.example.com/luana-front.jpg" },
+          { id: "profile", url: "https://cdn.example.com/luana-profile.jpg" },
+          { id: "three_quarter", url: "https://cdn.example.com/luana-34.jpg" },
+          { id: "full_body", url: "https://cdn.example.com/luana-full.jpg" },
+        ],
+        updatedAt: "2026-09-19T00:00:00.000Z",
+      },
+    });
+    falMcMock.submitFalKlingMotionControlRemix.mockResolvedValue({
+      requestId: "fal-mc-v3",
+      modelId: "fal-ai/kling-video/v3/standard/motion-control",
+      prompt: "Transfer the motion from the reference video.",
+      payload: {},
+    });
+
+    const result = await createRemixJob({
+      userId: "u1",
+      influencerId: "inf-1",
+      tier: "standard",
+      sourceVideoUrl: "https://cdn.example.com/clip.mp4",
+      sourceDurationSec: 10,
+      requestedDuration: 10,
+      keepAudio: true,
+      characterOrientation: "video",
+    });
+
+    expect(result.status).toBe("IN_PROGRESS");
+    expect(falMcMock.submitFalKlingMotionControlRemix).toHaveBeenCalledTimes(1);
+    const submit = falMcMock.submitFalKlingMotionControlRemix.mock.calls[0][0];
+    expect(submit.modelId).toBe(
+      "fal-ai/kling-video/v3/standard/motion-control"
+    );
+    expect(submit.includeFaceElement).toBe(true);
+    expect(submit.frontalImageUrl).toBe(
+      "https://cdn.example.com/luana-front.jpg"
+    );
+    expect(submit.referenceImageUrls).toEqual([
+      "https://cdn.example.com/luana-full.jpg",
+      "https://cdn.example.com/luana-34.jpg",
+      "https://cdn.example.com/luana-profile.jpg",
+    ]);
+    expect(viggleMock.submitViggleRemix).not.toHaveBeenCalled();
+    expect(wanMock.submitFalWanReplaceRemix).not.toHaveBeenCalled();
+  });
+
+  it("keeps cost-first ordering when the influencer has no identity pack refs", async () => {
+    mockDb.influencer.findFirst.mockResolvedValue({
+      id: "inf-1",
+      name: "Luana",
+      baseImageUrl: "https://cdn.example.com/luana.jpg",
+      avatarUrl: null,
+      identityPack: null,
+    });
+    falMcMock.submitFalKlingMotionControlRemix.mockResolvedValue({
+      requestId: "fal-mc-v26",
+      modelId: "fal-ai/kling-video/v2.6/standard/motion-control",
+      prompt: "Transfer the motion from the reference video.",
+      payload: {},
+    });
+
+    await createRemixJob({
+      userId: "u1",
+      influencerId: "inf-1",
+      tier: "standard",
+      sourceVideoUrl: "https://cdn.example.com/clip.mp4",
+      sourceDurationSec: 10,
+      requestedDuration: 10,
+      keepAudio: true,
+      characterOrientation: "video",
+    });
+
+    const submit = falMcMock.submitFalKlingMotionControlRemix.mock.calls[0][0];
+    expect(submit.modelId).toBe(
+      "fal-ai/kling-video/v2.6/standard/motion-control"
+    );
+    expect(submit.includeFaceElement).toBe(false);
+    expect(submit.referenceImageUrls).toEqual([]);
+  });
+});
+
+describe("orientationRefPriority", () => {
+  it("full_body first when the fitness clip needs a whole-body anchor", () => {
+    expect(orientationRefPriority("video")).toEqual([
+      "full_body",
+      "three_quarter",
+      "profile",
+    ]);
+  });
+
+  it("three_quarter first for portrait / camera clips", () => {
+    expect(orientationRefPriority("image")).toEqual([
+      "three_quarter",
+      "profile",
+      "full_body",
+    ]);
+  });
+});
+
+describe("previewInfluencerRemixIdentity", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns missing when the influencer does not exist for this user", async () => {
+    mockDb.influencer.findFirst.mockResolvedValue(null);
+    const preview = await previewInfluencerRemixIdentity({
+      influencerId: "inf-missing",
+      userId: "u1",
+    });
+    expect(preview).toEqual({
+      hasFrontal: false,
+      hasReferences: false,
+      referenceCount: 0,
+      identityPackStatus: "missing",
+    });
+  });
+
+  it("reports generating pack: has frontal, no refs yet", async () => {
+    mockDb.influencer.findFirst.mockResolvedValue({
+      baseImageUrl: "https://cdn.example.com/luana.jpg",
+      avatarUrl: null,
+      identityPack: {
+        status: "generating",
+        shots: [
+          { id: "portrait_front", url: "https://cdn.example.com/luana.jpg" },
+        ],
+        updatedAt: "2026-09-19T00:00:00.000Z",
+      },
+    });
+    const preview = await previewInfluencerRemixIdentity({
+      influencerId: "inf-1",
+      userId: "u1",
+    });
+    expect(preview.hasFrontal).toBe(true);
+    expect(preview.hasReferences).toBe(false);
+    expect(preview.referenceCount).toBe(0);
+    expect(preview.identityPackStatus).toBe("generating");
+  });
+
+  it("reports ready pack with clipped reference count (cap at 3)", async () => {
+    mockDb.influencer.findFirst.mockResolvedValue({
+      baseImageUrl: "https://cdn.example.com/luana.jpg",
+      avatarUrl: null,
+      identityPack: {
+        status: "ready",
+        shots: [
+          { id: "portrait_front", url: "https://cdn.example.com/luana-front.jpg" },
+          { id: "profile", url: "https://cdn.example.com/luana-profile.jpg" },
+          { id: "three_quarter", url: "https://cdn.example.com/luana-34.jpg" },
+          { id: "full_body", url: "https://cdn.example.com/luana-full.jpg" },
+          { id: "extra", url: "https://cdn.example.com/luana-extra.jpg" },
+        ],
+        updatedAt: "2026-09-19T00:00:00.000Z",
+      },
+    });
+    const preview = await previewInfluencerRemixIdentity({
+      influencerId: "inf-1",
+      userId: "u1",
+    });
+    expect(preview.hasFrontal).toBe(true);
+    expect(preview.hasReferences).toBe(true);
+    expect(preview.referenceCount).toBe(3);
+    expect(preview.identityPackStatus).toBe("ready");
+  });
+
+  it("falls back to avatarUrl when no wizard base portrait exists", async () => {
+    mockDb.influencer.findFirst.mockResolvedValue({
+      baseImageUrl: null,
+      avatarUrl: "https://cdn.example.com/luana-avatar.jpg",
+      identityPack: null,
+    });
+    const preview = await previewInfluencerRemixIdentity({
+      influencerId: "inf-1",
+      userId: "u1",
+    });
+    expect(preview.hasFrontal).toBe(true);
+    expect(preview.identityPackStatus).toBe("missing");
+    expect(preview.hasReferences).toBe(false);
+  });
+
+  it("flags hasFrontal=false when the character has no usable image at all", async () => {
+    mockDb.influencer.findFirst.mockResolvedValue({
+      baseImageUrl: null,
+      avatarUrl: null,
+      identityPack: null,
+    });
+    const preview = await previewInfluencerRemixIdentity({
+      influencerId: "inf-1",
+      userId: "u1",
+    });
+    expect(preview.hasFrontal).toBe(false);
+    expect(preview.hasReferences).toBe(false);
   });
 });

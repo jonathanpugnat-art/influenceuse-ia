@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  buildMotionControlPrompt,
   classifyRemixProviderError,
   consumeRemixContentPolicyAdvance,
   deriveRemixEngineLabel,
@@ -107,6 +108,130 @@ describe("planRemixAttempts cascade", () => {
     });
     const mc = attempts.filter((a) => a.kind === "motion_control");
     expect(mc.every((a) => a.includeFaceElement === false)).toBe(true);
+  });
+
+  it("identity-first (video + refs, no Viggle): v3 std face-bind → v2.6 → Wan", () => {
+    const attempts = planRemixAttempts({
+      engine: "motion_control_cascade",
+      orientation: "video",
+      clipDurationSec: 10,
+      tier: "standard",
+      hasIdentityRefs: true,
+      env: {},
+    });
+    expect(attempts.length).toBeLessThanOrEqual(REMIX_CASCADE_MAX_ATTEMPTS);
+    expect(attempts.map((a) => [a.kind, a.engine, a.modelId])).toEqual([
+      [
+        "motion_control",
+        "motion_control_v3_std",
+        "fal-ai/kling-video/v3/standard/motion-control",
+      ],
+      [
+        "motion_control",
+        "motion_control_v26_std",
+        "fal-ai/kling-video/v2.6/standard/motion-control",
+      ],
+      ["wan_replace", "wan_replace", "fal-ai/wan/v2.2-14b/animate/replace"],
+    ]);
+    expect(attempts[0]).toMatchObject({
+      engine: "motion_control_v3_std",
+      includeFaceElement: true,
+      orientation: "video",
+    });
+    expect(attempts[1]).toMatchObject({
+      engine: "motion_control_v26_std",
+      includeFaceElement: false,
+      orientation: "video",
+    });
+  });
+
+  it("identity-first (video + refs, with Viggle): v3 std face-bind → Viggle → Wan (keeps content-policy escape)", () => {
+    const attempts = planRemixAttempts({
+      engine: "motion_control_cascade",
+      orientation: "video",
+      clipDurationSec: 10,
+      tier: "standard",
+      hasIdentityRefs: true,
+      env: { VIGGLE_API_KEY: "vg-test" },
+    });
+    expect(attempts.map((a) => [a.kind, a.engine, a.modelId])).toEqual([
+      [
+        "motion_control",
+        "motion_control_v3_std",
+        "fal-ai/kling-video/v3/standard/motion-control",
+      ],
+      ["viggle", "viggle", "viggle.ai/v1/renders"],
+      ["wan_replace", "wan_replace", "fal-ai/wan/v2.2-14b/animate/replace"],
+    ]);
+    expect(attempts[0]).toMatchObject({
+      engine: "motion_control_v3_std",
+      includeFaceElement: true,
+    });
+  });
+
+  it("stays cost-first for image orientation even with identity refs (Fal rejects elements on v3 image)", () => {
+    const attempts = planRemixAttempts({
+      engine: "motion_control_cascade",
+      orientation: "image",
+      clipDurationSec: 8,
+      tier: "standard",
+      hasIdentityRefs: true,
+      env: {},
+    });
+    expect(attempts.map((a) => a.engine)).toEqual([
+      "motion_control_v26_std",
+      "motion_control_v3_std",
+      "wan_replace",
+    ]);
+    const mc = attempts.filter((a) => a.kind === "motion_control");
+    expect(mc.every((a) => a.includeFaceElement === false)).toBe(true);
+  });
+});
+
+describe("buildMotionControlPrompt", () => {
+  it("video orientation: locks face, framing, and outfit and names the character", () => {
+    const prompt = buildMotionControlPrompt({
+      orientation: "video",
+      characterName: "Luana",
+    });
+    expect(prompt).toMatch(/@Element1 \(Luana\)/);
+    expect(prompt).toMatch(/face/i);
+    expect(prompt).toMatch(/hair/i);
+    expect(prompt).toMatch(/body proportions/i);
+    expect(prompt).toMatch(/head and face visible/i);
+    expect(prompt).toMatch(/do not crop above the eyes/i);
+    expect(prompt).toMatch(/outfit/i);
+    expect(prompt).toMatch(/do not morph/i);
+    expect(prompt).toMatch(/transfer the motion/i);
+  });
+
+  it("video orientation without character name: still locks the framing + identity contract", () => {
+    const prompt = buildMotionControlPrompt({ orientation: "video" });
+    expect(prompt).toMatch(/@Element1/);
+    expect(prompt).not.toMatch(/\(\)/);
+    expect(prompt).toMatch(/head and face visible/i);
+    expect(prompt).toMatch(/outfit/i);
+  });
+
+  it("image (camera) orientation: identity-only prompt, no framing / outfit clauses", () => {
+    const prompt = buildMotionControlPrompt({
+      orientation: "image",
+      characterName: "Luana",
+    });
+    expect(prompt).toMatch(/reference character/i);
+    expect(prompt).toMatch(/no morphing/i);
+    expect(prompt).toMatch(/transfer the motion/i);
+    expect(prompt).not.toMatch(/outfit/i);
+    expect(prompt).not.toMatch(/head and face visible/i);
+  });
+
+  it("appends the caller extra tail at the end when provided", () => {
+    const prompt = buildMotionControlPrompt({
+      orientation: "video",
+      characterName: "Luana",
+      extra: "Warm sunset lighting.",
+    });
+    expect(prompt.endsWith("Warm sunset lighting.")).toBe(true);
   });
 });
 
