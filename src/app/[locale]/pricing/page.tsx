@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
-import { ArrowLeft, Check, Sparkles } from "lucide-react";
+import { ArrowLeft, Check } from "lucide-react";
 import { Link } from "@/i18n/navigation";
 import { CREDIT_PACK_CATALOG, PLANS } from "@/lib/constants";
 import { PRODUCT_NAME, SUPPORT_EMAIL } from "@/lib/site";
@@ -35,7 +35,7 @@ export default async function PricingPage({
     name: string;
     price: number;
     description: string;
-    /** Renders highlight ribbon + violet accent. */
+    /** 1px aurora border. No glow. */
     featured?: boolean;
     /** When true the CTA goes to a contact mailto: instead of sign-up. */
     enterprise?: boolean;
@@ -117,13 +117,11 @@ export default async function PricingPage({
   ];
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-50 selection:bg-violet-500/30">
-      <header className="container mx-auto px-6 h-16 flex items-center justify-between border-b border-zinc-800/50">
-        <Link href="/home" locale={locale} className="flex items-center gap-2 group">
-          <div className="size-8 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
-            <Sparkles className="size-4 text-white" />
-          </div>
-          <span className="font-bold text-lg tracking-tight">{PRODUCT_NAME}</span>
+    <div className="min-h-screen bg-background text-foreground selection:bg-primary/20">
+      <header className="border-b border-white/10 bg-background">
+        <div className="container mx-auto flex h-16 items-center justify-between px-6">
+        <Link href="/home" locale={locale} className="flex items-center gap-2">
+          <span className="text-lg font-bold tracking-tight">{PRODUCT_NAME}</span>
         </Link>
         <Link
           href="/home"
@@ -132,6 +130,7 @@ export default async function PricingPage({
         >
           <ArrowLeft className="size-4" /> {tLanding("navFeatures")}
         </Link>
+        </div>
       </header>
 
       <main className="container mx-auto px-6 py-16 md:py-24">
@@ -158,16 +157,16 @@ export default async function PricingPage({
             return (
               <div
                 key={plan.id}
-                className={`relative rounded-2xl p-8 border flex flex-col ${
+                className={`flex flex-col rounded-2xl border bg-zinc-950 p-8 ${
                   plan.featured
-                    ? "border-violet-500/50 bg-violet-500/5 shadow-2xl shadow-violet-900/20"
-                    : "border-zinc-800 bg-zinc-900/50"
+                    ? "border-[color:var(--aurora)]"
+                    : "border-white/10"
                 }`}
               >
                 {plan.featured && (
-                  <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 px-3 py-1 bg-violet-500 text-white text-xs font-bold rounded-full">
+                  <p className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-[color:var(--aurora)]">
                     {t("mostPopular")}
-                  </div>
+                  </p>
                 )}
                 <h2 className="text-xl font-bold mb-2">{plan.name}</h2>
                 <div className="mb-4">
@@ -183,17 +182,17 @@ export default async function PricingPage({
                 {plan.enterprise ? (
                   <a
                     href={ctaHref}
-                    className="inline-flex items-center justify-center w-full mb-6 h-10 px-4 rounded-md text-sm font-medium border border-zinc-700 text-white hover:bg-zinc-800 transition-colors"
+                    className="mb-6 inline-flex h-10 w-full items-center justify-center rounded-md border border-white/10 px-4 text-sm font-medium text-white transition-colors hover:bg-white/5"
                   >
                     {ctaLabel}
                   </a>
                 ) : (
                   <Link href="/sign-up" locale={locale}>
                     <span
-                      className={`inline-flex items-center justify-center w-full mb-6 h-10 px-4 rounded-md text-sm font-medium transition-colors ${
+                      className={`mb-6 inline-flex h-10 w-full items-center justify-center rounded-md px-4 text-sm font-medium transition-colors ${
                         plan.featured
-                          ? "bg-violet-600 hover:bg-violet-700 text-white"
-                          : "border border-zinc-700 text-white hover:bg-zinc-800"
+                          ? "bg-foreground text-background hover:bg-foreground/90"
+                          : "border border-white/10 text-white hover:bg-white/5"
                       }`}
                     >
                       {ctaLabel}
@@ -207,7 +206,7 @@ export default async function PricingPage({
                       key={j}
                       className="flex items-start gap-3 text-sm text-zinc-300"
                     >
-                      <Check className="size-4 text-violet-500 shrink-0 mt-0.5" />
+                      <Check className="mt-0.5 size-4 shrink-0 text-foreground" />
                       <span>{feat}</span>
                     </li>
                   ))}
@@ -231,7 +230,7 @@ export default async function PricingPage({
             {CREDIT_PACK_CATALOG.map((pack) => (
               <div
                 key={pack.id}
-                className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6 text-center"
+                className="rounded-xl border border-white/10 bg-zinc-950 p-6 text-center"
               >
                 <p className="text-sm font-medium text-zinc-400 mb-1">
                   {t(`packName.${pack.id}`)}
@@ -247,7 +246,7 @@ export default async function PricingPage({
             <Link
               href="/sign-up"
               locale={locale}
-              className="text-violet-400 hover:text-violet-300 underline-offset-4 hover:underline text-sm"
+              className="text-sm text-foreground underline-offset-4 hover:underline"
             >
               {t("packsCta")}
             </Link>

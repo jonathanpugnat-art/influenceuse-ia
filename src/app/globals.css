@@ -132,9 +132,11 @@
   animation: wizard-appearance-progress 1.8s ease-in-out infinite;
 }
 
-/* Black — fond pur, glows pastel, CTA blancs */
+/* Black — fond pur. Accent marketing : une seule famille violet. */
 :root {
   --radius: 1rem;
+  --aurora: oklch(0.62 0.22 293);
+  --aurora-deep: oklch(0.42 0.18 293);
   --background: oklch(0 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.14 0.006 285 / 55%);
@@ -222,20 +224,15 @@
   @apply rounded-2xl border border-border/40 bg-muted/50 backdrop-blur-sm;
 }
 
+/* Headlines stay solid. bg-clip-text / multi-hue text gradients are banned. */
 @utility text-gradient-accent {
-  @apply bg-gradient-to-r from-zinc-100 via-zinc-300 to-zinc-500 bg-clip-text text-transparent;
+  color: var(--foreground);
+  background-image: none;
 }
 
 @utility text-gradient-pastel {
-  background-image: linear-gradient(
-    135deg,
-    oklch(0.85 0.08 50),
-    oklch(0.78 0.1 290),
-    oklch(0.75 0.06 240)
-  );
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--foreground);
+  background-image: none;
 }
 
 @utility dash-cta {
@@ -250,19 +247,29 @@
   @apply rounded-full border-border/60 bg-card/60 text-foreground backdrop-blur-sm;
 }
 
+/* Single violet wash. No peach / blue mesh. */
 @utility app-mesh {
-  background-image:
-    radial-gradient(ellipse 70% 55% at 50% -15%, oklch(0.78 0.1 50 / 14%), transparent),
-    radial-gradient(ellipse 55% 45% at 85% 10%, oklch(0.72 0.12 290 / 12%), transparent),
-    radial-gradient(ellipse 50% 40% at 15% 25%, oklch(0.72 0.08 240 / 10%), transparent);
+  background-image: radial-gradient(
+    ellipse 70% 50% at 50% -20%,
+    color-mix(in oklch, var(--aurora) 16%, transparent),
+    transparent
+  );
 }
 
 @utility glow-peach {
-  background: radial-gradient(ellipse 60% 50% at 50% 50%, oklch(0.78 0.1 50 / 18%), transparent 70%);
+  background: radial-gradient(
+    ellipse 60% 50% at 50% 50%,
+    color-mix(in oklch, var(--aurora) 14%, transparent),
+    transparent 70%
+  );
 }
 
 @utility glow-lavender {
-  background: radial-gradient(ellipse 60% 50% at 50% 50%, oklch(0.72 0.12 290 / 16%), transparent 70%);
+  background: radial-gradient(
+    ellipse 60% 50% at 50% 50%,
+    color-mix(in oklch, var(--aurora) 14%, transparent),
+    transparent 70%
+  );
 }
 
 /* Custom thin scrollbar */
