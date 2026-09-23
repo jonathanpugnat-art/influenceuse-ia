@@ -2,33 +2,21 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { motion, AnimatePresence } from "framer-motion";
 import { useTranslations, useLocale } from "next-intl";
 import { Link, usePathname } from "@/i18n/navigation";
 import { Button } from "@/components/ui/button";
 import { PLANS, CREDIT_COSTS } from "@/lib/constants";
 import { PRODUCT_NAME, SUPPORT_EMAIL } from "@/lib/site";
 import {
-  Sparkles,
-  Layers,
-  Video,
-  BarChart3,
   CheckCircle2,
   Play,
   ArrowRight,
   Menu,
   X,
-  Wand2,
-  Users,
-  Image as ImageIcon,
-  CalendarDays,
   Heart,
   MessageCircle,
   Send,
   Bookmark,
-  Camera,
-  Quote,
-  Globe,
 } from "lucide-react";
 
 /**
@@ -47,52 +35,18 @@ export default function LandingPage() {
   const locale = useLocale();
   const pathname = usePathname();
 
-  const fadeIn = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.6 } },
-  };
-
-  const staggerContainer = {
-    hidden: { opacity: 0 },
-    visible: { opacity: 1, transition: { staggerChildren: 0.1 } },
-  };
-
   const features = [
-    {
-      icon: ImageIcon,
-      title: t("feature1Title"),
-      desc: t("feature1Desc"),
-      color: "text-foreground",
-      bg: "bg-card",
-    },
-    {
-      icon: Layers,
-      title: t("feature2Title"),
-      desc: t("feature2Desc"),
-      color: "text-primary",
-      bg: "bg-primary/10",
-    },
-    {
-      icon: Video,
-      title: t("feature3Title"),
-      desc: t("feature3Desc"),
-      color: "text-foreground",
-      bg: "bg-card",
-    },
-    {
-      icon: BarChart3,
-      title: t("feature4Title"),
-      desc: t("feature4Desc"),
-      color: "text-muted-foreground",
-      bg: "bg-muted",
-    },
+    { title: t("feature1Title"), desc: t("feature1Desc") },
+    { title: t("feature2Title"), desc: t("feature2Desc") },
+    { title: t("feature3Title"), desc: t("feature3Desc") },
+    { title: t("feature4Title"), desc: t("feature4Desc") },
   ];
 
   const steps = [
-    { step: "01", title: t("step1Title"), desc: t("step1Desc"), icon: Users },
-    { step: "02", title: t("step2Title"), desc: t("step2Desc"), icon: Wand2 },
-    { step: "03", title: t("step3Title"), desc: t("step3Desc"), icon: CalendarDays },
-    { step: "04", title: t("step4Title"), desc: t("step4Desc"), icon: BarChart3 },
+    { step: "01", title: t("step1Title"), desc: t("step1Desc") },
+    { step: "02", title: t("step2Title"), desc: t("step2Desc") },
+    { step: "03", title: t("step3Title"), desc: t("step3Desc") },
+    { step: "04", title: t("step4Title"), desc: t("step4Desc") },
   ];
 
   // Pricing teaser: read numbers from the single source of truth (PLANS) so
@@ -176,13 +130,10 @@ export default function LandingPage() {
   const otherLocale = locale === "fr" ? "en" : "fr";
 
   return (
-    <div className="min-h-screen bg-background text-foreground selection:bg-primary/20 app-mesh">
-      <header className="fixed inset-x-0 top-0 z-50 px-4 pt-4 md:px-6 md:pt-5">
-        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between rounded-full border border-border/50 bg-card/50 px-4 shadow-lg shadow-black/20 backdrop-blur-2xl md:px-6">
+    <div className="min-h-screen bg-background text-foreground selection:bg-primary/20">
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-background">
+        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4 md:px-6">
           <div className="flex items-center gap-2.5">
-            <div className="flex size-8 items-center justify-center rounded-xl border border-border/50 bg-background/60">
-              <Sparkles className="size-4 text-foreground" />
-            </div>
             <span className="text-base font-semibold tracking-tight">
               Aura <span className="font-normal text-muted-foreground">Influences</span>
             </span>
@@ -215,7 +166,7 @@ export default function LandingPage() {
               </Button>
             </Link>
             <Link href="/sign-up" locale={locale}>
-              <Button size="sm">{t("tryFree")}</Button>
+              <Button size="sm" className="shadow-none">{t("tryFree")}</Button>
             </Link>
           </div>
 
@@ -230,14 +181,8 @@ export default function LandingPage() {
         </div>
       </header>
 
-      <AnimatePresence>
-        {mobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            className="md:hidden fixed inset-x-4 top-[4.5rem] z-40 overflow-hidden rounded-2xl border border-border/50 bg-popover/95 px-6 py-4 shadow-xl shadow-black/30 backdrop-blur-2xl"
-          >
+      {mobileMenuOpen && (
+          <div className="fixed inset-x-0 top-14 z-40 border-b border-white/10 bg-background px-6 py-4 md:hidden">
             <div className="flex flex-col gap-4 text-sm font-medium">
               <a
                 href="#features"
@@ -272,72 +217,42 @@ export default function LandingPage() {
                 <Link href="/sign-in" locale={locale} onClick={() => setMobileMenuOpen(false)}>
                   <Button
                     variant="outline"
-                    className="w-full border-border bg-transparent text-foreground"
+                    className="w-full border-white/10 bg-transparent text-foreground shadow-none backdrop-blur-none"
                   >
                     {t("signIn")}
                   </Button>
                 </Link>
                 <Link href="/sign-up" locale={locale} onClick={() => setMobileMenuOpen(false)}>
-                  <Button className="w-full bg-foreground text-background border-0">
+                  <Button className="w-full border-0 bg-foreground text-background shadow-none">
                     {t("tryFree")}
                   </Button>
                 </Link>
               </div>
             </div>
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
 
       <main>
         {/* Hero */}
-        <section className="relative overflow-hidden pt-36 pb-20 md:pt-52 md:pb-32">
-          <div className="pointer-events-none absolute inset-0 -z-10">
-            <div className="absolute inset-0 app-mesh" />
-            <div className="absolute left-1/2 top-1/3 h-[500px] w-[700px] -translate-x-1/2 -translate-y-1/2 glow-lavender opacity-80" />
-          </div>
-
-          <div className="container relative mx-auto px-6">
+        <section className="pt-24 pb-20 md:pt-32 md:pb-32">
+          <div className="container mx-auto px-6">
             <div className="mx-auto max-w-4xl text-center">
-              <motion.div
-                initial="hidden"
-                animate="visible"
-                variants={fadeIn}
-                className="mb-8 inline-flex items-center gap-2 rounded-full border border-border/50 bg-card/50 px-4 py-1.5 text-sm font-medium text-muted-foreground backdrop-blur-sm"
-              >
-                <Sparkles className="size-4 text-foreground" />
-                <span>{t("heroBadge")}</span>
-              </motion.div>
+              <p className="mx-auto mb-8 max-w-xl text-balance font-mono text-[11px] uppercase leading-relaxed tracking-[0.14em] text-muted-foreground md:text-xs md:tracking-[0.18em]">
+                {t("heroBadge")}
+              </p>
 
-              <motion.h1
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.1 }}
-                className="mb-6 text-5xl font-bold leading-[1.02] tracking-tight text-foreground md:text-7xl lg:text-8xl"
-              >
-                {t("heroTitlePart1")}{" "}
-                <span className="text-gradient-pastel">
-                  {t("heroTitleHighlight")}
-                </span>
+              <h1 className="mb-6 text-5xl font-bold leading-[1.02] tracking-tight text-foreground md:text-7xl lg:text-8xl">
+                {t("heroTitlePart1")} {t("heroTitleHighlight")}
                 {t("heroTitlePart2")}
-              </motion.h1>
+              </h1>
 
-              <motion.p
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.2 }}
-                className="mx-auto mb-10 max-w-2xl text-lg leading-relaxed text-muted-foreground md:text-xl"
-              >
+              <p className="mx-auto mb-10 max-w-2xl text-lg leading-relaxed text-muted-foreground md:text-xl">
                 {t("heroSubtitle")}
-              </motion.p>
+              </p>
 
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.3 }}
-                className="flex flex-col items-center justify-center gap-4 sm:flex-row"
-              >
+              <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
                 <Link href="/sign-up" locale={locale}>
-                  <Button size="lg" className="h-14 w-full px-8 sm:w-auto">
+                  <Button size="lg" className="h-14 w-full px-8 shadow-none sm:w-auto">
                     {t("ctaPrimary")} <ArrowRight className="ml-2 size-4" />
                   </Button>
                 </Link>
@@ -345,7 +260,7 @@ export default function LandingPage() {
                   type="button"
                   size="lg"
                   variant="outline"
-                  className="h-14 w-full px-8 sm:w-auto"
+                  className="h-14 w-full border-white/10 bg-transparent px-8 shadow-none backdrop-blur-none sm:w-auto"
                   onClick={() => {
                     document
                       .getElementById("showcase")
@@ -354,78 +269,59 @@ export default function LandingPage() {
                 >
                   <Play className="mr-2 size-4" /> {t("ctaWatchDemo")}
                 </Button>
-              </motion.div>
+              </div>
             </div>
 
-            <motion.div
-              initial={{ opacity: 0, y: 40 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.4 }}
-              className="mt-16 md:mt-20 relative mx-auto max-w-6xl"
-            >
-              {/* "100% AI" trust badge above the photo wall */}
-              <div className="flex justify-center mb-6">
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-medium">
-                  <Camera className="size-3.5" />
-                  <span>{t("heroPhotoBadge")}</span>
-                </div>
-              </div>
+            <div className="relative mx-auto mt-16 max-w-6xl md:mt-20">
+              <p className="mb-6 text-center font-mono text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                {t("heroPhotoBadge")}
+              </p>
 
-              <div className="relative overflow-hidden rounded-3xl border border-border/50 bg-card/40 p-3 shadow-2xl shadow-black/50 backdrop-blur-sm md:p-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+              <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-background p-3 md:p-4">
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
                   {[
                     { src: "/landing/showcase/luna-gym.jpg", caption: t("showcaseCaptionGym") },
                     { src: "/landing/showcase/amani-restaurant.jpg", caption: t("showcaseCaptionRestaurant") },
                     { src: "/landing/showcase/kenji-tokyo.jpg", caption: t("showcaseCaptionTokyo") },
                     { src: "/landing/showcase/marco-nyc.jpg", caption: t("showcaseCaptionNyc") },
                   ].map((shot, i) => (
-                    <motion.div
+                    <div
                       key={shot.src}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.6, delay: 0.5 + i * 0.08 }}
-                      className="relative rounded-2xl overflow-hidden aspect-[3/4] group bg-muted"
+                      className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-zinc-950"
                     >
                       <Image
                         src={shot.src}
                         alt={shot.caption}
                         fill
                         sizes="(min-width: 768px) 25vw, 50vw"
-                        className="object-cover transition-transform duration-700 group-hover:scale-105"
+                        className="object-cover"
                         priority={i < 2}
                       />
-                      {/* IG-style overlay */}
-                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent p-3 md:p-4">
-                        <p className="truncate text-xs text-white/90 md:text-sm">
+                      <div className="absolute inset-x-0 bottom-0 bg-black/80 px-3 py-2">
+                        <p className="truncate text-xs text-white md:text-sm">
                           {shot.caption}
                         </p>
                       </div>
-                      <div className="absolute top-3 right-3 size-7 rounded-full bg-background/60 backdrop-blur flex items-center justify-center border border-border">
-                        <Sparkles className="size-3.5 text-primary" />
-                      </div>
-                    </motion.div>
+                    </div>
                   ))}
                 </div>
               </div>
-            </motion.div>
+            </div>
           </div>
         </section>
 
         {/* Stats strip + social proof */}
-        <section className="py-12 border-y border-border bg-card/30">
+        <section className="border-y border-white/10 py-12">
           <div className="container mx-auto px-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-10 mb-4 max-w-5xl mx-auto">
+            <div className="mx-auto mb-4 grid max-w-5xl grid-cols-2 gap-6 md:grid-cols-4 md:gap-10">
               {[
-                { value: `${CREDIT_COSTS.PHOTO}`, label: t("statsPhotosGenerated"), icon: ImageIcon },
-                { value: `${CREDIT_COSTS.REEL}`, label: t("statsAvgGenTime"), icon: Video },
-                { value: "IG + TT", label: t("statsCountries"), icon: Send },
-                { value: "FR / EN", label: t("statsActiveAgencies"), icon: Globe },
+                { value: `${CREDIT_COSTS.PHOTO}`, label: t("statsPhotosGenerated") },
+                { value: `${CREDIT_COSTS.REEL}`, label: t("statsAvgGenTime") },
+                { value: "IG + TT", label: t("statsCountries") },
+                { value: "FR / EN", label: t("statsActiveAgencies") },
               ].map((stat) => (
                 <div key={stat.label} className="text-center">
-                  <div className="flex justify-center mb-2">
-                    <stat.icon className="size-5 text-muted-foreground" />
-                  </div>
-                  <div className="text-3xl md:text-4xl font-bold text-foreground tracking-tight">
+                  <div className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">
                     {stat.value}
                   </div>
                   <div className="text-xs md:text-sm text-muted-foreground mt-1">
@@ -445,10 +341,9 @@ export default function LandingPage() {
         <section id="showcase" className="py-24 md:py-32 relative overflow-hidden scroll-mt-24">
           <div className="container mx-auto px-6">
             <div className="text-center max-w-2xl mx-auto mb-14">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-border bg-card text-muted-foreground text-xs font-medium mb-4">
-                <Sparkles className="size-3.5 text-primary" />
-                <span>{t("heroPhotoBadge")}</span>
-              </div>
+              <p className="mb-4 font-mono text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                {t("heroPhotoBadge")}
+              </p>
               <h2 className="text-3xl md:text-5xl font-bold mb-4 tracking-tight text-foreground">
                 {t("showcaseTitle")}
               </h2>
@@ -498,14 +393,10 @@ export default function LandingPage() {
                     { src: "/landing/showcase/marco-park.jpg", caption: "Park days", likes: "13.5K", comments: "318" },
                   ],
                 },
-              ].map((persona, idx) => (
-                <motion.article
+              ].map((persona) => (
+                <article
                   key={persona.handle}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: "-50px" }}
-                  transition={{ duration: 0.5, delay: idx * 0.1 }}
-                  className="rounded-3xl bg-card border border-border overflow-hidden hover:border-primary/30 transition-colors duration-300 group"
+                  className="overflow-hidden rounded-3xl border border-white/10 bg-zinc-950"
                 >
                   {/* Profile header */}
                   <div className="p-4 flex items-center gap-3 border-b border-border">
@@ -538,7 +429,7 @@ export default function LandingPage() {
                       alt={persona.posts[0].caption}
                       fill
                       sizes="(min-width: 1024px) 25vw, (min-width: 768px) 50vw, 100vw"
-                      className="object-cover group-hover:scale-[1.02] transition-transform duration-700"
+                      className="object-cover"
                     />
                   </div>
 
@@ -568,7 +459,7 @@ export default function LandingPage() {
                       {persona.posts.slice(1).map((p) => (
                         <div
                           key={p.src}
-                          className="relative aspect-square bg-card"
+                          className="relative aspect-square bg-zinc-950"
                         >
                           <Image
                             src={p.src}
@@ -581,7 +472,7 @@ export default function LandingPage() {
                       ))}
                     </div>
                   )}
-                </motion.article>
+                </article>
               ))}
             </div>
 
@@ -589,7 +480,7 @@ export default function LandingPage() {
               <Link href="/sign-up" locale={locale}>
                 <Button
                   variant="outline"
-                  className="border-border bg-card text-foreground hover:bg-accent h-11 px-6"
+                  className="h-11 border-white/10 bg-transparent px-6 text-foreground shadow-none backdrop-blur-none hover:bg-white/5"
                 >
                   {t("showcaseSeeMore")}
                 </Button>
@@ -599,7 +490,7 @@ export default function LandingPage() {
         </section>
 
         {/* Before / After — same face, different scenes */}
-        <section className="py-24 md:py-32 bg-card/30 border-y border-border">
+        <section className="border-y border-white/10 py-24 md:py-32">
           <div className="container mx-auto px-6">
             <div className="text-center max-w-2xl mx-auto mb-14">
               <h2 className="text-3xl md:text-5xl font-bold mb-4 tracking-tight">
@@ -610,18 +501,12 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 max-w-6xl mx-auto items-center">
-              <motion.div
-                initial={{ opacity: 0, x: -30 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.6 }}
-                className="md:col-span-2"
-              >
-                <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-3 text-center md:text-left">
+            <div className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-4 md:grid-cols-5">
+              <div className="md:col-span-2">
+                <div className="mb-3 text-center font-mono text-xs uppercase tracking-[0.18em] text-muted-foreground md:text-left">
                   {t("beforeAfterLabelBase")}
                 </div>
-                <div className="relative aspect-[3/4] rounded-3xl overflow-hidden border border-border shadow-2xl shadow-black/30">
+                <div className="relative aspect-[3/4] overflow-hidden rounded-3xl border border-white/10">
                   <Image
                     src="/landing/influencers/luna.jpg"
                     alt="Reference portrait"
@@ -629,32 +514,18 @@ export default function LandingPage() {
                     sizes="(min-width: 768px) 40vw, 100vw"
                     className="object-cover"
                   />
-                  <div className="absolute top-3 left-3 px-2 py-1 rounded-full bg-black/60 backdrop-blur text-white text-[10px] font-bold uppercase tracking-wider">
+                  <div className="absolute top-3 left-3 bg-black px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-white">
                     Wizard
                   </div>
                 </div>
-              </motion.div>
-
-              <div className="hidden md:flex justify-center items-center md:col-span-1">
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.5 }}
-                  whileInView={{ opacity: 1, scale: 1 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.5, delay: 0.3 }}
-                  className="size-16 rounded-full bg-card border border-border flex items-center justify-center"
-                >
-                  <ArrowRight className="size-7 text-primary" />
-                </motion.div>
               </div>
 
-              <motion.div
-                initial={{ opacity: 0, x: 30 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.6, delay: 0.2 }}
-                className="md:col-span-2"
-              >
-                <div className="text-xs uppercase tracking-wider text-emerald-400 font-semibold mb-3 text-center md:text-left">
+              <div className="hidden items-center justify-center md:flex md:col-span-1">
+                <ArrowRight className="size-6 text-muted-foreground" />
+              </div>
+
+              <div className="md:col-span-2">
+                <div className="mb-3 text-center font-mono text-xs uppercase tracking-[0.18em] text-muted-foreground md:text-left">
                   {t("beforeAfterLabelGenerated")}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -663,14 +534,10 @@ export default function LandingPage() {
                     "/landing/showcase/luna-cafe.jpg",
                     "/landing/showcase/luna-mirror.jpg",
                     "/landing/showcase/amani-restaurant.jpg",
-                  ].map((src, i) => (
-                    <motion.div
+                  ].map((src) => (
+                    <div
                       key={src}
-                      initial={{ opacity: 0, y: 20 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ duration: 0.4, delay: 0.4 + i * 0.08 }}
-                      className="relative aspect-[3/4] rounded-2xl overflow-hidden border border-border"
+                      className="relative aspect-[3/4] overflow-hidden rounded-2xl border border-white/10"
                     >
                       <Image
                         src={src}
@@ -679,10 +546,10 @@ export default function LandingPage() {
                         sizes="(min-width: 768px) 20vw, 50vw"
                         className="object-cover"
                       />
-                    </motion.div>
+                    </div>
                   ))}
                 </div>
-              </motion.div>
+              </div>
             </div>
           </div>
         </section>
@@ -697,88 +564,49 @@ export default function LandingPage() {
               <p className="text-muted-foreground text-lg">{t("featuresSubtitle")}</p>
             </div>
 
-            <motion.div
-              variants={staggerContainer}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, margin: "-100px" }}
-              className="grid md:grid-cols-2 lg:grid-cols-4 gap-6"
-            >
-              {features.map((feature, i) => (
-                <motion.div
-                  key={i}
-                  variants={fadeIn}
-                  className="p-6 rounded-2xl bg-card border border-border hover:border-primary/20 transition-colors group"
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+              {features.map((feature) => (
+                <div
+                  key={feature.title}
+                  className="rounded-2xl border border-white/10 bg-zinc-950 p-6"
                 >
-                  <div
-                    className={`size-12 rounded-xl ${feature.bg} flex items-center justify-center mb-6 group-hover:scale-110 transition-transform`}
-                  >
-                    <feature.icon className={`size-6 ${feature.color}`} />
-                  </div>
-                  <h3 className="text-xl font-bold mb-3">{feature.title}</h3>
-                  <p className="text-muted-foreground leading-relaxed">{feature.desc}</p>
-                </motion.div>
+                  <h3 className="mb-3 text-xl font-bold">{feature.title}</h3>
+                  <p className="leading-relaxed text-muted-foreground">{feature.desc}</p>
+                </div>
               ))}
-            </motion.div>
+            </div>
           </div>
         </section>
 
         {/* How it works */}
         <section
           id="how-it-works"
-          className="py-24 md:py-32 bg-card/30 border-y border-border"
+          className="border-y border-white/10 py-24 md:py-32"
         >
           <div className="container mx-auto px-6">
-            <div className="text-center max-w-2xl mx-auto mb-16">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">
+            <div className="mx-auto mb-16 max-w-2xl text-center">
+              <h2 className="mb-4 text-3xl font-bold md:text-4xl">
                 {t("howItWorksTitle")}
               </h2>
-              <p className="text-muted-foreground text-lg">
+              <p className="text-lg text-muted-foreground">
                 {t("howItWorksSubtitle")}
               </p>
             </div>
 
-            <div className="max-w-4xl mx-auto relative">
-              <div className="absolute left-[27px] md:left-1/2 top-4 bottom-4 w-px bg-border md:-translate-x-1/2" />
-
-              {steps.map((step, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: "-100px" }}
-                  transition={{ delay: i * 0.1 }}
-                  className={`relative flex flex-col md:flex-row gap-8 items-start md:items-center mb-12 last:mb-0 ${
-                    i % 2 !== 0 ? "md:flex-row-reverse" : ""
-                  }`}
+            <div className="mx-auto max-w-3xl">
+              {steps.map((step) => (
+                <div
+                  key={step.step}
+                  className="grid grid-cols-[3rem_1fr] gap-6 border-t border-white/10 py-8"
                 >
-                  <div
-                    className={`md:w-1/2 flex flex-col ${
-                      i % 2 !== 0
-                        ? "md:items-start"
-                        : "md:items-end md:text-right"
-                    } pl-16 md:pl-0`}
-                  >
-                    <h3 className="text-xl font-bold mb-2">{step.title}</h3>
+                  <div className="font-mono text-sm text-muted-foreground">
+                    {step.step}
+                  </div>
+                  <div>
+                    <h3 className="mb-2 text-xl font-bold">{step.title}</h3>
                     <p className="text-muted-foreground">{step.desc}</p>
                   </div>
-
-                  <div className="absolute left-0 md:static md:w-14 flex justify-center shrink-0 z-10">
-                    <div className="size-14 rounded-full bg-background border-4 border-card flex items-center justify-center text-sm font-bold text-primary">
-                      {step.step}
-                    </div>
-                  </div>
-
-                  <div
-                    className={`md:w-1/2 hidden md:flex ${
-                      i % 2 !== 0 ? "justify-end" : "justify-start"
-                    }`}
-                  >
-                    <div className="size-24 rounded-2xl bg-card border border-border flex items-center justify-center">
-                      <step.icon className="size-10 text-muted-foreground" />
-                    </div>
-                  </div>
-                </motion.div>
+                </div>
               ))}
             </div>
           </div>
@@ -798,16 +626,16 @@ export default function LandingPage() {
               {plansForCards.map((plan, i) => (
                 <div
                   key={i}
-                  className={`rounded-2xl p-8 border ${
+                  className={`rounded-2xl border bg-zinc-950 p-8 ${
                     plan.featured
-                      ? "border-primary/40 bg-primary/5 relative"
-                      : "border-border bg-card"
+                      ? "border-[color:var(--aurora)]"
+                      : "border-white/10"
                   }`}
                 >
                   {plan.featured && (
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 px-3 py-1 bg-foreground text-background text-xs font-bold rounded-full">
+                    <p className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-[color:var(--aurora)]">
                       {t("pricingMostPopular")}
-                    </div>
+                    </p>
                   )}
                   <h3 className="text-xl font-bold mb-2">{plan.name}</h3>
                   <div className="mb-4">
@@ -823,10 +651,10 @@ export default function LandingPage() {
                   <Link href="/sign-up" locale={locale}>
                     <Button
                       variant={plan.featured ? "default" : "outline"}
-                      className={`w-full mb-6 ${
+                      className={`mb-6 w-full shadow-none backdrop-blur-none ${
                         plan.featured
                           ? "bg-foreground text-background hover:bg-foreground/90"
-                          : "border-border text-foreground hover:bg-accent"
+                          : "border-white/10 bg-transparent text-foreground hover:bg-white/5"
                       }`}
                     >
                       {t("pricingStart")}
@@ -863,7 +691,7 @@ export default function LandingPage() {
         </section>
 
         {/* Testimonials */}
-        <section className="py-24 md:py-32 bg-card/30 border-y border-border">
+        <section className="border-y border-white/10 py-24 md:py-32">
           <div className="container mx-auto px-6">
             <div className="text-center max-w-2xl mx-auto mb-14">
               <h2 className="text-3xl md:text-5xl font-bold mb-4 tracking-tight">
@@ -891,24 +719,19 @@ export default function LandingPage() {
                   name: t("testimonial3Name"),
                   role: t("testimonial3Role"),
                 },
-              ].map((tt, i) => (
-                <motion.div
+              ].map((tt) => (
+                <div
                   key={tt.name}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: "-50px" }}
-                  transition={{ duration: 0.5, delay: i * 0.1 }}
-                  className="p-7 rounded-3xl bg-card border border-border hover:border-primary/20 transition-colors relative"
+                  className="rounded-3xl border border-white/10 bg-zinc-950 p-7"
                 >
-                  <Quote className="absolute top-5 right-5 size-7 text-muted-foreground/30" />
-                  <p className="text-foreground/90 leading-relaxed mb-6 text-[15px]">
+                  <p className="mb-6 text-[15px] leading-relaxed text-foreground/90">
                     {tt.quote}
                   </p>
                   <div className="min-w-0">
                     <div className="text-sm font-bold text-foreground">{tt.name}</div>
                     <div className="text-xs text-muted-foreground">{tt.role}</div>
                   </div>
-                </motion.div>
+                </div>
               ))}
             </div>
           </div>
@@ -917,30 +740,8 @@ export default function LandingPage() {
         {/* Final CTA */}
         <section className="py-24">
           <div className="container mx-auto px-6">
-            <div className="rounded-3xl border border-border bg-card p-8 md:p-16 text-center relative overflow-hidden">
-              <div className="absolute inset-0 app-mesh opacity-50" />
-
-              {/* Floating face thumbnails */}
-              <div className="absolute -top-8 -left-8 size-24 md:size-32 rounded-3xl overflow-hidden border border-white/20 rotate-[-8deg] opacity-80 hidden md:block">
-                <Image
-                  src="/landing/influencers/luna.jpg"
-                  alt=""
-                  fill
-                  sizes="128px"
-                  className="object-cover"
-                />
-              </div>
-              <div className="absolute -bottom-6 -right-6 size-24 md:size-36 rounded-3xl overflow-hidden border border-white/20 rotate-[10deg] opacity-80 hidden md:block">
-                <Image
-                  src="/landing/influencers/kenji.jpg"
-                  alt=""
-                  fill
-                  sizes="144px"
-                  className="object-cover"
-                />
-              </div>
-
-              <div className="relative z-10 max-w-2xl mx-auto">
+            <div className="rounded-3xl border border-white/10 bg-zinc-950 p-8 text-center md:p-16">
+              <div className="mx-auto max-w-2xl">
                 <h2 className="text-3xl md:text-5xl font-bold text-foreground mb-6">
                   {t("ctaFinalTitle")}
                 </h2>
@@ -951,7 +752,7 @@ export default function LandingPage() {
                 <Link href="/sign-up" locale={locale}>
                   <Button
                     size="lg"
-                    className="h-14 px-8 text-base bg-foreground text-background hover:bg-foreground/90 transition-colors"
+                    className="h-14 bg-foreground px-8 text-base text-background shadow-none transition-colors hover:bg-foreground/90"
                   >
                     {t("ctaFinalButton")}
                   </Button>
@@ -962,13 +763,10 @@ export default function LandingPage() {
         </section>
       </main>
 
-      <footer className="bg-background border-t border-border py-12">
+      <footer className="border-t border-white/10 bg-background py-12">
         <div className="container mx-auto px-6">
           <div className="flex flex-col md:flex-row justify-between items-center gap-6">
             <div className="flex items-center gap-2.5">
-              <div className="size-6 rounded-md border border-border bg-card flex items-center justify-center">
-                <Sparkles className="size-3 text-primary" />
-              </div>
               <span className="font-semibold text-foreground">Aura Influences</span>
             </div>
 
