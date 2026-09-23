@@ -46,7 +46,15 @@ import {
   type RemixTier,
 } from "@/lib/remix-config";
 import { formatGenerationErrorForUser } from "@/lib/generation-errors";
-import { identityHintState } from "@/lib/remix-identity-hint";
+import {
+  identityHintState,
+  identityPackUnavailableCopy,
+  identityPreviewRefetchInterval,
+  resolveDisplayedIdentityPackStatus,
+  settleIdentityRetryWatch,
+  IDENTITY_RETRY_WATCH_MS,
+  type IdentityRetryWatch,
+} from "@/lib/remix-identity-hint";
 import { CREDIT_COSTS } from "@/lib/constants";
 
 interface UploadedSource {
@@ -457,62 +465,198 @@ function InfluencerPicker(props: {
 
 function IdentityHealthHint(props: { influencerId: string }) {
   const utils = trpc.useUtils();
+  const invalidatePlan = useInvalidateCurrentPlan();
+  const influencerIdRef = useRef(props.influencerId);
+  influencerIdRef.current = props.influencerId;
+
+  // Armed when regenerate returns, before scheduleAfter writes `generating`.
+  // A ref so refetchInterval sees it on the invalidate that follows, without
+  // waiting for a React commit. State drives the optimistic waiting banner.
+  const retryWatchRef = useRef<IdentityRetryWatch | null>(null);
+  const [retryWatch, setRetryWatch] = useState<IdentityRetryWatch | null>(
+    null
+  );
+  const [inflight, setInflight] = useState<
+    ReadonlyMap<string, "generate" | "regenerate">
+  >(() => new Map());
+
+  const setWatch = useCallback((next: IdentityRetryWatch | null) => {
+    retryWatchRef.current = next;
+    setRetryWatch(next);
+  }, []);
+
+  const markInflight = useCallback(
+    (influencerId: string, kind: "generate" | "regenerate") => {
+      setInflight((prev) => {
+        const next = new Map(prev);
+        next.set(influencerId, kind);
+        return next;
+      });
+    },
+    []
+  );
+
+  const clearInflight = useCallback((influencerId: string) => {
+    setInflight((prev) => {
+      if (!prev.has(influencerId)) return prev;
+      const next = new Map(prev);
+      next.delete(influencerId);
+      return next;
+    });
+  }, []);
+
   const query = trpc.remix.identityPreview.useQuery(
     { influencerId: props.influencerId },
     {
       enabled: Boolean(props.influencerId),
       staleTime: 30_000,
-      // Poll only while the pack is actively being built. Once we see
-      // `ready` or `failed`, the hint stops hitting the server every
-      // few seconds. QA had to hard-reload before this to see the
-      // banner flip green.
-      refetchInterval: (q) => {
-        const status = q.state.data?.identityPackStatus;
-        return status === "generating" ? 5_000 : false;
-      },
+      // Poll while the pack is building, and also during the gap after a
+      // retry returns — the row can still read `failed` until scheduleAfter
+      // flips it to `generating`. Without the watch, that first refetch
+      // stops polling and the banner stays on retry.
+      refetchInterval: (q) =>
+        identityPreviewRefetchInterval({
+          status: q.state.data?.identityPackStatus,
+          watch: retryWatchRef.current,
+          influencerId: props.influencerId,
+          now: Date.now(),
+        }),
     }
   );
 
-  const invalidatePreview = useCallback(() => {
-    void utils.remix.identityPreview.invalidate({
+  useEffect(() => {
+    const next = settleIdentityRetryWatch({
+      watch: retryWatchRef.current,
       influencerId: props.influencerId,
+      status: query.data?.identityPackStatus,
+      now: Date.now(),
     });
-  }, [props.influencerId, utils]);
-
-  const generateMutation = trpc.influencer.generateIdentityPack.useMutation({
-    onSuccess: () => {
-      toast.success(
-        "Pack d'identité prêt — le remix ancre maintenant le visage sur les 4 angles."
-      );
-      invalidatePreview();
-    },
-    onError: (err) => {
-      toast.error(formatGenerationErrorForUser(err.message));
-    },
-  });
-
-  const regenerateMutation = trpc.influencer.regenerateIdentityPack.useMutation(
-    {
-      onSuccess: () => {
-        toast.info(
-          "Relance du pack d'identité — on retente les angles en arrière-plan."
-        );
-        invalidatePreview();
-      },
-      onError: (err) => {
-        toast.error(formatGenerationErrorForUser(err.message));
-      },
+    if (next !== retryWatchRef.current) {
+      retryWatchRef.current = next;
+      setRetryWatch(next);
     }
+  }, [props.influencerId, query.data?.identityPackStatus]);
+
+  useEffect(() => {
+    if (!retryWatch) return;
+    const remaining =
+      IDENTITY_RETRY_WATCH_MS - (Date.now() - retryWatch.startedAt);
+    const timer = window.setTimeout(() => {
+      const current = retryWatchRef.current;
+      if (
+        !current ||
+        current.influencerId !== retryWatch.influencerId ||
+        current.startedAt !== retryWatch.startedAt
+      ) {
+        return;
+      }
+      retryWatchRef.current = null;
+      setRetryWatch(null);
+    }, Math.max(0, remaining));
+    return () => window.clearTimeout(timer);
+  }, [retryWatch]);
+
+  const generateMutation = trpc.influencer.generateIdentityPack.useMutation();
+  const regenerateMutation =
+    trpc.influencer.regenerateIdentityPack.useMutation();
+
+  const notifyIfCurrent = useCallback(
+    (influencerId: string, kind: "success" | "info" | "error", message: string) => {
+      if (influencerIdRef.current !== influencerId) return;
+      if (kind === "success") toast.success(message);
+      else if (kind === "info") toast.info(message);
+      else toast.error(message);
+    },
+    []
   );
+
+  const startGenerate = useCallback(() => {
+    const influencerId = props.influencerId;
+    markInflight(influencerId, "generate");
+    generateMutation.mutate(
+      { influencerId },
+      {
+        onSuccess: () => {
+          clearInflight(influencerId);
+          notifyIfCurrent(
+            influencerId,
+            "success",
+            "Pack d'identité prêt — le remix ancre maintenant le visage sur les 4 angles."
+          );
+          void utils.remix.identityPreview.invalidate({ influencerId });
+          invalidatePlan();
+        },
+        onError: (err) => {
+          clearInflight(influencerId);
+          notifyIfCurrent(
+            influencerId,
+            "error",
+            formatGenerationErrorForUser(err.message)
+          );
+        },
+      }
+    );
+  }, [
+    clearInflight,
+    generateMutation,
+    invalidatePlan,
+    markInflight,
+    notifyIfCurrent,
+    props.influencerId,
+    utils,
+  ]);
+
+  const startRegenerate = useCallback(() => {
+    const influencerId = props.influencerId;
+    markInflight(influencerId, "regenerate");
+    regenerateMutation.mutate(
+      { influencerId },
+      {
+        onSuccess: () => {
+          clearInflight(influencerId);
+          setWatch({ influencerId, startedAt: Date.now() });
+          notifyIfCurrent(
+            influencerId,
+            "info",
+            "Relance du pack d'identité — on retente les angles en arrière-plan."
+          );
+          void utils.remix.identityPreview.invalidate({ influencerId });
+        },
+        onError: (err) => {
+          clearInflight(influencerId);
+          notifyIfCurrent(
+            influencerId,
+            "error",
+            formatGenerationErrorForUser(err.message)
+          );
+        },
+      }
+    );
+  }, [
+    clearInflight,
+    markInflight,
+    notifyIfCurrent,
+    props.influencerId,
+    regenerateMutation,
+    setWatch,
+    utils,
+  ]);
 
   const data = query.data;
   if (!data) return null;
 
-  const state = identityHintState(data);
-  const isGenerating =
-    state.kind === "generating" ||
-    generateMutation.isPending ||
-    regenerateMutation.isPending;
+  const displayedStatus = resolveDisplayedIdentityPackStatus({
+    status: data.identityPackStatus,
+    watch: retryWatch,
+    influencerId: props.influencerId,
+    now: Date.now(),
+  });
+  const state = identityHintState({
+    ...data,
+    identityPackStatus: displayedStatus,
+  });
+  const inflightHere = inflight.get(props.influencerId);
+  const isGenerating = state.kind === "generating" || inflightHere != null;
 
   switch (state.kind) {
     case "no_frontal":
@@ -563,15 +707,13 @@ function IdentityHealthHint(props: { influencerId: string }) {
           <button
             type="button"
             disabled={isGenerating}
-            onClick={() =>
-              regenerateMutation.mutate({ influencerId: props.influencerId })
-            }
+            onClick={startRegenerate}
             className={cn(
               "inline-flex w-fit items-center gap-1.5 rounded-md border border-red-400/40 bg-red-500/20 px-2.5 py-1 text-[11px] font-medium text-red-50 transition-colors hover:bg-red-500/30",
               "disabled:cursor-not-allowed disabled:opacity-60"
             )}
           >
-            {regenerateMutation.isPending ? (
+            {inflightHere === "regenerate" ? (
               <>
                 <Loader2 className="h-3 w-3 animate-spin" />
                 Relance en cours…
@@ -601,15 +743,13 @@ function IdentityHealthHint(props: { influencerId: string }) {
           <button
             type="button"
             disabled={isGenerating}
-            onClick={() =>
-              generateMutation.mutate({ influencerId: props.influencerId })
-            }
+            onClick={startGenerate}
             className={cn(
               "inline-flex w-fit items-center gap-1.5 rounded-md border border-amber-400/50 bg-amber-500/25 px-2.5 py-1 text-[11px] font-medium text-amber-50 transition-colors hover:bg-amber-500/35",
               "disabled:cursor-not-allowed disabled:opacity-60"
             )}
           >
-            {generateMutation.isPending ? (
+            {inflightHere === "generate" ? (
               <>
                 <Loader2 className="h-3 w-3 animate-spin" />
                 Génération du pack…
@@ -622,6 +762,14 @@ function IdentityHealthHint(props: { influencerId: string }) {
               </>
             )}
           </button>
+        </div>
+      );
+
+    case "unavailable":
+      return (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+          <Info className="mt-0.5 h-4 w-4 flex-shrink-0" />
+          <span>{identityPackUnavailableCopy(state.reason)}</span>
         </div>
       );
 

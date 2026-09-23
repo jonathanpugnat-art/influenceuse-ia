@@ -149,6 +149,10 @@ export interface RemixIdentityPreview {
   hasReferences: boolean;
   referenceCount: number;
   identityPackStatus: "ready" | "generating" | "failed" | "missing";
+  /** Non-empty `baseImageUrl`. Avatar-only characters stay false. */
+  hasBaseImage: boolean;
+  /** Identity-pack generate/regenerate reject NSFW characters. */
+  isNsfw: boolean;
 }
 
 export async function previewInfluencerRemixIdentity(input: {
@@ -161,6 +165,7 @@ export async function previewInfluencerRemixIdentity(input: {
       baseImageUrl: true,
       avatarUrl: true,
       identityPack: true,
+      isNsfw: true,
     },
   });
   if (!influencer) {
@@ -169,6 +174,8 @@ export async function previewInfluencerRemixIdentity(input: {
       hasReferences: false,
       referenceCount: 0,
       identityPackStatus: "missing",
+      hasBaseImage: false,
+      isNsfw: false,
     };
   }
   const pack = parseIdentityPack(influencer.identityPack);
@@ -189,6 +196,8 @@ export async function previewInfluencerRemixIdentity(input: {
     hasReferences: refShots.length > 0,
     referenceCount: Math.min(refShots.length, 3),
     identityPackStatus: pack?.status ?? "missing",
+    hasBaseImage: Boolean(influencer.baseImageUrl?.trim()),
+    isNsfw: Boolean(influencer.isNsfw),
   };
 }
 

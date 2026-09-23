@@ -615,6 +615,8 @@ describe("previewInfluencerRemixIdentity", () => {
       hasReferences: false,
       referenceCount: 0,
       identityPackStatus: "missing",
+      hasBaseImage: false,
+      isNsfw: false,
     });
   });
 
@@ -679,6 +681,25 @@ describe("previewInfluencerRemixIdentity", () => {
     expect(preview.hasFrontal).toBe(true);
     expect(preview.identityPackStatus).toBe("missing");
     expect(preview.hasReferences).toBe(false);
+    expect(preview.hasBaseImage).toBe(false);
+    expect(preview.isNsfw).toBe(false);
+  });
+
+  it("flags NSFW characters so the remix hint can hide the paid pack CTA", async () => {
+    mockDb.influencer.findFirst.mockResolvedValue({
+      baseImageUrl: "https://cdn.example.com/luana.jpg",
+      avatarUrl: null,
+      isNsfw: true,
+      identityPack: null,
+    });
+    const preview = await previewInfluencerRemixIdentity({
+      influencerId: "inf-nsfw",
+      userId: "u1",
+    });
+    expect(preview.hasFrontal).toBe(true);
+    expect(preview.hasBaseImage).toBe(true);
+    expect(preview.isNsfw).toBe(true);
+    expect(preview.identityPackStatus).toBe("missing");
   });
 
   it("flags hasFrontal=false when the character has no usable image at all", async () => {
