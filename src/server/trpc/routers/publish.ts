@@ -201,6 +201,18 @@ const socialPublishOptions = z.object({
   firstComment: z.string().max(2200).optional(),
   shareToFeed: z.boolean().optional(),
   tiktokPrivacyLevel: z.enum(tiktokPrivacyValues).optional(),
+  /**
+   * TikTok composer per-publish settings. All optional for back-compat.
+   * When any of these is set we persist it on Content so a scheduled
+   * publish uses the exact values the user confirmed in the composer.
+   */
+  tiktokDisableComment: z.boolean().optional(),
+  tiktokDisableDuet: z.boolean().optional(),
+  tiktokDisableStitch: z.boolean().optional(),
+  tiktokBrandOrganicToggle: z.boolean().optional(),
+  tiktokBrandContentToggle: z.boolean().optional(),
+  /** Duration of the asset in seconds — used server-side to pre-validate against creator_info. */
+  tiktokVideoDurationSec: z.number().int().positive().max(600).optional(),
 });
 
 /**
@@ -213,6 +225,81 @@ function clampTiktokPrivacy(
 ): (typeof tiktokPrivacyValues)[number] | undefined {
   if (!level) return undefined;
   return tiktok.isTikTokAuditApproved() ? level : "SELF_ONLY";
+}
+
+/**
+ * Build the subset of Content fields that persist the TikTok composer
+ * selections. Only writes keys the caller actually provided so partial
+ * updates don't accidentally wipe previously saved choices.
+ */
+function buildTiktokPersistData(input: {
+  tiktokPrivacyLevel?: (typeof tiktokPrivacyValues)[number];
+  tiktokDisableComment?: boolean;
+  tiktokDisableDuet?: boolean;
+  tiktokDisableStitch?: boolean;
+  tiktokBrandOrganicToggle?: boolean;
+  tiktokBrandContentToggle?: boolean;
+}): Record<string, unknown> {
+  const data: Record<string, unknown> = {};
+  if (input.tiktokPrivacyLevel !== undefined) {
+    data.tiktokPrivacyLevel = clampTiktokPrivacy(input.tiktokPrivacyLevel) ?? null;
+  }
+  if (input.tiktokDisableComment !== undefined) data.tiktokDisableComment = input.tiktokDisableComment;
+  if (input.tiktokDisableDuet !== undefined) data.tiktokDisableDuet = input.tiktokDisableDuet;
+  if (input.tiktokDisableStitch !== undefined) data.tiktokDisableStitch = input.tiktokDisableStitch;
+  if (input.tiktokBrandOrganicToggle !== undefined) data.tiktokBrandOrganicToggle = input.tiktokBrandOrganicToggle;
+  if (input.tiktokBrandContentToggle !== undefined) data.tiktokBrandContentToggle = input.tiktokBrandContentToggle;
+  return data;
+}
+
+/**
+ * Guardrails the publish router MUST apply when a client requests a TikTok
+ * publish. Each guard mirrors a TikTok Content Posting API audit rule and is
+ * enforced server-side so a direct API caller / scheduler tick cannot bypass
+ * the composer. Returns a TRPCError-ready message when a guard fails, or null
+ * when the TikTok payload is OK to persist/publish.
+ */
+function assertTikTokPublishRules(args: {
+  platforms: readonly ("INSTAGRAM" | "TIKTOK" | "ONLYFANS")[];
+  contentMode?: "SFW" | "NSFW" | null;
+  contentType: "PHOTO" | "CAROUSEL" | "REEL" | "STORY";
+  tiktokPrivacyLevel?: (typeof tiktokPrivacyValues)[number];
+  tiktokBrandContentToggle?: boolean;
+}): void {
+  if (!args.platforms.includes("TIKTOK")) return;
+
+  // 1. NSFW content must never reach TikTok — Community Guidelines SFW-only.
+  if (args.contentMode === "NSFW") {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message:
+        "Les contenus NSFW ne peuvent pas être publiés sur TikTok. Décoche TikTok pour envoyer ce contenu uniquement là où il est autorisé.",
+    });
+  }
+
+  // 2. For an immediate publish the user MUST pick a privacy level —
+  //    TikTok's audit requires an explicit choice (no silent default).
+  //    Note: when audit is approved and the client sent no privacy value we
+  //    still require one for TikTok; otherwise the service would default to
+  //    SELF_ONLY, which is NOT what the user intended.
+  if (tiktok.isTikTokAuditApproved() && !args.tiktokPrivacyLevel) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Choisis un niveau de confidentialité TikTok avant de publier.",
+    });
+  }
+
+  // 3. Branded content cannot be posted as SELF_ONLY (TikTok guideline).
+  if (
+    args.tiktokBrandContentToggle === true &&
+    args.tiktokPrivacyLevel === "SELF_ONLY"
+  ) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message:
+        "Le Branded Content TikTok (partenariat payé) ne peut pas être publié en privé. Choisis Public ou Amis.",
+    });
+  }
 }
 
 // ──────────────────────────────────────────────
@@ -270,6 +357,14 @@ export const publishRouter = createTRPCRouter({
         });
       }
 
+      assertTikTokPublishRules({
+        platforms: input.platforms,
+        contentMode: content.contentMode,
+        contentType: content.type,
+        tiktokPrivacyLevel: input.tiktokPrivacyLevel,
+        tiktokBrandContentToggle: input.tiktokBrandContentToggle,
+      });
+
       const updated = await db.content.update({
         where: { id: input.contentId },
         data: {
@@ -278,7 +373,7 @@ export const publishRouter = createTRPCRouter({
           scheduledAt: input.scheduledAt,
           firstComment: input.firstComment ?? null,
           shareToFeed: input.shareToFeed ?? true,
-          tiktokPrivacyLevel: clampTiktokPrivacy(input.tiktokPrivacyLevel) ?? null,
+          ...buildTiktokPersistData(input),
           // Aura only ever publishes AI content — hardcoded.
           isAiGenerated: true,
         },
@@ -342,12 +437,21 @@ export const publishRouter = createTRPCRouter({
         });
       }
 
+      assertTikTokPublishRules({
+        platforms: input.platforms,
+        contentMode: content.contentMode,
+        contentType: content.type,
+        tiktokPrivacyLevel: input.tiktokPrivacyLevel,
+        tiktokBrandContentToggle: input.tiktokBrandContentToggle,
+      });
+
       // Persist V1 publish fields BEFORE flipping the status so a concurrent
       // scheduler tick doesn't publish with stale metadata.
+      const tiktokData = buildTiktokPersistData(input);
       if (
         input.firstComment !== undefined ||
         input.shareToFeed !== undefined ||
-        input.tiktokPrivacyLevel !== undefined
+        Object.keys(tiktokData).length > 0
       ) {
         await db.content.update({
           where: { id: input.contentId },
@@ -358,12 +462,7 @@ export const publishRouter = createTRPCRouter({
             ...(input.shareToFeed !== undefined
               ? { shareToFeed: input.shareToFeed }
               : {}),
-            ...(input.tiktokPrivacyLevel !== undefined
-              ? {
-                  tiktokPrivacyLevel:
-                    clampTiktokPrivacy(input.tiktokPrivacyLevel) ?? null,
-                }
-              : {}),
+            ...tiktokData,
             isAiGenerated: true,
           },
         });
@@ -615,6 +714,7 @@ export const publishRouter = createTRPCRouter({
           commentDisabled: false,
           duetDisabled: false,
           stitchDisabled: false,
+          maxVideoPostDurationSec: null as number | null,
           creatorNickname: null as string | null,
           creatorUsername: null as string | null,
           creatorAvatarUrl: null as string | null,
@@ -637,6 +737,7 @@ export const publishRouter = createTRPCRouter({
           commentDisabled: info.commentDisabled,
           duetDisabled: info.duetDisabled,
           stitchDisabled: info.stitchDisabled,
+          maxVideoPostDurationSec: info.maxVideoPostDurationSec,
           creatorNickname: info.creatorNickname,
           creatorUsername: info.creatorUsername,
           creatorAvatarUrl: info.creatorAvatarUrl,
@@ -660,10 +761,81 @@ export const publishRouter = createTRPCRouter({
           commentDisabled: false,
           duetDisabled: false,
           stitchDisabled: false,
+          maxVideoPostDurationSec: null,
           creatorNickname: null,
           creatorUsername: null,
           creatorAvatarUrl: null,
           error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    }),
+
+  /**
+   * getTiktokPostStatus — Poll TikTok's publish status endpoint for a given
+   * contentId. The composer calls this after publish so the user sees
+   * PROCESSING → PUBLISH_COMPLETE / FAILED without having to refresh their
+   * TikTok profile. The route also persists the latest status on Content so
+   * the calendar view can show it offline later.
+   */
+  getTiktokPostStatus: protectedProcedure
+    .input(z.object({ contentId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const user = await getDbUser(ctx.userId);
+      const content = await db.content.findUnique({
+        where: { id: input.contentId },
+        include: { influencer: { select: { userId: true, id: true } } },
+      });
+      if (!content || content.influencer.userId !== user.id) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Content not found" });
+      }
+      if (!content.tiktokPublishId) {
+        return {
+          status: "NOT_SUBMITTED" as const,
+          postId: null as string | null,
+          failReason: null as string | null,
+        };
+      }
+      const account = await db.socialAccount.findFirst({
+        where: {
+          influencerId: content.influencer.id,
+          platform: "TIKTOK",
+          isConnected: true,
+        },
+        select: { accessToken: true },
+      });
+      if (!account?.accessToken) {
+        return {
+          status: "ACCOUNT_DISCONNECTED" as const,
+          postId: null as string | null,
+          failReason: null as string | null,
+        };
+      }
+      const accessToken = decrypt(account.accessToken);
+      try {
+        const status = await tiktok.fetchPublishStatus(
+          accessToken,
+          content.tiktokPublishId
+        );
+        await db.content
+          .update({
+            where: { id: content.id },
+            data: {
+              tiktokPostStatus: status.status,
+              tiktokPostStatusFetchedAt: new Date(),
+              ...(status.postId ? { tiktokPostId: status.postId } : {}),
+            },
+          })
+          .catch(() => undefined);
+        return {
+          status: status.status,
+          postId: status.postId ?? null,
+          failReason: status.failReason ?? null,
+        };
+      } catch (err) {
+        return {
+          status: "ERROR" as const,
+          postId: null as string | null,
+          failReason: err instanceof Error ? err.message : String(err),
         };
       }
     }),

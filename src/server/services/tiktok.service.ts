@@ -504,7 +504,14 @@ export async function publishVideo(
         // other error is surfaced verbatim (spam risk, banned, invalid privacy
         // level, etc.) and NOT retried.
         if (initRes.error.code === "url_ownership_unverified") {
-          return uploadViaFile(accessToken, videoUrl, postInfo, privacyLevel);
+          return uploadViaFile(accessToken, videoUrl, postInfo, {
+            privacyLevel,
+            disableComment,
+            disableDuet,
+            disableStitch,
+            brandOrganicToggle,
+            brandContentToggle,
+          });
         }
         throw new TikTokApiError(
           friendlyTikTokMessage(initRes.error.code, initRes.error.message ?? initRes.error.code),
