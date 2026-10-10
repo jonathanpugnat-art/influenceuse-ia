@@ -84,3 +84,24 @@ export function isTikTokVideoFetchEnabled(): boolean {
   if (raw === "false" || raw === "0") return false;
   return true;
 }
+
+/**
+ * TikTok hashtag/trend fetching via Apify — kill switch.
+ *
+ * Scraping TikTok (even indirectly through a third-party actor) sits in a
+ * grey area versus TikTok's Platform Terms, so for the Content Posting API
+ * audit submission we want this OFF by default. Flip `TIKTOK_TRENDS_ENABLED`
+ * to `"true"` in the environment to re-enable both the hashtag Creative
+ * Center scrape and the per-hashtag video scrape.
+ *
+ * When this returns false, the Apify trends provider skips every TikTok
+ * sub-fetch and keeps the Instagram pipeline running — the trend feed is
+ * still populated, it just won't contain any TikTok-sourced items.
+ */
+export function isTikTokTrendsScrapingEnabled(): boolean {
+  const raw = process.env.TIKTOK_TRENDS_ENABLED?.trim().toLowerCase();
+  // Default off: we want the audit submission to clearly show we are not
+  // ingesting TikTok content via a third-party scraper.
+  if (raw === "true" || raw === "1") return true;
+  return false;
+}

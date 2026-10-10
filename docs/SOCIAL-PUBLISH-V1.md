@@ -114,8 +114,12 @@ studio). The V1 fields sit in `PhotoPublishSocialSection`:
 
 - AI label notice — informational.
 - First comment (Instagram) — optional textarea.
-- TikTok privacy picker — driven by `getTiktokCreatorInfo` tRPC procedure.
-  Locked to `SELF_ONLY` when `auditApproved=false`.
+- TikTok composer block (`PhotoPublishTiktokSection`) — audit-compliant.
+  See [`TIKTOK-AUDIT-COMPLIANCE.md`](./TIKTOK-AUDIT-COMPLIANCE.md) for the
+  per-requirement mapping. In short: creator header, privacy dropdown with
+  no default, Allow Comment / Duet / Stitch checkboxes (unchecked default),
+  commercial content disclosure toggle (Your brand / Branded content),
+  Music Usage Confirmation consent text, and the max-duration surface.
 
 ## Env vars
 
@@ -126,6 +130,7 @@ INSTAGRAM_OAUTH_MODE=instagram   # instagram | facebook (V1 = instagram)
 TIKTOK_CLIENT_KEY=
 TIKTOK_CLIENT_SECRET=
 TIKTOK_AUDIT_APPROVED=false      # flip to true after review
+TIKTOK_TRENDS_ENABLED=false      # Apify TikTok scraping (default off during audit)
 ```
 
 ## Compliance

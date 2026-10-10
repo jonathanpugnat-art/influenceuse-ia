@@ -12,6 +12,7 @@ import {
   TIKTOK_RESULTS_PER_HASHTAG_CAP,
 } from "./constants";
 import {
+  isTikTokTrendsScrapingEnabled,
   isTikTokVideoFetchEnabled,
   resolveInstagramHashtags,
   resolveMinLikes,
@@ -51,20 +52,30 @@ export class ApifyTrendsProvider implements TrendsProvider {
     const minViews = resolveMinVideoViews();
     const minLikes = resolveMinLikes();
 
-    const hashtagSignals = await this.fetchTikTok(
-      token,
-      ctx,
-      Math.min(40, signalTarget)
-    ).catch((err) => {
-      console.error("[trends/apify] TikTok hashtag sub-fetch failed:", err);
-      return [] as RawTrendItem[];
-    });
+    // TikTok scraping (hashtag + per-tag videos) is gated behind
+    // `TIKTOK_TRENDS_ENABLED`. Default off while we're going through the
+    // TikTok Content Posting API audit so the submission can confidently
+    // state we are NOT ingesting TikTok content via a third-party scraper.
+    // Instagram sub-fetch keeps running, and the provider still returns a
+    // populated feed, so the Trends page does not break.
+    const tiktokEnabled = isTikTokTrendsScrapingEnabled();
+
+    const hashtagSignals = tiktokEnabled
+      ? await this.fetchTikTok(
+          token,
+          ctx,
+          Math.min(40, signalTarget)
+        ).catch((err) => {
+          console.error("[trends/apify] TikTok hashtag sub-fetch failed:", err);
+          return [] as RawTrendItem[];
+        })
+      : ([] as RawTrendItem[]);
     const trendingTags = hashtagSignals
       .map((t) => t.hashtags[0]?.replace(/^#/, ""))
       .filter(Boolean) as string[];
 
     const [tiktokVideos, instagramPosts] = await Promise.allSettled([
-      isTikTokVideoFetchEnabled()
+      tiktokEnabled && isTikTokVideoFetchEnabled()
         ? this.fetchTikTokVideos(token, ctx, videoTarget, trendingTags)
         : Promise.resolve([]),
       this.fetchInstagramPosts(token, videoTarget),

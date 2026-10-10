@@ -320,12 +320,27 @@ model Content {
   /// creator_info.privacy_level_options. Un-audited apps are locked to
   /// SELF_ONLY (enforced server-side).
   tiktokPrivacyLevel String?
+  /// TikTok audit-compliance fields captured in the composer per publish.
+  /// The UI defaults each to safe values (disable_* unchecked = interactions
+  /// ON; brand_* unchecked = no commercial disclosure). Persisted so the
+  /// scheduler publishes with exactly what the user confirmed.
+  tiktokDisableComment      Boolean? @default(false)
+  tiktokDisableDuet         Boolean? @default(false)
+  tiktokDisableStitch       Boolean? @default(false)
+  tiktokBrandOrganicToggle  Boolean? @default(false)
+  tiktokBrandContentToggle  Boolean? @default(false)
   /// Meta media id returned by /media_publish. Populated on IG success.
   igMediaId        String?
   /// TikTok Direct Post `publish_id` returned by /video/init. Populated
-  /// on TikTok init success (the final post id is checked later via the
-  /// status endpoint if we ever need it).
+  /// on TikTok init success. Final status is tracked separately via
+  /// `tiktokPostStatus` + the publish status API.
   tiktokPublishId  String?
+  /// TikTok post status returned by /post/publish/status/fetch/
+  /// (PROCESSING, PUBLISH_COMPLETE, FAILED, …). Updated as the UI polls.
+  tiktokPostStatus String?
+  tiktokPostStatusFetchedAt DateTime?
+  /// Public TikTok post id, available once PUBLISH_COMPLETE.
+  tiktokPostId     String?
 
   influencer       Influencer         @relation(fields: [influencerId], references: [id], onDelete: Cascade)
   batch            ContentBatch?      @relation(fields: [batchId], references: [id])

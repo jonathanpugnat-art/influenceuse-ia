@@ -73,11 +73,30 @@ export function usePhotoPublishFlow(contentKind: PublishStudioKind = "PHOTO") {
   const [firstComment, setFirstComment] = useState("");
   // Whether the IG reel mirrors to the main feed (default true).
   const [shareToFeed, setShareToFeed] = useState(true);
-  // TikTok Direct Post privacy. Composer starts on SELF_ONLY (safe default);
-  // the server clamps to SELF_ONLY when TIKTOK_AUDIT_APPROVED != "true".
+
+  // ── TikTok composer (audit-compliant) ──────────────────────────────────
+  // Privacy level starts at `null`: TikTok's Content Posting API audit
+  // requires the user to explicitly pick a value in the dropdown — there
+  // must be no silent default. Publish is gated until this is non-null.
   const [tiktokPrivacyLevel, setTiktokPrivacyLevel] = useState<
-    "PUBLIC_TO_EVERYONE" | "MUTUAL_FOLLOW_FRIENDS" | "FOLLOWER_OF_CREATOR" | "SELF_ONLY"
-  >("SELF_ONLY");
+    "PUBLIC_TO_EVERYONE"
+    | "MUTUAL_FOLLOW_FRIENDS"
+    | "FOLLOWER_OF_CREATOR"
+    | "SELF_ONLY"
+    | null
+  >(null);
+  // Interaction toggles — UI model is "Allow …", all unchecked by default
+  // per TikTok guidelines. When sending to the API we invert to disable_*.
+  const [tiktokAllowComment, setTiktokAllowComment] = useState(false);
+  const [tiktokAllowDuet, setTiktokAllowDuet] = useState(false);
+  const [tiktokAllowStitch, setTiktokAllowStitch] = useState(false);
+  // Commercial content disclosure toggle — OFF by default. When ON the
+  // user MUST pick a kind (YOUR_BRAND / BRANDED_CONTENT) before publishing.
+  const [tiktokCommercialDisclosure, setTiktokCommercialDisclosure] =
+    useState(false);
+  const [tiktokCommercialKind, setTiktokCommercialKind] = useState<
+    "YOUR_BRAND" | "BRANDED_CONTENT" | null
+  >(null);
 
   const captionMutation = trpc.content.generateCaption.useMutation();
   const variantsMutation = trpc.content.generateCaptionVariants.useMutation();
@@ -352,10 +371,51 @@ export function usePhotoPublishFlow(contentKind: PublishStudioKind = "PHOTO") {
         return;
       }
 
+      // Build the TikTok payload only when TikTok is actually selected so
+      // the server-side audit guards (explicit privacy, branded-content
+      // vs private) don't fire for IG/OnlyFans-only publishes.
+      const tiktokPayload = tiktokSelected
+        ? {
+            tiktokPrivacyLevel: tiktokPrivacyLevel ?? undefined,
+            // UI model "Allow X" → API "disable_x = !allow".
+            tiktokDisableComment: !tiktokAllowComment,
+            tiktokDisableDuet: !tiktokAllowDuet,
+            tiktokDisableStitch: !tiktokAllowStitch,
+            tiktokBrandOrganicToggle:
+              tiktokCommercialDisclosure &&
+              tiktokCommercialKind === "YOUR_BRAND",
+            tiktokBrandContentToggle:
+              tiktokCommercialDisclosure &&
+              tiktokCommercialKind === "BRANDED_CONTENT",
+          }
+        : {};
+
+      // Client-side guard rails that mirror the server-side audit rules:
+      // we want a clean inline toast instead of a tRPC error for the
+      // common "I forgot to pick something" case.
+      if (tiktokSelected) {
+        if (!tiktokPrivacyLevel) {
+          toast.error(t("publishTiktokPrivacyRequired"));
+          return;
+        }
+        if (tiktokCommercialDisclosure && tiktokCommercialKind === null) {
+          toast.error(t("publishTiktokDisclosureRequired"));
+          return;
+        }
+        if (
+          tiktokCommercialDisclosure &&
+          tiktokCommercialKind === "BRANDED_CONTENT" &&
+          tiktokPrivacyLevel === "SELF_ONLY"
+        ) {
+          toast.error(t("publishTiktokBrandedPrivateBlocked"));
+          return;
+        }
+      }
+
       const socialOptions = {
         firstComment: firstComment.trim() || undefined,
         shareToFeed,
-        tiktokPrivacyLevel,
+        ...tiktokPayload,
       };
 
       if (scheduleMode === "schedule" && scheduledAt) {
@@ -398,6 +458,15 @@ export function usePhotoPublishFlow(contentKind: PublishStudioKind = "PHOTO") {
           return;
         }
         toast.success(t("publishToastPublished"));
+        // TikTok's audit asks us to tell the user that processing can take
+        // a few minutes — the init endpoint only returns a publish_id, the
+        // actual post surfaces on the profile asynchronously. We queue a
+        // second, longer toast so it does not clobber the main success one.
+        if (autoPlatforms.includes("TIKTOK")) {
+          setTimeout(() => {
+            toast.info(t("publishToastTiktokProcessing"), { duration: 8_000 });
+          }, 500);
+        }
         return;
       }
 
@@ -476,6 +545,16 @@ export function usePhotoPublishFlow(contentKind: PublishStudioKind = "PHOTO") {
     setShareToFeed,
     tiktokPrivacyLevel,
     setTiktokPrivacyLevel,
+    tiktokAllowComment,
+    setTiktokAllowComment,
+    tiktokAllowDuet,
+    setTiktokAllowDuet,
+    tiktokAllowStitch,
+    setTiktokAllowStitch,
+    tiktokCommercialDisclosure,
+    setTiktokCommercialDisclosure,
+    tiktokCommercialKind,
+    setTiktokCommercialKind,
   };
 }
 

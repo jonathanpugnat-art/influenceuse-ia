@@ -86,6 +86,10 @@ function friendlyTikTokMessage(code: string | undefined, fallback: string): stri
       return "Token TikTok expiré ou invalide. Reconnectez le compte.";
     case "rate_limit_exceeded":
       return "Limite d'API TikTok atteinte (6 init/min). Réessaie dans une minute.";
+    case "branded_content_requires_public":
+      return "Le Branded Content TikTok ne peut pas être privé — choisis Public ou Amis.";
+    case "video_duration_exceeds_max":
+      return "La vidéo dépasse la durée autorisée par TikTok pour ce compte.";
     default:
       return fallback;
   }
@@ -363,6 +367,22 @@ export type TikTokPublishOptions = {
   disableDuet?: boolean;
   /** Disable stitch on the post (default false). */
   disableStitch?: boolean;
+  /**
+   * TikTok commercial-content disclosure.
+   *   - `brand_organic_toggle` → "Your brand" (promotional content label).
+   *   - `brand_content_toggle` → "Branded content" (paid-partnership label).
+   * At most one of the two should be true; branded content cannot be posted
+   * with privacy_level=SELF_ONLY (TikTok rejects this combination).
+   * See: https://developers.tiktok.com/doc/content-sharing-guidelines
+   */
+  brandOrganicToggle?: boolean;
+  brandContentToggle?: boolean;
+  /**
+   * Duration of the video in seconds. If provided we validate it against
+   * `creator_info.max_video_post_duration_sec` before hitting /video/init/
+   * so the user gets a clear error instead of TikTok rejecting the post.
+   */
+  videoDurationSec?: number;
   /** Force FILE_UPLOAD path even when the URL domain is verified. */
   forceFileUpload?: boolean;
   /**
@@ -376,6 +396,11 @@ export type TikTokPublishResult = {
   publishId: string;
   privacyLevel: TikTokPrivacyLevel;
   source: "PULL_FROM_URL" | "FILE_UPLOAD";
+  disableComment: boolean;
+  disableDuet: boolean;
+  disableStitch: boolean;
+  brandOrganicToggle: boolean;
+  brandContentToggle: boolean;
 };
 
 /**
@@ -410,13 +435,47 @@ export async function publishVideo(
     ? clampedByAudit
     : (creatorInfo.privacyLevelOptions[0] ?? "SELF_ONLY");
 
-  const postInfo = {
+  // Interaction toggles — honor creator-level disables (e.g. a creator who
+  // turned comments off for their whole account) by forcing disable_* to
+  // true regardless of what the caller passed.
+  const disableComment = creatorInfo.commentDisabled || Boolean(options.disableComment);
+  const disableDuet = creatorInfo.duetDisabled || Boolean(options.disableDuet);
+  const disableStitch = creatorInfo.stitchDisabled || Boolean(options.disableStitch);
+
+  const brandOrganicToggle = Boolean(options.brandOrganicToggle);
+  const brandContentToggle = Boolean(options.brandContentToggle);
+  // TikTok content-sharing guideline: branded content (paid partnership)
+  // cannot be posted as SELF_ONLY. If the caller asked for branded content
+  // + SELF_ONLY, fail fast with a clear code the UI can map to a message.
+  if (brandContentToggle && privacyLevel === "SELF_ONLY") {
+    throw new TikTokApiError(
+      "La publication Branded Content ne peut pas être privée (SELF_ONLY).",
+      "branded_content_requires_public"
+    );
+  }
+
+  // Video duration guard — if the caller knows the duration, make sure it
+  // fits within what creator_info says the creator can publish.
+  if (
+    typeof options.videoDurationSec === "number" &&
+    typeof creatorInfo.maxVideoPostDurationSec === "number" &&
+    options.videoDurationSec > creatorInfo.maxVideoPostDurationSec
+  ) {
+    throw new TikTokApiError(
+      `La vidéo dépasse la durée maximale autorisée pour ce compte (${creatorInfo.maxVideoPostDurationSec}s).`,
+      "video_duration_exceeds_max"
+    );
+  }
+
+  const postInfo: Record<string, unknown> = {
     title: caption.slice(0, 2200),
     privacy_level: privacyLevel,
-    disable_comment: Boolean(options.disableComment),
-    disable_duet: Boolean(options.disableDuet),
-    disable_stitch: Boolean(options.disableStitch),
+    disable_comment: disableComment,
+    disable_duet: disableDuet,
+    disable_stitch: disableStitch,
     is_aigc: true,
+    brand_organic_toggle: brandOrganicToggle,
+    brand_content_toggle: brandContentToggle,
   };
 
   if (!options.forceFileUpload) {
@@ -445,7 +504,14 @@ export async function publishVideo(
         // other error is surfaced verbatim (spam risk, banned, invalid privacy
         // level, etc.) and NOT retried.
         if (initRes.error.code === "url_ownership_unverified") {
-          return uploadViaFile(accessToken, videoUrl, postInfo, privacyLevel);
+          return uploadViaFile(accessToken, videoUrl, postInfo, {
+            privacyLevel,
+            disableComment,
+            disableDuet,
+            disableStitch,
+            brandOrganicToggle,
+            brandContentToggle,
+          });
         }
         throw new TikTokApiError(
           friendlyTikTokMessage(initRes.error.code, initRes.error.message ?? initRes.error.code),
@@ -456,7 +522,16 @@ export async function publishVideo(
       if (!publishId) {
         throw new TikTokApiError("Réponse TikTok invalide: publish_id manquant.");
       }
-      return { publishId, privacyLevel, source: "PULL_FROM_URL" };
+      return {
+        publishId,
+        privacyLevel,
+        source: "PULL_FROM_URL",
+        disableComment,
+        disableDuet,
+        disableStitch,
+        brandOrganicToggle,
+        brandContentToggle,
+      };
     } catch (err) {
       const isUnverified =
         axios.isAxiosError(err) &&
@@ -470,14 +545,30 @@ export async function publishVideo(
     }
   }
 
-  return uploadViaFile(accessToken, videoUrl, postInfo, privacyLevel);
+  return uploadViaFile(accessToken, videoUrl, postInfo, {
+    privacyLevel,
+    disableComment,
+    disableDuet,
+    disableStitch,
+    brandOrganicToggle,
+    brandContentToggle,
+  });
 }
+
+type FileUploadReturn = {
+  privacyLevel: TikTokPrivacyLevel;
+  disableComment: boolean;
+  disableDuet: boolean;
+  disableStitch: boolean;
+  brandOrganicToggle: boolean;
+  brandContentToggle: boolean;
+};
 
 async function uploadViaFile(
   accessToken: string,
   videoUrl: string,
   postInfo: Record<string, unknown>,
-  privacyLevel: TikTokPrivacyLevel
+  flags: FileUploadReturn
 ): Promise<TikTokPublishResult> {
   const videoBuffer = await axios
     .get(videoUrl, { responseType: "arraybuffer", timeout: 120_000 })
@@ -541,7 +632,16 @@ async function uploadViaFile(
       });
     }
   }
-  return { publishId, privacyLevel, source: "FILE_UPLOAD" };
+  return {
+    publishId,
+    privacyLevel: flags.privacyLevel,
+    source: "FILE_UPLOAD",
+    disableComment: flags.disableComment,
+    disableDuet: flags.disableDuet,
+    disableStitch: flags.disableStitch,
+    brandOrganicToggle: flags.brandOrganicToggle,
+    brandContentToggle: flags.brandContentToggle,
+  };
 }
 
 /**

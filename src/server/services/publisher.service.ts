@@ -52,10 +52,12 @@ async function ensureFreshIgToken(
 type Platform = "INSTAGRAM" | "TIKTOK" | "ONLYFANS";
 type PublishStatus = "PENDING" | "SUCCESS" | "FAILED";
 type ContentType = "PHOTO" | "CAROUSEL" | "REEL" | "STORY";
+type ContentMode = "SFW" | "NSFW";
 
 type ContentWithInfluencer = {
   id: string;
   type: ContentType;
+  contentMode?: ContentMode | null;
   caption: string | null;
   hashtags: string[];
   mediaUrls: string[];
@@ -66,6 +68,13 @@ type ContentWithInfluencer = {
   firstComment?: string | null;
   shareToFeed?: boolean | null;
   tiktokPrivacyLevel?: string | null;
+  /** TikTok audit fields (set by the composer per publish). */
+  tiktokDisableComment?: boolean | null;
+  tiktokDisableDuet?: boolean | null;
+  tiktokDisableStitch?: boolean | null;
+  tiktokBrandOrganicToggle?: boolean | null;
+  tiktokBrandContentToggle?: boolean | null;
+  tiktokVideoDurationSec?: number | null;
   influencer: {
     id: string;
     socialAccounts: Array<{
@@ -140,6 +149,9 @@ const TIKTOK_PERMANENT_CODES = new Set([
   "url_ownership_unverified",
   "access_token_invalid",
   "access_token_expired",
+  "branded_content_requires_public",
+  "video_duration_exceeds_max",
+  "nsfw_content_blocked_for_tiktok",
 ]);
 
 function isTikTokTransientError(err: unknown): boolean {
@@ -309,6 +321,17 @@ export async function publishContent(content: ContentWithInfluencer): Promise<Pu
             });
             break;
           }
+          // Server-side NSFW gate — TikTok Community Guidelines require SFW
+          // content only. Enforced here (not just in UI) so even an API
+          // caller / scheduled publish cannot leak an NSFW asset to TikTok.
+          if (content.contentMode === "NSFW") {
+            results.push({
+              platform,
+              status: "FAILED",
+              error: "Contenu NSFW bloqué pour TikTok (politique Community Guidelines).",
+            });
+            break;
+          }
           const videoUrl = content.mediaUrls[0];
           if (!videoUrl) {
             results.push({
@@ -329,6 +352,12 @@ export async function publishContent(content: ContentWithInfluencer): Promise<Pu
             () =>
               tiktok.publishVideo(accessToken, videoUrl, textWithHashtags, {
                 privacyLevel: requestedPrivacy,
+                disableComment: content.tiktokDisableComment ?? undefined,
+                disableDuet: content.tiktokDisableDuet ?? undefined,
+                disableStitch: content.tiktokDisableStitch ?? undefined,
+                brandOrganicToggle: content.tiktokBrandOrganicToggle ?? undefined,
+                brandContentToggle: content.tiktokBrandContentToggle ?? undefined,
+                videoDurationSec: content.tiktokVideoDurationSec ?? undefined,
               }),
             3,
             isTikTokTransientError
@@ -342,6 +371,11 @@ export async function publishContent(content: ContentWithInfluencer): Promise<Pu
               tiktok_publish_id: result.publishId,
               tiktok_privacy_level: result.privacyLevel,
               tiktok_source: result.source,
+              tiktok_disable_comment: result.disableComment,
+              tiktok_disable_duet: result.disableDuet,
+              tiktok_disable_stitch: result.disableStitch,
+              tiktok_brand_organic_toggle: result.brandOrganicToggle,
+              tiktok_brand_content_toggle: result.brandContentToggle,
             },
           });
           break;
