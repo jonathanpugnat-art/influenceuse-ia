@@ -431,7 +431,7 @@ export async function publishVideo(
   // If the requested/clamped level is not among the ones the API allowed for
   // this token, fall back to the safest option TikTok gave us.
   const allowed = new Set(creatorInfo.privacyLevelOptions);
-  let privacyLevel: TikTokPrivacyLevel = allowed.has(clampedByAudit)
+  const privacyLevel: TikTokPrivacyLevel = allowed.has(clampedByAudit)
     ? clampedByAudit
     : (creatorInfo.privacyLevelOptions[0] ?? "SELF_ONLY");
 
