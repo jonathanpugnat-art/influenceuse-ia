@@ -126,6 +126,64 @@ describe("publisher.service", () => {
       expect(failed?.error).toContain("IG permanent error");
     });
 
+    it("blocks TikTok when the content is NSFW (server-side audit guard)", async () => {
+      const content = {
+        ...baseContent,
+        type: "REEL" as const,
+        contentMode: "NSFW" as const,
+        platforms: ["TIKTOK"] as Array<"TIKTOK">,
+        mediaUrls: ["https://example.com/video.mp4"],
+      };
+      const results = await publishContent(content);
+      expect(mockTiktok.publishVideo).not.toHaveBeenCalled();
+      expect(results).toHaveLength(1);
+      expect(results[0].status).toBe("FAILED");
+      expect(results[0].error).toMatch(/NSFW/);
+    });
+
+    it("forwards the TikTok composer fields (brand toggles, interactions, duration) to tiktok.publishVideo", async () => {
+      mockTiktok.publishVideo.mockResolvedValue({
+        publishId: "tt-x",
+        privacyLevel: "PUBLIC_TO_EVERYONE",
+        source: "PULL_FROM_URL",
+        disableComment: true,
+        disableDuet: false,
+        disableStitch: false,
+        brandOrganicToggle: true,
+        brandContentToggle: false,
+      });
+      const content = {
+        ...baseContent,
+        type: "REEL" as const,
+        platforms: ["TIKTOK"] as Array<"TIKTOK">,
+        mediaUrls: ["https://example.com/video.mp4"],
+        tiktokPrivacyLevel: "PUBLIC_TO_EVERYONE",
+        tiktokDisableComment: true,
+        tiktokDisableDuet: false,
+        tiktokDisableStitch: false,
+        tiktokBrandOrganicToggle: true,
+        tiktokBrandContentToggle: false,
+        tiktokVideoDurationSec: 30,
+      };
+      const results = await publishContent(content);
+      expect(mockTiktok.publishVideo).toHaveBeenCalledTimes(1);
+      const [, , , options] = mockTiktok.publishVideo.mock.calls[0];
+      expect(options).toMatchObject({
+        privacyLevel: "PUBLIC_TO_EVERYONE",
+        disableComment: true,
+        disableDuet: false,
+        disableStitch: false,
+        brandOrganicToggle: true,
+        brandContentToggle: false,
+        videoDurationSec: 30,
+      });
+      expect(results[0].status).toBe("SUCCESS");
+      expect(results[0].metadata).toMatchObject({
+        tiktok_brand_organic_toggle: true,
+        tiktok_disable_comment: true,
+      });
+    });
+
     it("skips a platform that already has a SUCCESS PublishResult (idempotency)", async () => {
       mockDb.publishResult.findMany.mockResolvedValue([
         { platform: "INSTAGRAM", externalPostId: "ig-prev", publishedAt: new Date() },

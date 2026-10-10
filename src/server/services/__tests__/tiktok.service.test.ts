@@ -220,6 +220,113 @@ describe("tiktok.service — Direct Post V1", () => {
     });
   });
 
+  describe("publishVideo — audit compliance", () => {
+    it("sends brand_organic_toggle / brand_content_toggle from options", async () => {
+      process.env.TIKTOK_AUDIT_APPROVED = "true";
+      mockedAxios.post
+        .mockResolvedValueOnce({
+          data: {
+            data: { privacy_level_options: ["PUBLIC_TO_EVERYONE", "SELF_ONLY"] },
+          },
+        })
+        .mockResolvedValueOnce({ data: { data: { publish_id: "pub_x" } } });
+
+      const result = await tiktok.publishVideo(
+        "token",
+        "https://cdn.example.com/reel.mp4",
+        "caption",
+        {
+          privacyLevel: "PUBLIC_TO_EVERYONE",
+          brandOrganicToggle: true,
+          disableComment: true,
+        }
+      );
+
+      const initCall = mockedAxios.post.mock.calls[1];
+      expect(initCall[1].post_info).toMatchObject({
+        brand_organic_toggle: true,
+        brand_content_toggle: false,
+        disable_comment: true,
+        disable_duet: false,
+        disable_stitch: false,
+        is_aigc: true,
+      });
+      expect(result.brandOrganicToggle).toBe(true);
+      expect(result.brandContentToggle).toBe(false);
+      expect(result.disableComment).toBe(true);
+    });
+
+    it("refuses branded content on a SELF_ONLY privacy level", async () => {
+      mockedAxios.post.mockResolvedValueOnce({
+        data: { data: { privacy_level_options: ["SELF_ONLY"] } },
+      });
+      await expect(
+        tiktok.publishVideo("token", "https://cdn.example.com/reel.mp4", "caption", {
+          privacyLevel: "SELF_ONLY",
+          brandContentToggle: true,
+        })
+      ).rejects.toMatchObject({ code: "branded_content_requires_public" });
+      // init endpoint never called — rejection happened before it.
+      expect(mockedAxios.post).toHaveBeenCalledTimes(1);
+    });
+
+    it("blocks publishes that exceed creator_info.max_video_post_duration_sec", async () => {
+      mockedAxios.post.mockResolvedValueOnce({
+        data: {
+          data: {
+            privacy_level_options: ["SELF_ONLY"],
+            max_video_post_duration_sec: 60,
+          },
+        },
+      });
+      await expect(
+        tiktok.publishVideo("token", "https://cdn.example.com/reel.mp4", "caption", {
+          videoDurationSec: 120,
+        })
+      ).rejects.toMatchObject({ code: "video_duration_exceeds_max" });
+      expect(mockedAxios.post).toHaveBeenCalledTimes(1);
+    });
+
+    it("forces disable_* when creator_info reports the interaction disabled", async () => {
+      process.env.TIKTOK_AUDIT_APPROVED = "true";
+      mockedAxios.post
+        .mockResolvedValueOnce({
+          data: {
+            data: {
+              privacy_level_options: ["PUBLIC_TO_EVERYONE"],
+              comment_disabled: true,
+              duet_disabled: true,
+              stitch_disabled: true,
+            },
+          },
+        })
+        .mockResolvedValueOnce({ data: { data: { publish_id: "pub_x" } } });
+
+      // Caller explicitly asked to leave interactions ON, but creator_info
+      // says the account has them off — we must force disable_* = true.
+      const result = await tiktok.publishVideo(
+        "token",
+        "https://cdn.example.com/reel.mp4",
+        "caption",
+        {
+          privacyLevel: "PUBLIC_TO_EVERYONE",
+          disableComment: false,
+          disableDuet: false,
+          disableStitch: false,
+        }
+      );
+      const initCall = mockedAxios.post.mock.calls[1];
+      expect(initCall[1].post_info).toMatchObject({
+        disable_comment: true,
+        disable_duet: true,
+        disable_stitch: true,
+      });
+      expect(result.disableComment).toBe(true);
+      expect(result.disableDuet).toBe(true);
+      expect(result.disableStitch).toBe(true);
+    });
+  });
+
   describe("getAuthUrl", () => {
     it("includes video.publish + user.info.basic scopes only", () => {
       const url = tiktok.getAuthUrl(
