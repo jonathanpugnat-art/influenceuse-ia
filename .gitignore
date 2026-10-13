@@ -56,3 +56,12 @@ prisma/test-r2.ts
 # kept locally for debugging but never committed (75+ heavy JPGs per run)
 /test-output/
 .tmp/
+
+# personnages enregistrés en local
+/data/
+
+.env.vercel*
+.vercel
+
+# Sentry Config File
+.env.sentry-build-plugin
