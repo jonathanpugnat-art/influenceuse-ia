@@ -1,0 +1,13 @@
+{
+  "plugins": {
+    "datadog": {
+      "enabled": true
+    },
+    "firecrawl": {
+      "enabled": true
+    },
+    "higgsfield": {
+      "enabled": true
+    }
+  }
+}

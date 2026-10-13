@@ -1,0 +1,18 @@
+feature,area,priority,original,clone,notes
+Landing hero (claim + CTA + micro-proof + 2 portraits),marketing,must,"Higgsfield, Influencer Studio, The Influencer AI",no,Aucune landing publique chez Ofmia aujourd'hui — plus gros gap
+Boucle 3 etapes (trouver / refaire / publier),marketing,must,"Influencer Studio, The Influencer AI",no,Colle exactement au flow Ofmia tendances->contenu->download
+Argument consistance (meme visage partout),marketing,must,"The Influencer AI, Influencer Studio",no,Coeur de valeur Ofmia (visage verrouille)
+Showcase outils en onglets (Photos/Reels/Formats),marketing,should,The Influencer AI,no,Reutiliser les FORMATS reels existants (POV, GRWM...)
+Breakout reels recreated (jamais quoi poster),marketing,should,"The Influencer AI, Influencer Studio",no,Lien direct vers /tendances ; raconte le Refaire
+Comparatif vs shoot reel / concurrents,marketing,should,"The Influencer AI, Influencer Studio",no,ROI 29EUR vs photoshoot ; honnete
+Section earning / ROI,marketing,should,The Influencer AI,no,Public OFM ; pas de chiffres inventes
+Preuve sociale (temoignages + featured-in + stats),marketing,could,"The Influencer AI",no,TODO: n'afficher que des stats reelles
+Pricing tiers avec Most Popular,marketing,must,"Higgsfield, Influencer Studio, The Influencer AI",no,Prix reels Ofmia: 0/29/79/199 EUR ; teaser -> /facturation
+FAQ SEO (objections + mots-cles),marketing,should,"Influencer Studio, The Influencer AI",no,Droits commerciaux, consistance, prix, legalite
+CTA final en bande,marketing,could,tous,no,Repete l'action primaire
+Score outlier/viral sur les reels,product,should,Influencer Studio,no,plays vs mediane du createur ; donnee a inferer dans le scraper
+Deux entrees persona (Builder vs Clone),product,could,The Influencer AI,partial,Ofmia a deja creer (traits + photos) ; clarifier les 2 chemins
+Essai gratuit visible + credits offerts,marketing,should,"The Influencer AI, Influencer Studio",no,Plan Decouverte = 30 credits gratuits -> le mettre en avant
+Badge paiement securise (Stripe),marketing,could,The Influencer AI,no,Ofmia utilise deja Stripe
+Multi-compte publishing + scheduling,product,could,Influencer Studio,no,Hors scope v1 (download suffit)
+Multilingue (voix 40+ langues),product,could,The Influencer AI,no,Hors scope ; noter pour roadmap
